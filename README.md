@@ -10,7 +10,7 @@ Replaces Setmore with your own booking system on Firebase.
 
 ## Live preview
 
-Every push to `main` publishes the `public/` folder to GitHub Pages (see `.github/workflows/pages.yml`).
+Live at **https://impapap.github.io/real-barbershop-system/**. Every push to `main` that changes `public/` copies it to the `gh-pages` branch, which GitHub Pages serves (see `.github/workflows/pages.yml`).
 
 Until `public/assets/firebase-config.js` is filled in, the site runs in **demo mode**. It uses sample data saved only in the visitor's browser, skips payments, emails and texts, and opens the dashboard without a real sign-in. Use **Reset demo** in the top bar to start over. It's meant for showing the owner how everything works before Firebase is set up.
 
