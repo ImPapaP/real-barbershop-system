@@ -1,7 +1,7 @@
 // "Your booking" page, opened from the confirmation email or after paying on PayMongo.
 // Shows the booking status and lets the customer reschedule or cancel within the policy.
 import { db, call, demoBar, resetDemo } from './fb.js';
-import { $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, MONTHS, dowOf, sum, policyOf, availableTimes, bookableDates, timeChips, STARTER } from './shared.js';
+import { $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, MONTHS, dowOf, sum, policyOf, availableTimes, bookableDates, timeChips, STARTER, icsFor } from './shared.js';
 
 const q = new URLSearchParams(location.search);
 const ID = q.get('id') || '', TOKEN = q.get('t') || '';
@@ -24,14 +24,15 @@ const chipHTML = (kind, icon, label) => `<span class="chip chip-${kind}"><b aria
 
 function details(b) {
   const total = sum(b.services, s => s.price), from = b.services.some(s => s.priceFrom);
-  return `<section class="panel"><div class="panel-h"><h2>Booking details</h2><span class="code" aria-label="Booking code">${esc(b.code)}</span></div>
-    <div class="totals" style="font-family:var(--f-body);font-size:15px;gap:10px">
+  return `<section class="ticket-card"><div class="tc-top"><b>${fmtDate(b.date)} · ${fmtTime(b.time)}</b><span class="code" aria-label="Booking code">${esc(b.code)}</span></div>
+    <div class="tc-body totals" style="font-family:var(--f-body);font-size:15px;gap:10px">
       <div><span class="muted">When</span><b>${fmtDate(b.date, true)}, ${fmtTime(b.time)}</b></div>
       <div><span class="muted">${b.services.some(s => /hair and makeup|balayage|rebond/i.test(s.name)) ? 'Stylist' : 'Barber'}</span><b>${esc(b.barberName || 'To be assigned')}</b></div>
       <div><span class="muted">Services</span><b style="text-align:right">${b.services.map(s => `${esc(s.name)} · ${esc(priceLabel(s, info().shop.currency || '₱'))}`).join('<br>')}</b></div>
       <div><span class="muted">Deposit</span><b>${b.deposit.status === 'paid' ? `${m(b.deposit.amount)} paid${b.deposit.method ? ' via ' + esc(methodName(b.deposit.method)) : ''}` : b.deposit.status === 'kept' ? `${m(b.deposit.amount)} kept` : b.deposit.status === 'refunded' ? 'Refunded' : 'Not paid'}</b></div>
-      ${b.deposit.status === 'paid' ? `<div style="border-top:1px solid var(--line-2);padding-top:10px"><span>Pay at the shop</span><b>${from ? 'from ' : ''}${m(Math.max(0, total - (b.deposit.amount || 0)))}</b></div>` : ''}
-    </div></section>`;
+    </div>
+    ${b.deposit.status === 'paid' ? `<div class="tc-cut" aria-hidden="true"></div><div class="tc-body totals" style="font-family:var(--f-body)"><div><span>Pay at the shop</span><b style="font:800 26px/1 var(--f-display)">${from ? 'from ' : ''}${m(Math.max(0, total - (b.deposit.amount || 0)))}</b></div></div>` : ''}
+    </section>`;
 }
 const methodName = k => ({ gcash: 'GCash', paymaya: 'Maya', card: 'card', qrph: 'QR Ph', grab_pay: 'GrabPay' }[k] || k);
 
@@ -53,9 +54,10 @@ function body() {
         <p class="muted">Your slot is held for ${left} more minute${left === 1 ? '' : 's'}. Pay the ${m(pol.deposit)} deposit to confirm it.</p>
         ${b.checkoutUrl ? `<a class="btn btn-accent btn-lg" href="${esc(b.checkoutUrl)}">Pay ${m(pol.deposit)} deposit</a>` : ''}</div>${details(b)}`;
     }
-    case 'booked': return `<div class="status-hero">${chipHTML('good', '✓', 'Confirmed')}<h1>See you ${fmtDate(b.date)}</h1>
+    case 'booked': return `<div class="status-hero">${S.justPaid ? '<span class="success-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>' : chipHTML('good', '✓', 'Confirmed')}<h1>${S.justPaid ? 'You’re booked!' : 'See you ' + fmtDate(b.date)}</h1>
         <p class="muted">${fmtTime(b.time)} with ${esc(b.barberName || 'your barber')}. Please arrive on time: ${pol.lateMinutes} minutes late or more cancels the booking and the deposit is kept.</p></div>
         ${details(b)}
+        <div class="actions-row"><button class="btn btn-primary" data-act="ics">Add to calendar</button><a class="btn" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(info().shop.name + ' ' + info().shop.address)}" target="_blank" rel="noopener">Get directions</a><button class="btn btn-ghost" data-act="copyCode">Copy booking code</button></div>
         <section class="panel"><div class="panel-h"><h2>Need to change it?</h2></div>
           <p class="muted small" style="margin-bottom:12px">${b.canReschedule ? `You can reschedule online up to ${pol.rescheduleHours} hours before your appointment.` : `Online rescheduling closes ${pol.rescheduleHours} hours before your appointment. Call the shop if you need help.`}</p>
           <div class="row">${b.canReschedule ? '<button class="btn btn-primary" data-act="mode" data-v="reschedule">Reschedule</button>' : ''}${b.canCancel ? '<button class="btn btn-danger" data-act="mode" data-v="cancel">Cancel booking</button>' : ''}<span class="muted small">Shop: <b>${esc(info().shop.phone)}</b></span></div></section>`;
@@ -101,6 +103,13 @@ async function load() {
 
 const ACT = {
   resetDemo,
+  ics() {
+    const b = S.b, shop = info().shop;
+    const data = icsFor({ title: `${shop.name}: ${b.services.map(s => s.name).join(', ')}`, date: b.date, time: b.time, mins: b.mins, location: shop.address, description: `With ${b.barberName}. Booking code ${b.code}. Arrive on time; ${b.policy.lateMinutes}+ minutes late cancels the booking.` });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type: 'text/calendar' })); a.download = `booking-${b.code}.ics`;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  },
+  async copyCode() { try { await navigator.clipboard.writeText(S.b.code); toast('Booking code copied'); } catch (_) { toast(S.b.code); } },
   mode(el) { S.mode = el.dataset.v; S.err = ''; if (S.mode === 'reschedule') { S.rs = { date: '', time: '', barber: S.b.barberId || '' }; } render(); },
   rsBarber(el) { S.rs.barber = el.dataset.id; S.rs.time = ''; render(); },
   rsDate(el) { S.rs.date = el.dataset.v; S.rs.time = ''; watchSlots(); render(); },

@@ -187,3 +187,10 @@ export function onAuth(fn) { authFns.add(fn); setTimeout(() => fn(user), 0); ret
 export async function login(email) { user = { uid: 'demo', email: email || 'owner@demo.realbarbers' }; try { localStorage.setItem(USER_KEY, 'in'); } catch (_) {} authFns.forEach(f => f(user)); }
 export async function logout() { user = null; try { localStorage.setItem(USER_KEY, 'out'); } catch (_) {} authFns.forEach(f => f(null)); }
 export async function resetPassword() {}
+
+// ---------- photos (demo: kept as small data URLs in this browser) ----------
+export async function uploadImage(blob) {
+  const url = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(blob); });
+  return { url, path: '' };
+}
+export async function deleteImage() {}

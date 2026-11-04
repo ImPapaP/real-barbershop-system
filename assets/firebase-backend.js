@@ -50,3 +50,15 @@ export const login = (email, pass) => signInWithEmailAndPassword(auth, email, pa
 export const logout = () => signOut(auth);
 export const resetPassword = email => sendPasswordResetEmail(auth, email);
 export const onAuth = fn => onAuthStateChanged(auth, fn);
+
+// ---------- photos (Firebase Storage, folder site/) ----------
+import { getStorage, ref as sref, uploadBytes, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js';
+const storage = getStorage(app);
+// blob: an already-resized JPEG. Returns { url, path }.
+export async function uploadImage(blob, folder = 'gallery') {
+  const path = `site/${folder}/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+  const r = sref(storage, path);
+  await uploadBytes(r, blob, { contentType: 'image/jpeg', cacheControl: 'public,max-age=31536000' });
+  return { url: await getDownloadURL(r), path };
+}
+export async function deleteImage(path) { if (path && path.startsWith('site/')) { try { await deleteObject(sref(storage, path)); } catch (_) {} } }
