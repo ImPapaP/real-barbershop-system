@@ -1,12 +1,12 @@
 // Shop dashboard: schedule, checkout, income & expenses, barbers, clients, inventory, setup.
 // Sign-in is Firebase Auth; only users listed in the admins/ collection get in (see firestore.rules).
-import { db, demo, demoBar, resetDemo, login, logout, resetPassword, onAuth } from './fb.js';
-import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, publicBarber, DEFAULT_POLICY, startMs } from './shared.js';
+import { db, demo, demoBar, resetDemo, login, logout, resetPassword, onAuth, uploadImage, deleteImage } from './fb.js';
+import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, publicBarber, DEFAULT_POLICY, startMs, resizeImage, initials } from './shared.js';
 
 // ---------- constants ----------
 const METHODS = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer'];
 const EXP_CATS = ['Rent', 'Electricity', 'Water', 'Internet', 'Supplies', 'Stock purchase', 'Wages', 'Maintenance', 'Marketing', 'Permits & taxes', 'Payment fees', 'Other'];
-const TABS = [['overview', 'Overview'], ['schedule', 'Schedule'], ['checkout', 'Checkout'], ['money', 'Income & expenses'], ['team', 'Barbers'], ['clients', 'Clients'], ['stock', 'Inventory'], ['setup', 'Shop setup']];
+const TABS = [['overview', 'Overview'], ['schedule', 'Schedule'], ['checkout', 'Checkout'], ['money', 'Income & expenses'], ['team', 'Barbers'], ['clients', 'Clients'], ['stock', 'Inventory'], ['website', 'Website'], ['setup', 'Shop setup']];
 const APPT = {
   pending_payment: { label: 'Awaiting deposit', kind: 'warn', icon: '◷' },
   booked: { label: 'Booked', kind: 'info', icon: '◷' },
@@ -29,7 +29,7 @@ const S = {
   info: null, infoMissing: false, slow: false,
   staff: [], appointments: [], sales: [], expenses: [], customers: [], inventory: [], payouts: [], loaded: {},
   schedDate: '', schedBarber: '', showExpired: false, period: 'month', from: '', to: '',
-  clientQ: '', clientSort: 'recent', stockFilter: 'all', showArchived: false, pos: null, busy: false
+  clientQ: '', clientSort: 'recent', stockFilter: 'all', showArchived: false, pos: null, busy: false, uploading: ''
 };
 const unsubs = [];
 
@@ -63,6 +63,7 @@ const staffAll = () => S.staff;
 const activeStaff = () => staffAll().filter(b => b.active !== false).sort((a, b) => (a.chair || 99) - (b.chair || 99) || a.name.localeCompare(b.name));
 const staffById = id => staffAll().find(b => b.id === id);
 const staffName = id => id ? (staffById(id)?.name || 'Former barber') : 'Any barber';
+const av = b => b && b.photo ? `<img class="avatar" src="${esc(b.photo)}" alt="">` : `<span class="avatar" aria-hidden="true">${esc(initials(b ? b.name : '?'))}</span>`;
 const custById = id => S.customers.find(c => c.id === id);
 const methodName = k => METHOD_NAMES[k] || k || 'Online';
 const depositPaid = a => a && a.deposit && a.deposit.status === 'paid' ? (a.deposit.amount || 0) : 0;
@@ -84,6 +85,7 @@ const ICONS = {
   stock: '<path d="M3 6l7-3 7 3v8l-7 3-7-3z"/><path d="M3 6l7 3 7-3M10 9v8"/>',
   setup: '<path d="M4 5h12M4 10h12M4 15h12"/><circle cx="8" cy="5" r="1.8"/><circle cx="13" cy="10" r="1.8"/><circle cx="7" cy="15" r="1.8"/>',
   site: '<path d="M3 9l7-6 7 6v8H3z"/><path d="M8 17v-5h4v5"/>',
+  website: '<rect x="2.5" y="3.5" width="15" height="13" rx="2"/><circle cx="7" cy="8" r="1.6"/><path d="M3 15l4.5-4.5 3 3L13 11l4.5 4.5"/>',
   out: '<path d="M8 4H4v12h4M12 6l4 4-4 4M16 10H8"/>'
 };
 const icon = n => `<svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n]}</svg>`;
@@ -91,7 +93,7 @@ const mark = () => `<span class="wordmark" style="font-size:20px"><span class="m
 
 // ---------- feedback & writes ----------
 let toastT;
-function toast(msg, kind) { const t = $('#toast'); t.textContent = msg; t.className = 'toast' + (kind === 'bad' ? ' bad' : ''); t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 3200); }
+function toast(msg, kind) { const t = $('#toast'); t.textContent = msg; t.className = 'toast' + (kind === 'bad' ? ' bad' : ''); t.hidden = false; void t.offsetWidth; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 3200); }
 function errText(e) {
   const c = String(e && e.code || '');
   if (c.includes('permission-denied')) return 'You don’t have permission to change shop records.';
@@ -110,6 +112,8 @@ function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(ren
 function render() {
   const a = document.activeElement, id = a && a.id; let s = null, e = null;
   try { s = a.selectionStart; e = a.selectionEnd; } catch (_) {}
+  const tab = route(), all = COLS.every(c => S.loaded[c]);
+  S.enter = S.canAdmin && (tab !== S.lastTab || (all && !S.wasLoaded)); S.lastTab = tab; if (all) S.wasLoaded = true;
   $('#app').innerHTML = view();
   if (id && !$('#modal').contains(a)) { const n = document.getElementById(id); if (n && n !== document.activeElement) { n.focus({ preventScroll: true }); try { if (s != null) n.setSelectionRange(s, e); } catch (_) {} } }
   $('#cust-list').innerHTML = S.customers.map(c => `<option value="${esc(c.name)}">${esc(c.phone || '')}</option>`).join('');
@@ -129,7 +133,7 @@ function inner() {
       <nav class="side-nav" aria-label="Dashboard">${TABS.map(([id, l]) => `<a href="#${id}" ${id === tab ? 'aria-current="page"' : ''}>${icon(id)}<span class="lbl">${l}</span>${badges[id] ? `<span class="badge" aria-label="${badges[id]} need attention">${badges[id]}</span>` : ''}</a>`).join('')}</nav>
       <div class="side-foot"><a class="btn btn-sm btn-ghost" href="../" target="_blank" rel="noopener">${icon('site')}<span class="lbl">Website</span></a><button class="btn btn-sm btn-ghost" data-act="logout">${icon('out')}<span class="lbl">Sign out</span></button></div>
     </aside>
-    <main class="main"><div class="main-in">${loadingNote()}${S.infoMissing ? setupBanner() : ''}${TAB_VIEWS[tab]()}</div></main>
+    <main class="main"><div class="main-in${S.enter ? ' enter' : ''}">${loadingNote()}${S.infoMissing ? setupBanner() : ''}${TAB_VIEWS[tab]()}</div></main>
   </div>`;
 }
 function gate(title, msg, signOut) { return `<div class="center"><div>${mark()}<h1 style="font:800 34px/1 var(--f-display);text-transform:uppercase">${esc(title)}</h1><p class="muted">${esc(msg)}</p>${signOut ? '<button class="btn" data-act="logout">Sign out</button>' : ''}</div></div>`; }
@@ -239,7 +243,7 @@ function apptRow(a, compact) {
   const canCheckout = ['booked', 'waiting', 'inchair'].includes(a.status);
   const actions = `${canCheckout ? `<button class="btn btn-sm btn-primary" data-act="checkoutAppt" data-id="${esc(a.id)}">Checkout</button>` : ''}${a.status === 'done' && a.saleId ? `<button class="btn btn-sm" data-act="showSale" data-id="${esc(a.saleId)}">Receipt</button>` : ''}`;
   const flag = a.conflict && ['booked', 'pending_payment'].includes(a.status) ? ' ' + chip({ kind: 'bad', icon: '!', label: 'Overlaps another booking' }) : '';
-  if (compact) return `<li><span class="t">${a.source === 'walk-in' ? `#${esc(a.queueNo || '')}` : fmtTime(a.time)}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b><div class="sub">${esc(svcNames(a.serviceIds))} · ${esc(staffName(a.barberId))}</div></div>${chip(APPT[a.status] || APPT.booked)}</li>`;
+  if (compact) return `<li>${a.barberId ? av(staffById(a.barberId)) : ''}<span class="t">${a.source === 'walk-in' ? `#${esc(a.queueNo || '')}` : fmtTime(a.time)}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b><div class="sub">${esc(svcNames(a.serviceIds))} · ${esc(staffName(a.barberId))}</div></div>${chip(APPT[a.status] || APPT.booked)}</li>`;
   const choices = STATUS_CHOICES.includes(a.status) ? STATUS_CHOICES : [a.status, ...STATUS_CHOICES];
   return `<tr>
     <td class="num nowrap"><b>${a.source === 'walk-in' ? `Walk-in #${esc(a.queueNo || '')}` : fmtTime(a.time)}</b>${a.source === 'walk-in' ? `<div class="muted small">arrived ${fmtTime(a.time)}</div>` : ''}</td>
@@ -455,7 +459,7 @@ function vTeam() {
   <section class="panel"><div class="panel-h"><h2>Earnings and commissions</h2><label class="row small"><input type="checkbox" id="t-arch" data-bind="showArchived" data-live ${S.showArchived ? 'checked' : ''}> Show former staff</label></div>
     ${list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th class="r">Rate</th><th class="r">Clients</th><th class="r">Service sales</th><th class="r">Commission</th><th class="r">Tips</th><th class="r">Earned</th><th class="r">Owed now</th><th></th></tr></thead><tbody>
     ${list.map(b => { const x = s.sales.filter(v => v.barberId === b.id); const comm = sum(x, v => v.commission), tips = sum(x, v => v.tip), svc = sum(x, v => Math.max(0, (v.svcTotal || 0) - (v.discount || 0))); const owed = owedFor(b.id);
-      return `<tr><td><b>${esc(b.name)}</b>${b.active === false ? ' <span class="muted small">(former)</span>' : ''}<div class="muted small">${esc(b.title || '')}${b.chair ? ' · Chair ' + esc(b.chair) : ''} · ${(b.days || []).length === 7 ? 'Daily' : (b.days || []).map(d => DAYS[d]).join(' ')}</div></td><td class="r">${esc(b.rate || 0)}%</td><td class="r">${x.length}</td><td class="r">${money(svc)}</td><td class="r">${money(comm, 1)}</td><td class="r">${money(tips)}</td><td class="r"><b>${money(comm + tips, 1)}</b></td><td class="r"><b class="${owed > 0 ? '' : 'muted'}">${money(owed, 1)}</b></td>
+      return `<tr><td><div class="row" style="flex-wrap:nowrap">${av(b)}<div><b>${esc(b.name)}</b>${b.active === false ? ' <span class="muted small">(former)</span>' : ''}<div class="muted small">${esc(b.title || '')}${b.chair ? ' · Chair ' + esc(b.chair) : ''} · ${(b.days || []).length === 7 ? 'Daily' : (b.days || []).map(d => DAYS[d]).join(' ')}</div></div></div></td><td class="r">${esc(b.rate || 0)}%</td><td class="r">${x.length}</td><td class="r">${money(svc)}</td><td class="r">${money(comm, 1)}</td><td class="r">${money(tips)}</td><td class="r"><b>${money(comm + tips, 1)}</b></td><td class="r"><b class="${owed > 0 ? '' : 'muted'}">${money(owed, 1)}</b></td>
       <td><div class="acts"><button class="btn btn-sm btn-primary" data-act="payStaff" data-id="${esc(b.id)}" ${owed <= 0 ? 'disabled' : ''}>Pay</button><button class="btn btn-sm btn-ghost" data-act="editStaff" data-id="${esc(b.id)}">Edit</button></div></td></tr>`; }).join('')}
     </tbody></table></div>` : '<p class="empty">No staff yet. Use “+ Barber or stylist”, or load the starter team in Shop setup.</p>'}
     <p class="muted small" style="margin-top:12px">Commission is the rate times service sales after discounts. Tips go fully to the barber. “Owed now” is everything earned minus payouts. Changes to names, days and specialties show on the website.</p></section>
@@ -551,7 +555,66 @@ function vSetup() {
     <p class="muted" style="max-width:72ch">Anyone with a sign-in whose user ID is in the <b>admins</b> collection in Firebase. To add a staff account: create the user in Firebase console → Authentication, copy their User UID, then add a document with that ID in Firestore → admins. README step 4 has the details.</p></section>`;
 }
 
-const TAB_VIEWS = { overview: vOverview, schedule: vSchedule, checkout: vCheckout, money: vMoney, team: vTeam, clients: vClients, stock: vStock, setup: vSetup };
+// ---------- tab: website (photos, gallery, announcement, reviews) ----------
+const stars = n => '★★★★★'.slice(0, Math.round(n)) + '☆☆☆☆☆'.slice(0, 5 - Math.round(n));
+function vWebsite() {
+  const I = info(), sh = I.shop, gal = I.gallery || [], revs = I.reviews || [], an = I.announcement || {};
+  const upBtn = (kind, label, multiple) => `<label class="btn btn-sm btn-primary upload">${S.uploading === kind ? '<span class="spinner"></span> Uploading…' : esc(label)}<input type="file" accept="image/*" data-upload="${kind}" ${multiple ? 'multiple' : ''} hidden></label>`;
+  return `${pageHead('What customers see', 'Website', `<a class="btn" href="../" target="_blank" rel="noopener">${icon('site')}View website</a>`)}
+  <div class="grid2e">
+    <section class="panel"><div class="panel-h"><h2>Homepage photo</h2>${upBtn('hero', sh.heroPhoto ? 'Replace photo' : 'Upload photo')}</div>
+      ${sh.heroPhoto ? `<div class="hero-thumb" style="background-image:url('${esc(sh.heroPhoto)}')"></div><div class="row" style="margin-top:10px"><button class="btn btn-sm btn-danger" data-act="removeHero">Remove photo</button><span class="muted small">Shown full-width behind the headline.</span></div>`
+        : '<p class="empty">No photo yet. A wide shot of the shop front or interior works best (landscape, well lit).</p>'}</section>
+    <section class="panel"><div class="panel-h"><h2>Announcement bar</h2>${an.active && an.text ? chip({ kind: 'good', icon: '●', label: 'Showing' }) : chip({ kind: 'mute', icon: '–', label: 'Hidden' })}</div>
+      <form class="stack" data-form="announce">
+        ${field('Message across the top of the website', `<input id="an-text" name="text" value="${esc(an.text || '')}" maxlength="140" placeholder="e.g. Open on All Saints’ Day, 9 AM – 5 PM">`, 'an-text')}
+        ${field('Link (optional)', `<input id="an-link" name="link" value="${esc(an.link || '')}" placeholder="https://www.facebook.com/R3ALBarbers">`, 'an-link')}
+        <label class="row small"><input type="checkbox" name="active" ${an.active ? 'checked' : ''}> Show it on the website</label>
+        <div class="modal-f"><button class="btn btn-primary" type="submit">Save</button></div>
+      </form></section>
+  </div>
+  <section class="panel"><div class="panel-h"><h2>Gallery</h2><div class="row"><span class="muted small">${gal.length} photo${gal.length === 1 ? '' : 's'} · first 12 show on the website</span>${upBtn('gallery', '+ Add photos', true)}</div></div>
+    ${gal.length ? `<div class="gal-admin">${gal.map((g, i) => `<figure><img src="${esc(g.url)}" alt="${esc(g.caption || 'Gallery photo')}" loading="lazy"><figcaption>
+      <input id="gc-${esc(g.id)}" data-caption="${esc(g.id)}" value="${esc(g.caption || '')}" placeholder="Caption, e.g. Mid fade by Reymart" aria-label="Caption">
+      <span class="row"><button class="icon-btn" data-act="galMove" data-id="${esc(g.id)}" data-d="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move earlier">←</button><button class="icon-btn" data-act="galMove" data-id="${esc(g.id)}" data-d="1" ${i === gal.length - 1 ? 'disabled' : ''} aria-label="Move later">→</button><button class="btn btn-sm btn-danger" data-act="galDel" data-id="${esc(g.id)}">Remove</button></span></figcaption></figure>`).join('')}</div>`
+      : '<p class="empty">No photos yet. Add finished cuts, color work and the shop itself. They’re resized automatically.</p>'}</section>
+  <div class="grid2e">
+    <section class="panel"><div class="panel-h"><h2>Reviews</h2><button class="btn btn-sm btn-primary" data-act="newReview">+ Review</button></div>
+      <p class="muted small" style="margin-bottom:10px">Copy real reviews customers left on Google or Facebook, with their permission. Only add reviews people actually wrote.</p>
+      ${revs.length ? `<ul class="list">${revs.map(r => `<li><div class="grow"><b>${esc(r.name)}</b> <span class="stars" aria-label="${r.rating} stars">${stars(r.rating)}</span><div class="sub">${esc(r.text)}</div></div><button class="btn btn-sm btn-ghost" data-act="editReview" data-id="${esc(r.id)}">Edit</button></li>`).join('')}</ul>` : '<p class="empty">No reviews yet. The section stays hidden on the website until you add one.</p>'}</section>
+    <section class="panel"><div class="panel-h"><h2>Google rating</h2></div>
+      <form class="stack" data-form="rating">
+        <div class="fgrid">${field('Rating (out of 5)', `<input id="gr-r" name="rating" type="number" min="0" max="5" step="0.1" value="${esc(sh.googleRating ?? '')}">`, 'gr-r')}${field('Number of reviews', `<input id="gr-n" name="count" type="number" min="0" value="${esc(sh.googleCount ?? '')}">`, 'gr-n')}</div>
+        ${field('Link to your Google reviews', `<input id="gr-u" name="url" value="${esc(sh.googleUrl || '')}" placeholder="Paste the Share link from Google Maps">`, 'gr-u')}
+        <p class="muted small">Shown in the homepage header. Update it now and then; leave the rating blank to hide it.</p>
+        <div class="modal-f"><button class="btn btn-primary" type="submit">Save</button></div>
+      </form></section>
+  </div>
+  <section class="panel"><div class="panel-h"><h2>Team photos</h2><a class="btn btn-sm btn-ghost" href="#team">Edit team</a></div>
+    <div class="team-admin">${activeStaff().map(b => `<div class="tm">${b.photo ? `<img src="${esc(b.photo)}" alt="${esc(b.name)}">` : `<span class="mono">${esc(initials(b.name))}</span>`}<b>${esc(b.name)}</b><label class="btn btn-sm upload">${S.uploading === 'staff-' + b.id ? '<span class="spinner"></span>' : b.photo ? 'Replace' : 'Upload'}<input type="file" accept="image/*" data-upload="staff-${esc(b.id)}" hidden></label></div>`).join('') || '<p class="empty">Add your team first in Barbers.</p>'}</div></section>`;
+}
+function reviewModal(r) {
+  const c = r || { rating: 5, source: 'Google' };
+  openModal(r ? 'Edit review' : 'Add review', `<form class="stack" data-form="review" data-id="${esc(c.id || '')}">
+    <div class="fgrid three">${field('Customer name', `<input id="rv-name" name="name" value="${esc(c.name || '')}" required>`, 'rv-name')}${field('Stars', `<select id="rv-r" name="rating">${[5, 4, 3, 2, 1].map(n => opt(n, `${n} ★`, +c.rating === n)).join('')}</select>`, 'rv-r')}${field('Where it was posted', `<select id="rv-s" name="source">${['Google', 'Facebook', 'In person'].map(x => opt(x, x, x === c.source)).join('')}</select>`, 'rv-s')}</div>
+    ${field('Review', `<textarea id="rv-t" name="text" rows="4" maxlength="400" required>${esc(c.text || '')}</textarea>`, 'rv-t')}
+    <p class="err" id="m-err" hidden></p>${mFoot(r ? 'Save changes' : 'Add review', r ? `<button type="button" class="btn btn-danger" data-act="delReview" data-id="${esc(c.id)}" style="margin-right:auto">Delete</button>` : '')}</form>`);
+}
+async function handleUpload(input) {
+  const kind = input.dataset.upload, files = [...input.files]; if (!files.length) return;
+  S.uploading = kind; render();
+  try {
+    const big = kind === 'hero' ? 1920 : kind.startsWith('staff-') ? 800 : 1600, small = demo ? (kind === 'hero' ? 1280 : 900) : big;
+    const done = [];
+    for (const f of files.slice(0, 20)) { const blob = await resizeImage(f, small, demo ? 0.72 : 0.82); done.push(await uploadImage(blob, kind === 'hero' ? 'hero' : kind.startsWith('staff-') ? 'team' : 'gallery')); }
+    if (kind === 'hero') { const old = info().shop.heroPhotoPath; await saveInfo({ shop: { ...info().shop, heroPhoto: done[0].url, heroPhotoPath: done[0].path } }); deleteImage(old); toast('Homepage photo updated'); }
+    else if (kind === 'gallery') { await saveInfo({ gallery: [...(info().gallery || []), ...done.map(d => ({ id: newId(), url: d.url, path: d.path, caption: '' }))] }); toast(`${done.length} photo${done.length > 1 ? 's' : ''} added`); }
+    else { const id = kind.slice(6), b = staffById(id); if (b) { await patch('staff', id, { photo: done[0].url, photoPath: done[0].path }); deleteImage(b.photoPath); setTimeout(syncPublicBarbers, 400); toast(`${b.name}’s photo updated`); } }
+  } catch (e) { console.error(e); toast(/quota|exceeded/i.test(e.message || e.name) ? 'The demo can’t store more photos in this browser. Remove some first.' : (e.message || 'Upload failed. Try again.'), 'bad'); }
+  S.uploading = ''; input.value = ''; render();
+}
+
+const TAB_VIEWS = { overview: vOverview, schedule: vSchedule, checkout: vCheckout, money: vMoney, team: vTeam, clients: vClients, stock: vStock, website: vWebsite, setup: vSetup };
 
 // ================= MODALS =================
 function openModal(title, body, wide) {
@@ -771,6 +834,12 @@ const ACT = {
   editItem(el) { const i = S.inventory.find(x => x.id === el.dataset.id); if (i) itemModal(i); },
   adjust(el) { const i = S.inventory.find(x => x.id === el.dataset.id); if (i) adjustModal(i, el.dataset.dir); },
   async delItem(el) { if (!armed(el)) return; if (await del('inventory', el.dataset.id)) { closeModal(); toast('Item deleted'); } },
+  removeHero(el) { if (!armed(el)) return; const old = info().shop.heroPhotoPath; saveInfo({ shop: { ...info().shop, heroPhoto: '', heroPhotoPath: '' } }).then(ok => { if (ok) { deleteImage(old); toast('Homepage photo removed'); } }); },
+  galMove(el) { const g = [...(info().gallery || [])], i = g.findIndex(x => x.id === el.dataset.id), j = i + (+el.dataset.d); if (i < 0 || j < 0 || j >= g.length) return; [g[i], g[j]] = [g[j], g[i]]; saveInfo({ gallery: g }); },
+  async galDel(el) { if (!armed(el)) return; const g = info().gallery || [], x = g.find(y => y.id === el.dataset.id); if (await saveInfo({ gallery: g.filter(y => y.id !== el.dataset.id) })) { deleteImage(x && x.path); toast('Photo removed'); } },
+  newReview() { reviewModal(null); },
+  editReview(el) { const r = (info().reviews || []).find(x => x.id === el.dataset.id); if (r) reviewModal(r); },
+  async delReview(el) { if (!armed(el)) return; if (await saveInfo({ reviews: (info().reviews || []).filter(x => x.id !== el.dataset.id) })) { closeModal(); toast('Review deleted'); } },
   newService() { serviceModal(null); },
   editService(el) { const s = svcById(el.dataset.id); if (s) serviceModal(s); },
   async delService(el) { if (!armed(el)) return; if (await saveInfo({ services: services().filter(s => s.id !== el.dataset.id) })) toast('Service removed. Past sales keep its name.'); },
@@ -901,6 +970,22 @@ const FORM = {
     if (hours.some(h => !h.closed && toMin(h.close) <= toMin(h.open))) { toast('Closing time must be after opening time.', 'bad'); return; }
     if (await saveInfo({ hours })) toast('Hours saved');
   },
+  async announce(f) {
+    const fd = new FormData(f), text = String(fd.get('text') || '').trim(); let link = String(fd.get('link') || '').trim();
+    if (link && !/^https:\/\//.test(link)) link = 'https://' + link.replace(/^http:\/\//, '');
+    if (await saveInfo({ announcement: { text, link, active: fd.has('active') && !!text } })) toast(fd.has('active') && text ? 'Announcement is showing on the website' : 'Announcement saved (hidden)');
+  },
+  async rating(f) {
+    const fd = new FormData(f), r = String(fd.get('rating') || '').trim();
+    if (await saveInfo({ shop: { ...info().shop, googleRating: r === '' ? '' : Math.min(5, Math.max(0, num(r))), googleCount: parseInt(fd.get('count'), 10) || 0, googleUrl: String(fd.get('url') || '').trim() } })) toast('Google rating saved');
+  },
+  async review(f) {
+    const fd = new FormData(f), name = String(fd.get('name') || '').trim(), text = String(fd.get('text') || '').trim();
+    if (!name || !text) return modalErr(f, 'Enter the name and the review.');
+    const list = [...(info().reviews || [])], data = { name, text, rating: +fd.get('rating'), source: String(fd.get('source')) };
+    if (f.dataset.id) { const k = list.findIndex(x => x.id === f.dataset.id); if (k >= 0) list[k] = { ...list[k], ...data }; } else list.unshift({ id: newId(), ...data });
+    if (await saveInfo({ reviews: list })) { closeModal(); toast('Review saved'); }
+  },
   async policy(f) {
     const fd = new FormData(f), n = (k, min, max) => Math.min(max, Math.max(min, parseInt(fd.get(k), 10) || 0));
     const policy = { ...pol(), deposit: n('deposit', 100, 100000), holdMinutes: n('holdMinutes', 5, 60), rescheduleHours: n('rescheduleHours', 0, 168), lateMinutes: n('lateMinutes', 0, 120), leadMinutes: n('leadMinutes', 0, 1440), bookAheadDays: n('bookAheadDays', 1, 90) };
@@ -920,7 +1005,12 @@ document.addEventListener('input', e => {
   setPath(el.dataset.bind, el.type === 'checkbox' ? el.checked : el.hasAttribute('data-num') ? num(el.value) : el.value);
   if (el.hasAttribute('data-live')) schedule();
 });
-document.addEventListener('change', e => { const el = e.target; if (el.dataset && el.dataset.change && CHG[el.dataset.change]) CHG[el.dataset.change](el, e); });
+document.addEventListener('change', e => {
+  const el = e.target; if (!el.dataset) return;
+  if (el.dataset.upload) { handleUpload(el); return; }
+  if (el.dataset.caption) { const g = (info().gallery || []).map(x => x.id === el.dataset.caption ? { ...x, caption: el.value.trim().slice(0, 80) } : x); saveInfo({ gallery: g }).then(ok => ok && toast('Caption saved')); return; }
+  if (el.dataset.change && CHG[el.dataset.change]) CHG[el.dataset.change](el, e);
+});
 document.addEventListener('submit', e => { const f = e.target; if (f.dataset && f.dataset.form && FORM[f.dataset.form]) { e.preventDefault(); FORM[f.dataset.form](f, e); } });
 const tipEl = $('#tip');
 document.addEventListener('pointerover', e => { const t = e.target.closest && e.target.closest('[data-tip]'); if (!t) { tipEl.hidden = true; return; } tipEl.textContent = t.dataset.tip; tipEl.hidden = false; });

@@ -91,8 +91,11 @@ export const STARTER = {
     about: 'Deluxe haircuts with shampoo, hot towel and massage, beard sculpting, hair spa and color. Plus a full salon menu for her.',
     address: 'Cristimar Ave cor. L. Sumulong Memorial Circle, San Roque, Antipolo, Rizal',
     phone: '0906 567 4507', email: 'r3albarbers@gmail.com', facebook: 'https://www.facebook.com/R3ALBarbers',
-    currency: '₱', loyaltyEvery: 10
+    currency: '₱', loyaltyEvery: 10, heroPhoto: '', googleRating: 4.3, googleCount: 12
   },
+  announcement: { active: false, text: '', link: '' },
+  gallery: [],
+  reviews: [],
   policy: { ...DEFAULT_POLICY },
   hours: [0, 1, 2, 3, 4, 5, 6].map(d => ({ d, open: '09:00', close: '20:00', closed: false })),
   services: [
@@ -133,4 +136,38 @@ export const STARTER_STAFF = [
   { id: 'angelo', name: 'Angelo', title: 'Barber', specialty: 'Haircuts and hair spa', groups: ['him'], rate: 50, chair: 4 },
   { id: 'dave', name: 'Dave', title: 'Stylist', specialty: 'Color, rebond and styling', groups: ['her'], rate: 50, chair: 5 }
 ].map(b => ({ ...b, phone: '', days: [0, 1, 2, 3, 4, 5, 6], active: true }));
-export const publicBarber = b => ({ id: b.id, name: b.name, title: b.title || '', specialty: b.specialty || '', groups: b.groups || ['him'], days: b.days || [], chair: b.chair || '' });
+export const publicBarber = b => ({ id: b.id, name: b.name, title: b.title || '', specialty: b.specialty || '', groups: b.groups || ['him'], days: b.days || [], chair: b.chair || '', photo: b.photo || '' });
+
+// Shrinks a photo in the browser before upload: longest side `max` px, JPEG. Returns a Blob.
+export async function resizeImage(file, max = 1600, quality = 0.82) {
+  if (!/^image\//.test(file.type)) throw new Error('That file isn’t an image.');
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('That image couldn’t be opened. Try a JPG or PNG.')); i.src = URL.createObjectURL(file); });
+  const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+  URL.revokeObjectURL(img.src);
+  return await new Promise(res => c.toBlob(res, 'image/jpeg', quality));
+}
+
+// Scroll-in animation: elements with .reveal fade up the first time they enter the screen.
+// Content below the fold starts hidden only when JS runs and motion is allowed, so nothing is lost without JS.
+export function revealOnScroll(root = document) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches || !('IntersectionObserver' in window)) return;
+  const io = revealOnScroll.io || (revealOnScroll.io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); revealOnScroll.io.unobserve(e.target); } }), { rootMargin: '0px 0px -8% 0px' }));
+  root.querySelectorAll('.reveal:not(.seen)').forEach(el => {
+    el.classList.add('seen');
+    if (el.getBoundingClientRect().top < innerHeight) { el.classList.add('in'); return; }
+    el.classList.add('pre'); io.observe(el);
+  });
+}
+
+// .ics calendar file for a booking (Philippine time).
+export function icsFor({ title, date, time, mins, location, description }) {
+  const toUtc = ms => new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const start = startMs(date, time), end = start + (mins || 60) * 60e3;
+  const e = s => String(s || '').replace(/[\\,;]/g, m => '\\' + m).replace(/\n/g, '\\n');
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//REAL Barbers//Booking//EN', 'BEGIN:VEVENT', `UID:${start}-${Math.random().toString(36).slice(2)}@realbarbers`,
+    `DTSTAMP:${toUtc(Date.now())}`, `DTSTART:${toUtc(start)}`, `DTEND:${toUtc(end)}`, `SUMMARY:${e(title)}`, `LOCATION:${e(location)}`, `DESCRIPTION:${e(description)}`,
+    'BEGIN:VALARM', 'TRIGGER:-PT2H', 'ACTION:DISPLAY', 'DESCRIPTION:Haircut in 2 hours', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+}

@@ -43,12 +43,13 @@ You need a computer with **Node.js 22** installed and about an hour.
 2. Upgrade it to the **Blaze** plan (bottom-left, "Upgrade"). Cloud Functions need it.
 3. **Firestore Database** → Create database → location **asia-southeast1 (Singapore)** → production mode.
 4. **Authentication** → Get started → enable **Email/Password**.
-5. Install the Firebase tools and sign in:
+5. **Storage** → Get started → same location. Website photos (homepage, gallery, team) are stored here.
+6. Install the Firebase tools and sign in:
    ```bash
    npm install -g firebase-tools
    firebase login
    ```
-6. Put your project ID in `.firebaserc` (replace `your-firebase-project-id`).
+7. Put your project ID in `.firebaserc` (replace `your-firebase-project-id`).
 
 ### 2. Connect the website to Firebase
 
@@ -185,5 +186,6 @@ public/
 
 - **Customer data**: the booking form asks customers to agree to how their name, number and email are used, as the Data Privacy Act expects. Give dashboard access only to staff who need it.
 - **Spam protection**: one unpaid booking per mobile number at a time. For more protection, turn on Firebase **App Check** with reCAPTCHA.
+- **Photos**: upload the homepage photo, gallery and team photos in the dashboard under **Website**. They're resized in the browser before upload. Reviews and the announcement bar are managed there too.
 - **Logo**: the site uses a text wordmark. To use the shop's logo, add the image to `public/assets/` and swap it into the header in `assets/site.js`.
 - **Firebase SDK version**: the pages load Firebase 10.14.1 from Google's CDN. To update, change the version in `public/assets/fb.js`.

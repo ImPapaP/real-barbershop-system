@@ -1,0 +1,15 @@
+rules_version = '2';
+// Website photos live under site/. Anyone can view them; only admins (see firestore.rules) can upload or delete.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /site/{file=**} {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid))
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if request.auth != null
+        && firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid));
+    }
+  }
+}
