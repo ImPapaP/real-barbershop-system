@@ -1,11 +1,11 @@
 // Demo backend: same interface as firebase-backend.js, but everything lives in this browser's localStorage.
 // Used for the live preview before Firebase is connected. Payments are skipped; bookings confirm instantly.
 import {
-  STARTER, STARTER_STAFF, publicBarber, slotId, blockTimes, isActiveSlot, availableTimes, policyOf,
+  windowOfTime, STARTER, STARTER_STAFF, publicBarber, slotId, blockTimes, isActiveSlot, availableTimes, policyOf,
   startMs, phNow, addDays, sum
 } from './shared.js';
 
-const KEY = 'rb-demo-v1', USER_KEY = 'rb-demo-user';
+const KEY = 'rb-demo-v3', USER_KEY = 'rb-demo-user';
 const clone = o => o === undefined ? undefined : JSON.parse(JSON.stringify(o));
 const listeners = new Set();
 let store = new Map();
@@ -28,14 +28,14 @@ function seed() {
   m.set('admins/demo', { role: 'owner' });
   const svc = STARTER.services, him = svc.filter(s => s.group === 'him'), her = svc.filter(s => s.group === 'her' && !s.priceFrom);
   const names = ['Marco Reyes', 'Jericho Santos', 'Carlo Mendoza', 'Rafael Cruz', 'Joshua Villanueva', 'Kevin Ramos', 'Miguel Torres', 'Andrea Cruz', 'Bea Lim', 'Dennis Aquino'];
-  names.forEach((n, i) => m.set(`customers/c${i}`, { name: n, phone: `0917000${String(100 + i)}`, email: '', notes: i === 0 ? '#2 sides, scissor top' : '', createdAt: Date.now() - (90 - i * 7) * 864e5 }));
+  names.forEach((n, i) => m.set(`customers/c${i}`, { name: n, phone: `09170000${String(100 + i)}`, phoneKey: `09170000${String(100 + i)}`, email: '', notes: i === 0 ? '#2 sides, scissor top' : '', createdAt: Date.now() - (90 - i * 7) * 864e5 }));
   let n = 0;
-  for (let i = -20; i <= -1; i++) {
+  for (let i = -40; i <= -1; i++) {
     const d = day(i), cnt = 9 + Math.floor(rnd() * 8);
     for (let k = 0; k < cnt; k++) {
       const forHer = rnd() < 0.15, s = forHer ? pick(her) : (rnd() < 0.45 ? svc[0] : pick(him));
       const b = forHer ? 'dave' : pick(['reymart', 'lyndon', 'rod', 'angelo']);
-      const ci = rnd() < 0.35 ? Math.floor(rnd() * names.length) : -1;
+      const ci = rnd() < 0.35 && i > -26 ? Math.floor(rnd() * 6) : -1; // clients 6-9 last came 4-5 weeks ago (see below)
       const tip = rnd() < 0.2 ? pick([20, 50, 100]) : 0, dep = rnd() < 0.45 ? 200 : 0;
       const prod = rnd() < 0.08 ? { kind: 'product', ref: 'i1', name: 'Clay pomade', price: 450, qty: 1 } : null;
       const lines = [{ kind: 'service', ref: s.id, name: s.name, price: s.price, qty: 1 }, ...(prod ? [prod] : [])];
@@ -45,6 +45,9 @@ function seed() {
         total: s.price + pt + tip, depositCredit: dep, method: pick(['Cash', 'Cash', 'GCash', 'Maya']), rate: 50, commission: s.price / 2 });
     }
   }
+  // a few regulars last seen 4-5 weeks ago, so "Due for a trim" has people in it
+  [[6, -29], [7, -31], [8, -33], [9, -36], [6, -60], [8, -64]].forEach(([ci, d], k) => m.set(`sales/r${k}`, { date: day(d), time: '15:00', at: Date.now() + d * 864e5, customerId: `c${ci}`, name: names[ci], barberId: 'lyndon',
+    lines: [{ kind: 'service', ref: 'h1', name: 'Deluxe Haircut', price: 399, qty: 1 }], svcTotal: 399, prodTotal: 0, discount: 0, tip: 0, total: 399, depositCredit: 0, method: 'Cash', rate: 50, commission: 199.5 }));
   [['e1', day(-18), 'Rent', 'Shop rent', 25000, 'Bank transfer'], ['e2', day(-12), 'Electricity', 'Meralco bill', 6200, 'GCash'], ['e3', day(-9), 'Water', 'Water bill', 780, 'GCash'],
    ['e4', day(-6), 'Supplies', 'Blades, neck strips, alcohol', 1450, 'Cash'], ['e5', day(-3), 'Stock purchase', 'Clay pomade ×12', 3000, 'Cash'], ['e6', day(-1), 'Payment fees', 'PayMongo fees', 380, 'Bank transfer']]
     .forEach(([id, date, cat, desc, amount, method]) => m.set('expenses/' + id, { date, cat, desc, amount, method }));
@@ -60,10 +63,11 @@ function seed() {
   ];
   appts.forEach(([date, time, barberId, serviceIds, source, status, ci], i) => {
     const id = `a${i}`;
-    m.set('appointments/' + id, { date, time, startAt: startMs(date, time), barberId, serviceIds, mins: 60 * serviceIds.length, source, status, name: names[ci], phone: `0917000${100 + ci}`,
+    m.set('appointments/' + id, { date, time, startAt: startMs(date, time), barberId, serviceIds, mins: 60 * serviceIds.length, source, status, name: names[ci], phone: `09170000${100 + ci}`,
       email: '', customerId: `c${ci}`, code: 'DEMO' + (10 + i), token: 'demo' + i, notify: true, reminders: {},
       deposit: source === 'online' ? { amount: 200, status: 'paid', method: pick(['gcash', 'paymaya', 'card']) } : null, createdAt: Date.now() - 864e5 });
   });
+  m.set('waitlist/wl1', { name: 'Kevin Ramos', phone: '09170000105', phoneKey: '09170000105', email: '', date: day(1), window: 'morning', barberId: 'reymart', serviceIds: ['h1'], status: 'waiting', createdAt: Date.now() - 3600e3 });
   m.set('appointments/w1', { date: day(0), time: '09:40', source: 'walk-in', status: 'waiting', name: 'Walk-in', queueNo: 1, serviceIds: ['h1'], barberId: '', createdAt: Date.now() - 12 * 60000 });
   store = m;
   for (const k of [...m.keys()]) if (k.startsWith('appointments/')) syncSlots(k.split('/')[1]);
@@ -72,7 +76,9 @@ function seed() {
 
 // Mirrors the syncSlots Cloud Function: every active booking claims its time slots.
 function syncSlots(id) {
-  for (const [k, v] of [...store]) if (k.startsWith('slots/') && v.bookingId === id) store.delete(k);
+  const freed = [];
+  for (const [k, v] of [...store]) if (k.startsWith('slots/') && v.bookingId === id) { store.delete(k); freed.push(v); }
+  if (freed.length) queueMicrotask(() => notifyWaitlist(freed));
   const a = store.get('appointments/' + id), info = store.get('public/info');
   if (!a || !info || !['pending_payment', 'booked', 'waiting', 'inchair'].includes(a.status) || a.source === 'walk-in' || !a.barberId || !a.date || !a.time) return;
   const pol = policyOf(info), mins = a.mins || sum((a.serviceIds || []).map(s => info.services.find(x => x.id === s)).filter(Boolean), s => s.mins) || pol.step;
@@ -81,6 +87,21 @@ function syncSlots(id) {
     if (cur && cur.bookingId !== id && isActiveSlot(cur, Date.now())) continue;
     store.set(sid, { barberId: a.barberId, date: a.date, time: t, state: a.status === 'pending_payment' ? 'held' : 'booked', holdUntil: a.holdUntil || 0, bookingId: id });
   }
+}
+
+// Mirrors notifyWaitlist: freed slots go to the first matching waitlist entries (marked "texted" in the demo).
+function notifyWaitlist(freed) {
+  const now = Date.now(), pol = policyOf(store.get('public/info') || STARTER);
+  const open = freed.filter(x => startMs(x.date, x.time) > now + pol.leadMinutes * 60e3);
+  let changedAny = false;
+  for (const [k, w] of [...store].filter(([k]) => k.startsWith('waitlist/')).sort((a, b) => a[1].createdAt - b[1].createdAt)) {
+    if (w.status !== 'waiting') continue;
+    const slot = open.filter(x => x.date === w.date).sort((a, b) => a.time.localeCompare(b.time)).find(x => (!w.barberId || w.barberId === x.barberId) && (!w.window || w.window === 'any' || w.window === windowOfTime(x.time)));
+    if (!slot) continue;
+    const b = (store.get('public/info').barbers || []).find(y => y.id === slot.barberId);
+    store.set(k, { ...w, status: 'notified', notifiedAt: now, notifiedSlot: `${slot.time} ${b ? b.name : ''}`.trim() }); changedAny = true;
+  }
+  if (changedAny) changed();
 }
 
 // ---------- database (same shape as firebase-backend.js) ----------
@@ -154,7 +175,28 @@ const FUNCS = {
     afterWrite('appointments/' + id);
     return { id, token, checkoutUrl: `booking.html?id=${id}&t=${token}&paid=1` };
   },
-  getBooking(d) { byToken(d); return publicView(d.id); },
+  getBooking(d) {
+    const a = byToken(d), I = info(), every = Math.max(0, parseInt(I.shop.loyaltyEvery, 10) || 0);
+    let cid = a.customerId;
+    if (!cid && a.phone) { const key = String(a.phone).replace(/\D/g, '').replace(/^63/, '0'); const c = [...store].find(([k, v]) => k.startsWith('customers/') && v.phoneKey === key); cid = c ? c[0].split('/')[1] : ''; }
+    const visits = cid ? [...store].filter(([k, v]) => k.startsWith('sales/') && v.customerId === cid).length : 0;
+    return { ...publicView(d.id), loyalty: every ? { every, visits, nextFree: (visits + 1) % every === 0 } : null };
+  },
+  joinWaitlist(d) {
+    const phone = String(d.phone || '').replace(/\D/g, '').replace(/^63/, '0');
+    if (!String(d.name || '').trim()) fail('invalid-argument', 'Enter your name.');
+    if (!/^09\d{9}$/.test(phone)) fail('invalid-argument', 'Enter a valid mobile number, like 0917 123 4567.');
+    if (!d.consent) fail('invalid-argument', 'Please agree to be contacted about this.');
+    const mine = [...store].filter(([k, v]) => k.startsWith('waitlist/') && v.phoneKey === phone && v.status === 'waiting');
+    if (mine.some(([, v]) => v.date === d.date)) fail('already-exists', 'You’re already on the waitlist for that day.');
+    store.set('waitlist/w' + Date.now().toString(36), { name: d.name.trim(), phone, phoneKey: phone, email: String(d.email || '').trim(), date: d.date, window: d.window || 'any', barberId: d.barberId || '', serviceIds: d.serviceIds || [], status: 'waiting', createdAt: Date.now() });
+    changed(); return { ok: true };
+  },
+  sendTrimReminder(d) {
+    const k = 'customers/' + d.customerId, c = store.get(k); if (!c) fail('not-found', 'Client not found.');
+    store.set(k, { ...c, rebookSentFor: d.lastVisit, rebookSentAt: Date.now() }); changed();
+    return { sms: !!c.phone, email: !!c.email };
+  },
   rescheduleBooking(d) {
     const a = byToken(d), I = info();
     if (!publicView(d.id).canReschedule) fail('failed-precondition', `Bookings can only be moved up to ${policyOf(I).rescheduleHours} hours before the appointment.`);
