@@ -1,0 +1,32 @@
+rules_version = '2';
+// Who can read and write what.
+//  - Anyone: read the shop menu (public/info) and which time slots are taken (slots/, no customer details).
+//  - Customers never write directly. Bookings go through the Cloud Functions, which check everything.
+//  - Admins (a document in admins/ with their user id) manage everything else from the dashboard.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    match /public/{doc} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /slots/{slot} {
+      allow read: if true;
+      allow write: if false; // only Cloud Functions
+    }
+
+    match /admins/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false; // add admins in the Firebase console
+    }
+
+    match /{col}/{id} {
+      allow read, write: if isAdmin()
+        && col in ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts'];
+    }
+  }
+}
