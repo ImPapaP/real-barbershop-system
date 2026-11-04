@@ -11,7 +11,8 @@ export const DEFAULT_POLICY = {
   leadMinutes: 60,       // earliest booking is this far from now
   bookAheadDays: 30,     // how far ahead customers can book
   step: 30,              // slot grid in minutes
-  maxReschedules: 2
+  maxReschedules: 2,
+  rebookDays: 28         // days after a visit to send a "time for a trim" text (0 = off)
 };
 
 export const pad = n => String(n).padStart(2, '0');
@@ -138,6 +139,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 export function fmtTime(t) { const [h, m] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}:${pad(m)} ${h >= 12 ? 'PM' : 'AM'}`; }
 export function fmtDate(date) { const d = new Date(`${date}T00:00:00Z`); return `${DAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; }
 const shopName = info => (info.shop && info.shop.name) || 'The barbershop';
+export const firstName = n => String(n || '').trim().split(/\s+/)[0] || 'there';
 
 // SMS bodies stay plain text with no links: PH networks may block texts that contain URLs.
 export function smsText(kind, b, info) {
@@ -149,10 +151,13 @@ export function smsText(kind, b, info) {
     case 'rescheduled': return `${shop}: Your booking ${b.code} is moved to ${when} with ${who}.`;
     case 'cancelled': return `${shop}: Your booking ${b.code} for ${when} is cancelled.`;
     case 'slot_lost': return `${shop}: We got your P${pol.deposit} deposit, but that time was taken while you paid. We'll call you to rebook. Code ${b.code}.`;
+    case 'rebook': return `${shop}: Hi ${firstName(b.name)}, it's been ${Math.round(pol.rebookDays / 7)} weeks since your last cut. Book online at our website or call ${(info.shop && info.shop.phone) || 'the shop'}.`;
+    case 'slot_open': return `${shop}: A slot just opened on ${fmtDate(b.date)} at ${fmtTime(b.time)}${b.barberName ? ' with ' + b.barberName : ''}. First to book online gets it. Details in your email.`;
   }
   return '';
 }
 
+const forShopKind = k => k.startsWith('shop_');
 export function emailContent(kind, b, info, link) {
   const pol = policyOf(info), shop = shopName(info), when = `${fmtDate(b.date)} at ${fmtTime(b.time)}`;
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -164,7 +169,9 @@ export function emailContent(kind, b, info, link) {
     slot_lost: 'We received your deposit, but your time was taken',
     shop_new: `New booking: ${b.name}, ${when}`,
     shop_cancelled: `Cancelled: ${b.name}, ${when}`,
-    shop_attention: `Needs attention: ${b.name} paid but the slot was taken`
+    shop_attention: `Needs attention: ${b.name} paid but the slot was taken`,
+    rebook: 'Time for a fresh cut?',
+    slot_open: `A slot opened: ${when}`
   };
   const lines = {
     confirmed: [`Hi ${b.name}, you're booked.`, `We received your ₱${pol.deposit} deposit${b.depositMethod ? ' via ' + b.depositMethod : ''}. It goes toward your bill.`],
@@ -174,18 +181,28 @@ export function emailContent(kind, b, info, link) {
     slot_lost: [`Hi ${b.name}, we received your ₱${pol.deposit} deposit, but someone else confirmed that time while you were paying.`, 'The shop will call you to pick a new time or refund your deposit.'],
     shop_new: [`${b.name} (${b.phone}, ${b.email}) booked online and paid the deposit.`],
     shop_cancelled: [`${b.name} (${b.phone}) cancelled their booking online. The deposit is kept.`],
-    shop_attention: [`${b.name} (${b.phone}) paid the deposit after their hold expired and the slot was taken. Call them to rebook or refund it in PayMongo.`]
+    shop_attention: [`${b.name} (${b.phone}) paid the deposit after their hold expired and the slot was taken. Call them to rebook or refund it in PayMongo.`],
+    rebook: [`Hi ${firstName(b.name)}, it's been about ${Math.round(pol.rebookDays / 7)} weeks since your last visit.`, 'Book your next cut online in a minute.'],
+    slot_open: [`Hi ${firstName(b.name)}, you're on our waitlist and a slot just opened.`, 'It goes to whoever books first, so grab it soon.']
   };
-  const forShop = kind.startsWith('shop_');
-  const rows = [['Booking code', b.code], ['When', when], ['Barber', b.barberName || 'Any barber'], ['Services', (b.serviceNames || []).join(', ')]];
-  const policy = forShop ? '' : `<p style="color:#555;font-size:13px">Arriving ${pol.lateMinutes} minutes late or more cancels the booking and the deposit is kept. You can reschedule up to ${pol.rescheduleHours} hours before your appointment.</p>`;
+  const forShop = forShopKind(kind);
+  const rows = kind === 'rebook' ? [] : kind === 'slot_open' ? [['When', when], ['Barber', b.barberName || 'Any barber']]
+    : [['Booking code', b.code], ['When', when], ['Barber', b.barberName || 'Any barber'], ['Services', (b.serviceNames || []).join(', ')]];
+  const button = forShopKind(kind) ? 'Open the dashboard' : ['rebook', 'slot_open'].includes(kind) ? 'Book now' : 'View or change your booking';
+  const policy = forShop || ['rebook', 'slot_open'].includes(kind) ? '' : `<p style="color:#555;font-size:13px">Arriving ${pol.lateMinutes} minutes late or more cancels the booking and the deposit is kept. You can reschedule up to ${pol.rescheduleHours} hours before your appointment.</p>`;
   const html = `<div style="font-family:Arial,sans-serif;max-width:520px;color:#111">
 <h2 style="margin:0 0 12px">${esc(shop)}</h2>
 ${lines[kind].map(l => `<p>${esc(l)}</p>`).join('')}
 <table style="border-collapse:collapse;margin:12px 0">${rows.map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#555">${esc(k)}</td><td style="padding:4px 0"><b>${esc(v)}</b></td></tr>`).join('')}</table>
-${link ? `<p><a href="${esc(link)}" style="display:inline-block;background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none">${forShop ? 'Open the dashboard' : 'View or change your booking'}</a></p>` : ''}
+${link ? `<p><a href="${esc(link)}" style="display:inline-block;background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none">${button}</a></p>` : ''}
 ${policy}
 <p style="color:#555;font-size:13px">${esc(info.shop && info.shop.address || '')}<br>${esc(info.shop && info.shop.phone || '')}</p></div>`;
   const text = [...lines[kind], '', ...rows.map(([k, v]) => `${k}: ${v}`), link ? `\n${link}` : ''].join('\n');
   return { subject: `${shop}: ${subjects[kind]}`, html, text };
 }
+
+// Which part of the day a time falls in (used by the waitlist).
+export const windowOf = t => toMin(t) < 720 ? 'morning' : toMin(t) < 1020 ? 'afternoon' : 'evening';
+export const parseSlotId = id => { const p = String(id).split('_'); if (p.length < 3) return null; const hm = p.pop(), d = p.pop(); return { barberId: p.join('_'), date: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`, time: `${hm.slice(0, 2)}:${hm.slice(2, 4)}` }; };
+// Does a freed slot suit a waitlist entry? entry: {barberId, window}
+export const waitlistMatches = (entry, slot) => (!entry.barberId || entry.barberId === slot.barberId) && (!entry.window || entry.window === 'any' || entry.window === windowOf(slot.time));

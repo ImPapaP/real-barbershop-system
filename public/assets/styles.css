@@ -612,3 +612,22 @@ a.rating:hover{border-color:var(--star)}
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
   .marquee .track{animation:none}
 }
+
+/* batch 1: waitlist, loyalty card */
+.wl-link{border:0;background:none;padding:6px 0;color:var(--accent);font-weight:700;font-size:14px;cursor:pointer;display:inline-flex;gap:6px;align-items:center;justify-self:start}
+.wl-link .ic{width:14px;height:14px}
+.wl-strong{background:var(--accent-soft);padding:12px 16px;border-radius:10px;width:100%;justify-content:center}
+.wl{border:1px solid color-mix(in srgb,var(--accent) 35%,var(--line));background:var(--accent-soft);border-radius:12px;padding:16px;display:grid;gap:12px;animation:rise .35s var(--ease)}
+.wl-h{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.wl .btn-primary{justify-self:start}
+.done-wl{display:flex;gap:12px;align-items:flex-start}
+.done-wl>.ic{width:24px;height:24px;color:var(--good);flex:none}
+.loyalty{background:var(--ink);color:var(--surface);border-radius:16px;padding:22px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;align-items:center;animation:rise .6s .2s var(--ease) both}
+.loyalty .eyebrow{color:var(--accent)}
+.loyalty h2{font:800 30px/1 var(--f-display);text-transform:uppercase;margin:4px 0 6px}
+.loyalty .muted{color:color-mix(in srgb,var(--surface) 65%,transparent)}
+.stamps{display:grid;grid-template-columns:repeat(5,40px);gap:8px}
+.stamps span{width:40px;height:40px;border-radius:50%;border:2px dashed color-mix(in srgb,var(--surface) 35%,transparent);display:grid;place-items:center;font:800 13px/1 var(--f-display);color:color-mix(in srgb,var(--surface) 55%,transparent)}
+.stamps span.on{border:0;background:var(--accent);color:#fff;animation:pop .4s var(--ease) both;animation-delay:calc(var(--i) * 60ms + .4s)}
+.stamps span.free{border-style:solid;border-color:var(--star);color:var(--star);font-size:10px}
+@media (max-width:620px){.loyalty{grid-template-columns:1fr}}

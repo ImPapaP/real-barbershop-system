@@ -6,7 +6,11 @@
 //   expireHolds        every 5 min: unpaid holds expire and the slots open again
 //   sendReminders      every 30 min: day-before email + text, 2-hour text
 //   getBooking / rescheduleBooking / cancelBooking   the customer's booking link
-//   syncSlots          keeps the public slot calendar in step with every appointment change
+//   syncSlots          keeps the public slot calendar in step with every appointment change,
+//                      and texts waitlisted customers when a time frees up
+//   joinWaitlist       website -> join the waitlist for a full day
+//   sendRebookReminders daily: "time for a trim" text to clients last seen N days ago
+//   sendTrimReminder   dashboard -> send that text to one client now
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
@@ -18,7 +22,7 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import {
   validateRequest, policyOf, slotId, isActiveSlot, desiredSlots, slotStateFor, apptMins, startMs,
   verifyPaymongoSignature, newToken, tokenMatches, bookingCode, smsText, emailContent, eligibleBarbers,
-  servicesById, blockTimes, phNow
+  servicesById, blockTimes, phNow, addDays, normalizePhone, validEmail, parseSlotId, waitlistMatches
 } from './src/core.js';
 import { createCheckout, expireCheckout, sendSms, sendEmail } from './src/providers.js';
 
@@ -69,6 +73,27 @@ async function notify(kind, id, a, info, { sms = true, email = true, shop = null
   if (shop) results.shop = await sendEmail(mailCfg, SHOP_EMAIL.value(), emailContent(shop, v, info, `${site()}/admin/#schedule`));
   await apptRef(id).update({ notices: FieldValue.arrayUnion({ at: Date.now(), kind, ...results }) }).catch(() => {});
   return results;
+}
+
+// Messages to people who aren't tied to one booking (trim reminders, waitlist).
+async function sendTo(kind, person, info, link, { email = true } = {}) {
+  const smsCfg = { apiKey: SEMAPHORE_API_KEY.value(), sender: SMS_SENDER_NAME.value() };
+  const mailCfg = { user: SHOP_EMAIL.value(), pass: GMAIL_APP_PASSWORD.value(), fromName: (info.shop && info.shop.name) || 'Barbershop' };
+  const out = {};
+  if (person.phone) out.sms = await sendSms(smsCfg, normalizePhone(person.phone) || person.phone, smsText(kind, person, info));
+  if (email && person.email) out.email = await sendEmail(mailCfg, person.email, emailContent(kind, person, info, link));
+  return out;
+}
+async function isAdmin(req) { return !!(req.auth && (await db.doc(`admins/${req.auth.uid}`).get()).exists); }
+
+// Loyalty: completed visits for the client behind a booking (matched by customer id, then phone).
+async function loyaltyFor(a, info) {
+  const every = Math.max(0, parseInt(info.shop && info.shop.loyaltyEvery, 10) || 0);
+  if (!every) return null;
+  let cid = a.customerId;
+  if (!cid && a.phone) { const c = await db.collection('customers').where('phoneKey', '==', normalizePhone(a.phone)).limit(1).get(); cid = c.empty ? '' : c.docs[0].id; }
+  const visits = cid ? (await db.collection('sales').where('customerId', '==', cid).count().get()).data().count : 0;
+  return { every, visits, nextFree: (visits + 1) % every === 0 };
 }
 
 async function bookingFromToken(data) {
@@ -203,7 +228,85 @@ function publicView(id, a, info) {
 
 export const getBooking = onCall(async req => {
   const { id, a } = await bookingFromToken(req.data);
-  return publicView(id, a, await loadInfo());
+  const info = await loadInfo();
+  return { ...publicView(id, a, info), loyalty: await loyaltyFor(a, info) };
+});
+
+// =============== waitlist ===============
+export const joinWaitlist = onCall(async req => {
+  const info = await loadInfo(), pol = policyOf(info), d = req.data || {};
+  const name = String(d.name || '').trim().slice(0, 80), phone = normalizePhone(d.phone), email = String(d.email || '').trim().toLowerCase().slice(0, 120);
+  const date = String(d.date || ''), win = ['any', 'morning', 'afternoon', 'evening'].includes(d.window) ? d.window : 'any';
+  const barberId = String(d.barberId || ''), serviceIds = Array.isArray(d.serviceIds) ? d.serviceIds.map(String).slice(0, 6) : [];
+  if (!name) throw new HttpsError('invalid-argument', 'Enter your name.');
+  if (!phone) throw new HttpsError('invalid-argument', 'Enter a valid mobile number, like 0917 123 4567.');
+  if (email && !validEmail(email)) throw new HttpsError('invalid-argument', 'Check your email address.');
+  const today = phNow().date;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < today || date > addDays(today, pol.bookAheadDays)) throw new HttpsError('invalid-argument', 'Pick a date within the booking window.');
+  if (d.consent !== true) throw new HttpsError('invalid-argument', 'Please agree to be contacted about this.');
+  const mine = (await db.collection('waitlist').where('phoneKey', '==', phone).get()).docs.map(x => x.data()).filter(x => x.status === 'waiting' && x.date >= today);
+  if (mine.some(x => x.date === date)) throw new HttpsError('already-exists', 'You’re already on the waitlist for that day.');
+  if (mine.length >= 3) throw new HttpsError('resource-exhausted', 'You can be on the waitlist for up to 3 days at a time.');
+  await db.collection('waitlist').add({ name, phone, phoneKey: phone, email, date, window: win, barberId, serviceIds, status: 'waiting', createdAt: Date.now() });
+  return { ok: true };
+});
+
+async function notifyWaitlist(freed, info) {
+  const pol = policyOf(info), now = Date.now();
+  const open = freed.filter(x => startMs(x.date, x.time) > now + pol.leadMinutes * 60e3);
+  if (!open.length) return;
+  for (const date of [...new Set(open.map(x => x.date))]) {
+    const entries = (await db.collection('waitlist').where('date', '==', date).get()).docs.filter(x => x.data().status === 'waiting').sort((a, b) => a.data().createdAt - b.data().createdAt);
+    let sent = 0;
+    for (const e of entries) {
+      if (sent >= 5) break;
+      const w = e.data(), slot = open.filter(x => x.date === date).sort((a, b) => a.time.localeCompare(b.time)).find(x => waitlistMatches(w, x));
+      if (!slot) continue;
+      const person = { name: w.name, phone: w.phone, email: w.email, date, time: slot.time, barberName: barberName(info, slot.barberId) };
+      const res = await sendTo('slot_open', person, info, `${site()}/#book`);
+      await e.ref.update({ status: 'notified', notifiedAt: now, notifiedSlot: `${slot.time} ${person.barberName}`.trim(), result: res });
+      sent++;
+    }
+  }
+}
+
+// =============== "time for a trim" reminders ===============
+async function hasUpcoming(customerId, phone) {
+  const now = Date.now();
+  if (customerId) { const q = await db.collection('appointments').where('customerId', '==', customerId).where('date', '>=', phNow().date).get(); if (q.docs.some(x => ['booked', 'pending_payment'].includes(x.data().status))) return true; }
+  if (phone) { const q = await db.collection('appointments').where('phone', '==', phone).where('status', '==', 'booked').get(); if (q.docs.some(x => (x.data().startAt || 0) > now)) return true; }
+  return false;
+}
+async function remindOne(ref, c, lastVisit, info) {
+  const res = await sendTo('rebook', { name: c.name, phone: c.phone, email: c.email }, info, `${site()}/#book`);
+  await ref.update({ rebookSentFor: lastVisit, rebookSentAt: Date.now() });
+  return res;
+}
+export const sendRebookReminders = onSchedule({ schedule: 'every day 10:00', timeZone: 'Asia/Manila', secrets: NOTIFY_SECRETS }, async () => {
+  const info = await loadInfo(), days = policyOf(info).rebookDays;
+  if (!days) return;
+  const target = addDays(phNow().date, -days);
+  const ids = [...new Set((await db.collection('sales').where('date', '==', target).get()).docs.map(x => x.data().customerId).filter(Boolean))];
+  let n = 0;
+  for (const id of ids) {
+    const ref = db.doc(`customers/${id}`), snap = await ref.get(); if (!snap.exists) continue;
+    const c = snap.data();
+    if (c.noReminders || !c.phone || (c.rebookSentFor || '') >= target) continue;
+    const later = await db.collection('sales').where('customerId', '==', id).where('date', '>', target).limit(1).get();
+    if (!later.empty || await hasUpcoming(id, normalizePhone(c.phone))) continue;
+    await remindOne(ref, c, target, info); n++;
+  }
+  logger.info(`Trim reminders sent: ${n}`);
+});
+export const sendTrimReminder = onCall({ secrets: NOTIFY_SECRETS }, async req => {
+  if (!(await isAdmin(req))) throw new HttpsError('permission-denied', 'Only admins can send reminders.');
+  const id = String(req.data && req.data.customerId || '');
+  const ref = db.doc(`customers/${id}`), snap = id ? await ref.get() : null;
+  if (!snap || !snap.exists) throw new HttpsError('not-found', 'Client not found.');
+  const c = snap.data();
+  if (!c.phone && !c.email) throw new HttpsError('failed-precondition', 'This client has no phone or email on file.');
+  const last = String(req.data.lastVisit || phNow().date);
+  return await remindOne(ref, c, last, await loadInfo());
 });
 
 export const rescheduleBooking = onCall({ secrets: NOTIFY_SECRETS }, async req => {
@@ -287,7 +390,7 @@ export const sendReminders = onSchedule({ schedule: 'every 30 minutes', timeZone
 
 // Keeps slots/ in step with appointments, including bookings the shop adds by phone in the dashboard.
 // Online bookings already claim their slots inside a transaction, so for those this is usually a no-op.
-export const syncSlots = onDocumentWritten('appointments/{id}', async event => {
+export const syncSlots = onDocumentWritten({ document: 'appointments/{id}', secrets: NOTIFY_SECRETS }, async event => {
   const id = event.params.id;
   const before = event.data.before.exists ? event.data.before.data() : null;
   const after = event.data.after.exists ? event.data.after.data() : null;
@@ -301,13 +404,15 @@ export const syncSlots = onDocumentWritten('appointments/{id}', async event => {
   const sameBlocks = want.length === have.length && want.every(x => have.includes(x.id));
   const state = after ? slotStateFor(after.status) : 'booked';
 
+  let freed = [];
   await db.runTransaction(async tx => {
+    freed = [];
     const ids = [...new Set([...have, ...want.map(x => x.id)])];
     const snaps = ids.length ? await tx.getAll(...ids.map(slotRef)) : [];
     const byId = Object.fromEntries(snaps.map(s => [s.id, s.exists ? s.data() : null]));
     const now = Date.now();
     // release slots we no longer need
-    for (const sid of have) if (!want.some(x => x.id === sid) && byId[sid] && byId[sid].bookingId === id) tx.delete(slotRef(sid));
+    for (const sid of have) if (!want.some(x => x.id === sid) && byId[sid] && byId[sid].bookingId === id) { tx.delete(slotRef(sid)); const p = parseSlotId(sid); if (p) freed.push(p); }
     // claim the ones we need, unless someone else holds them
     const claimed = []; let conflict = false;
     for (const x of want) {
@@ -329,4 +434,6 @@ export const syncSlots = onDocumentWritten('appointments/{id}', async event => {
     if (mins && !after.mins) upd.mins = mins;
     if (Object.keys(upd).length) tx.update(apptRef(id), upd);
   });
+  // Any slot that just opened (cancellation, reschedule, expired hold) is offered to the waitlist for that day.
+  if (freed.length) await notifyWaitlist(freed, info).catch(e => logger.error('Waitlist notify failed', e.message));
 });

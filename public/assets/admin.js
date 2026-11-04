@@ -1,7 +1,7 @@
 // Shop dashboard: schedule, checkout, income & expenses, barbers, clients, inventory, setup.
 // Sign-in is Firebase Auth; only users listed in the admins/ collection get in (see firestore.rules).
-import { db, demo, demoBar, resetDemo, login, logout, resetPassword, onAuth, uploadImage, deleteImage } from './fb.js';
-import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, publicBarber, DEFAULT_POLICY, startMs, resizeImage, initials } from './shared.js';
+import { db, demo, demoBar, resetDemo, login, logout, resetPassword, onAuth, uploadImage, deleteImage, call } from './fb.js';
+import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, publicBarber, DEFAULT_POLICY, startMs, resizeImage, initials, phoneKey } from './shared.js';
 
 // ---------- constants ----------
 const METHODS = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer'];
@@ -20,14 +20,14 @@ const APPT = {
 };
 const STATUS_CHOICES = ['booked', 'waiting', 'inchair', 'done', 'noshow', 'cancelled'];
 const PERIODS = [['today', 'Today'], ['week', 'This week'], ['month', 'This month'], ['lastmonth', 'Last month'], ['30d', 'Last 30 days'], ['year', 'This year'], ['custom', 'Custom']];
-const COLS = ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts'];
+const COLS = ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts', 'waitlist'];
 const METHOD_NAMES = { gcash: 'GCash', paymaya: 'Maya', card: 'Card', qrph: 'QR Ph', grab_pay: 'GrabPay' };
 
 // ---------- state ----------
 const S = {
   ready: false, user: null, canAdmin: false, loginErr: '', loginBusy: false, loginMsg: '',
   info: null, infoMissing: false, slow: false,
-  staff: [], appointments: [], sales: [], expenses: [], customers: [], inventory: [], payouts: [], loaded: {},
+  staff: [], appointments: [], sales: [], expenses: [], customers: [], inventory: [], payouts: [], waitlist: [], loaded: {}, reminding: '',
   schedDate: '', schedBarber: '', showExpired: false, period: 'month', from: '', to: '',
   clientQ: '', clientSort: 'recent', stockFilter: 'all', showArchived: false, pos: null, busy: false, uploading: ''
 };
@@ -233,7 +233,7 @@ async function ensureCustomer(name, phone, email, save) {
   if (found) return found.id;
   if (!save || !String(name || '').trim() || name.trim().toLowerCase() === 'walk-in') return '';
   const id = newId();
-  return await put('customers', id, { name: name.trim(), phone: String(phone || '').trim(), email: email || '', notes: '', createdAt: Date.now() }) ? id : '';
+  return await put('customers', id, { name: name.trim(), phone: String(phone || '').trim(), phoneKey: phoneKey(phone), email: email || '', notes: '', createdAt: Date.now() }) ? id : '';
 }
 
 // ---------- appointments ----------
@@ -319,6 +319,7 @@ function vSchedule() {
     ${queue.length ? `<ul class="list">${queue.map(a => `<li><span class="qno">#${esc(a.queueNo || '')}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b><div class="sub">${esc(svcNames(a.serviceIds))} · waiting ${Math.max(0, Math.round((Date.now() - (a.createdAt || Date.now())) / 60000))} min</div></div>
       <select data-change="apptBarber" data-id="${esc(a.id)}" aria-label="Barber for #${esc(a.queueNo || '')}" style="width:auto">${opt('', 'Any barber', !a.barberId)}${activeStaff().map(b => opt(b.id, b.name, b.id === a.barberId)).join('')}</select>
       <button class="btn btn-sm btn-primary" data-act="startAppt" data-id="${esc(a.id)}">Start</button></li>`).join('')}</ul>` : '<p class="empty">Nobody waiting. Add a walk-in when someone arrives.</p>'}</section>` : ''}
+  ${waitlistPanel(d)}
   <section class="panel">
     <div class="toolbar" style="margin-bottom:14px">
       <div class="datenav"><button class="btn btn-sm" data-act="dayShift" data-n="-1" aria-label="Previous day">‹</button><input type="date" id="sch-date" data-bind="schedDate" data-live value="${esc(d)}" aria-label="Date"><button class="btn btn-sm" data-act="dayShift" data-n="1" aria-label="Next day">›</button>${isToday ? '' : '<button class="btn btn-sm btn-ghost" data-act="dayToday">Today</button>'}</div>
@@ -328,6 +329,14 @@ function vSchedule() {
     ${counts.length ? `<div class="row" style="margin-bottom:12px">${counts.map(([k, n]) => chip({ ...APPT[k], label: `${n} ${APPT[k].label.toLowerCase()}` })).join('')}</div>` : ''}
     ${appts.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Time</th><th>Client</th><th>Services</th><th>Barber</th><th>Source</th><th>Status</th><th></th></tr></thead><tbody>${appts.map(a => apptRow(a)).join('')}</tbody></table></div>` : `<p class="empty">Nothing scheduled ${isToday ? 'today' : 'on this day'}. Online bookings appear here as soon as the deposit is paid.</p>`}
   </section>`;
+}
+
+function waitlistPanel(d) {
+  const list = S.waitlist.filter(w => w.date === d).sort((a, b) => a.createdAt - b.createdAt);
+  if (!list.length) return '';
+  const WIN = { any: 'Any time', morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
+  return `<section class="panel"><div class="panel-h"><h2>Waitlist</h2><span class="muted small">Texted automatically, in order, when a matching slot opens</span></div><ul class="list">${list.map((w, i) => `<li><span class="qno" style="font-size:20px;width:34px">${i + 1}</span><div class="grow"><b>${esc(w.name)}</b> <span class="muted small">${esc(w.phone)}</span><div class="sub">${esc(WIN[w.window] || 'Any time')} · ${esc(w.barberId ? staffName(w.barberId) : 'Any barber')}${(w.serviceIds || []).length ? ' · ' + esc(svcNames(w.serviceIds)) : ''}</div></div>
+    ${w.status === 'notified' ? chip({ kind: 'good', icon: '✓', label: `Texted${w.notifiedSlot ? ': ' + w.notifiedSlot : ''}` }) : chip({ kind: 'warn', icon: '◷', label: 'Waiting' })}<button class="btn btn-sm btn-ghost" data-act="delWait" data-id="${esc(w.id)}">Remove</button></li>`).join('')}</ul></section>`;
 }
 
 // ---------- tab: checkout ----------
@@ -475,12 +484,16 @@ function vClients() {
   const sorts = { recent: (a, b) => (b.st.last || '').localeCompare(a.st.last || ''), spend: (a, b) => b.st.spent - a.st.spent, visits: (a, b) => b.st.visits - a.st.visits, name: (a, b) => a.name.localeCompare(b.name) };
   list.sort(sorts[S.clientSort] || sorts.recent);
   const lapsed = S.customers.filter(c => st[c.id] && st[c.id].last && st[c.id].last < addDays(today(), -45)).length;
+  const due = dueForTrim(st);
   return `${pageHead(`${S.customers.length} clients`, 'Clients', `<button class="btn btn-primary" data-act="newClient">+ Client</button>`)}
   <section class="kpis">
     ${kpi('Clients on file', S.customers.length)}
     ${kpi('New this month', S.customers.filter(c => c.createdAt && ymd(new Date(c.createdAt)) >= periodRange('month')[0]).length)}
     ${kpi('Haven’t been back in 45+ days', lapsed, '<span class="d">Worth a message</span>')}
   </section>
+  ${pol().rebookDays ? `<section class="panel"><div class="panel-h"><h2>Due for a trim</h2><span class="muted small">Last visit ${pol().rebookDays}+ days ago, nothing booked. Texts go out automatically at 10 AM on day ${pol().rebookDays}.</span></div>
+    ${due.length ? `<div class="tbl-wrap"><table class="tbl"><tbody>${due.slice(0, 12).map(({ c, last, days }) => { const sent = (c.rebookSentFor || '') >= last; return `<tr><td><div class="row" style="flex-wrap:nowrap"><span class="avatar">${esc(initials(c.name))}</span><div><b>${esc(c.name)}</b><div class="muted small">${esc(c.phone || 'No phone')}</div></div></div></td><td class="num">${days} days since ${shortDate(last)}</td><td>${sent ? chip({ kind: 'good', icon: '✓', label: 'Reminded' }) : c.noReminders ? chip({ kind: 'mute', icon: '–', label: 'Opted out' }) : ''}</td>
+      <td><div class="acts">${!sent && !c.noReminders && (c.phone || c.email) ? `<button class="btn btn-sm btn-primary" data-act="remind" data-id="${esc(c.id)}" data-last="${esc(last)}" ${S.reminding === c.id ? 'disabled' : ''}>${S.reminding === c.id ? 'Sending…' : 'Send reminder'}</button>` : ''}<button class="btn btn-sm btn-ghost" data-act="openClient" data-id="${esc(c.id)}">Open</button></div></td></tr>`; }).join('')}</tbody></table></div>` : '<p class="empty">Nobody is due right now.</p>'}</section>` : ''}
   <section class="panel">
     <div class="toolbar" style="margin-bottom:12px"><input type="search" id="c-q" data-bind="clientQ" data-live value="${esc(S.clientQ)}" placeholder="Search name or phone" aria-label="Search clients">
       <select id="c-sort" data-bind="clientSort" data-live style="width:auto" aria-label="Sort">${[['recent', 'Last visit'], ['spend', 'Top spenders'], ['visits', 'Most visits'], ['name', 'Name']].map(([k, l]) => opt(k, 'Sort: ' + l, k === S.clientSort)).join('')}</select></div>
@@ -489,6 +502,14 @@ function vClients() {
         ${N ? `<td><span class="meter" aria-label="${prog} of ${N} visits">${N <= 12 ? Array.from({ length: N }, (_, i) => `<i class="${i < prog ? 'on' : ''}"></i>`).join('') : `${prog}/${N}`}</span></td>` : ''}<td>${esc(usualBarber(c.st))}</td></tr>`; }).join('')}
     </tbody></table></div>` : `<p class="empty">${q ? 'No client matches that search.' : 'No clients yet. They’re added at checkout, or use “+ Client”.'}</p>`}
   </section>`;
+}
+
+function dueForTrim(st) {
+  const n = pol().rebookDays; if (!n) return [];
+  const from = addDays(today(), -(n + 30)), to = addDays(today(), -n);
+  return S.customers.map(c => ({ c, s: st[c.id] })).filter(x => x.s && x.s.last >= from && x.s.last <= to)
+    .filter(({ c }) => !S.appointments.some(a => a.date >= today() && ['booked', 'pending_payment'].includes(a.status) && (a.customerId === c.id || (c.phoneKey && phoneKey(a.phone) === c.phoneKey))))
+    .map(({ c, s }) => ({ c, last: s.last, days: Math.round((parseYmd(today()) - parseYmd(s.last)) / 864e5) })).sort((a, b) => a.days - b.days);
 }
 
 // ---------- tab: stock ----------
@@ -543,6 +564,7 @@ function vSetup() {
         ${field('Late arrival cancels after (min)', `<input id="po-late" name="lateMinutes" type="number" min="0" max="120" value="${esc(p.lateMinutes)}">`, 'po-late')}
         ${field('Earliest booking from now (min)', `<input id="po-lead" name="leadMinutes" type="number" min="0" max="1440" value="${esc(p.leadMinutes)}">`, 'po-lead')}
         ${field('Book up to (days ahead)', `<input id="po-ahead" name="bookAheadDays" type="number" min="1" max="90" value="${esc(p.bookAheadDays)}">`, 'po-ahead')}
+        ${field('“Time for a trim” text after (days, 0 = off)', `<input id="po-rebook" name="rebookDays" type="number" min="0" max="120" value="${esc(p.rebookDays ?? 28)}">`, 'po-rebook')}
       </div>
       <p class="muted small">PayMongo needs at least ₱100 per payment. The website shows these rules to customers before they pay.</p>
       <div class="modal-f"><button class="btn btn-primary" type="submit">Save rules</button></div>
@@ -695,6 +717,7 @@ function clientModal(c) {
   openModal(c ? 'Edit client' : 'Add client', `<form class="stack" data-form="client" data-id="${esc(x.id || '')}">
     <div class="fgrid">${field('Name', `<input id="m-cname" name="name" value="${esc(x.name || '')}" required>`, 'm-cname')}${field('Phone', `<input id="m-cphone" name="phone" inputmode="tel" value="${esc(x.phone || '')}">`, 'm-cphone')}</div>
     ${field('Notes', `<textarea id="m-cnotes" name="notes" rows="3" placeholder="Usual cut, guard number, preferences">${esc(x.notes || '')}</textarea>`, 'm-cnotes')}
+    <label class="row small"><input type="checkbox" name="noReminders" ${x.noReminders ? 'checked' : ''}> Don’t send this client “time for a trim” texts</label>
     <p class="err" id="m-err" hidden></p>${mFoot(c ? 'Save changes' : 'Add client', c ? `<button type="button" class="btn btn-danger" data-act="delClient" data-id="${esc(x.id)}" style="margin-right:auto">Delete</button>` : '')}</form>`);
 }
 function clientDrawer(c) {
@@ -732,8 +755,14 @@ function receiptModal(s) {
     <div style="font-weight:700;font-size:16px"><span>TOTAL</span><span>${money(s.total, 1)}</span></div>
     ${s.depositCredit ? `<div><span>Deposit paid online</span><span>${money(-s.depositCredit, 1)}</span></div><div><span>Paid at shop (${esc(s.method)})</span><span>${money(s.total - s.depositCredit, 1)}</span></div>` : `<div><span>Paid by</span><span>${esc(s.method)}</span></div>`}
     ${s.cash ? `<div><span>Cash received</span><span>${money(s.cash, 1)}</span></div><div><span>Change</span><span>${money(s.cash - (s.total - (s.depositCredit || 0)), 1)}</span></div>` : ''}
+    ${loyaltyLine(s)}
     <hr><div style="justify-content:center" class="muted">${esc(shop.tagline || 'Thank you!')}</div>
   </div><div class="modal-f" style="margin-top:14px"><button type="button" class="btn btn-primary" data-act="closeModal">Done</button></div>`);
+}
+function loyaltyLine(s) {
+  const N = loyaltyN(); if (!N || !s.customerId) return '';
+  const visits = S.sales.filter(x => x.customerId === s.customerId && x.id !== s.id).length + 1, left = N - (visits % N);
+  return `<hr><div style="justify-content:center;flex-direction:column;align-items:center;gap:6px"><span class="meter">${Array.from({ length: Math.min(N, 12) }, (_, i) => `<i class="${i < (visits % N || (visits ? N : 0)) ? 'on' : ''}"></i>`).join('')}</span><span>${visits % N === 0 ? 'Free visit used. A new loyalty card starts next time' : `Visit ${visits % N} of ${N} · ${left === 1 ? 'next visit is free' : left - 1 + ' more to a free cut'}`}</span></div>`;
 }
 function modalErr(f, msg) { const e = f.querySelector('#m-err'); if (e) { e.textContent = msg; e.hidden = false; } }
 
@@ -826,6 +855,13 @@ const ACT = {
   payStaff(el) { const b = staffById(el.dataset.id); if (b) payModal(b); },
   async delPayout(el) { if (!armed(el)) return; if (await del('payouts', el.dataset.id)) toast('Payout deleted'); },
   newClient() { clientModal(null); },
+  async remind(el) {
+    S.reminding = el.dataset.id; render();
+    try { const r = await call('sendTrimReminder', { customerId: el.dataset.id, lastVisit: el.dataset.last }); toast(r.sms || r.email ? `Reminder sent${r.sms ? ' by text' : ''}${r.sms && r.email ? ' and' : ''}${r.email ? ' email' : ''}` : 'Reminder recorded. Texts and emails aren’t connected yet.'); }
+    catch (e) { toast(e.message || 'Couldn’t send the reminder.', 'bad'); }
+    S.reminding = ''; render();
+  },
+  async delWait(el) { if (!armed(el)) return; if (await del('waitlist', el.dataset.id)) toast('Removed from the waitlist'); },
   openClient(el) { const c = custById(el.dataset.id); if (c) clientDrawer(c); },
   editClient(el) { const c = custById(el.dataset.id); if (c) clientModal(c); },
   async delClient(el) { if (!armed(el)) return; if (await del('customers', el.dataset.id)) { closeModal(); toast('Client deleted. Their past sales stay in reports.'); } },
@@ -926,7 +962,7 @@ const FORM = {
   async client(f) {
     const fd = new FormData(f), name = String(fd.get('name') || '').trim();
     if (!name) return modalErr(f, 'Enter a name.');
-    const data = { name, phone: String(fd.get('phone') || '').trim(), notes: String(fd.get('notes') || '').trim() };
+    const data = { name, phone: String(fd.get('phone') || '').trim(), phoneKey: phoneKey(fd.get('phone')), notes: String(fd.get('notes') || '').trim(), noReminders: fd.has('noReminders') };
     const ok = f.dataset.id ? await patch('customers', f.dataset.id, data) : await put('customers', newId(), { ...data, createdAt: Date.now() });
     if (ok) { closeModal(); toast(f.dataset.id ? 'Client updated' : `${name} added`); }
   },
@@ -988,7 +1024,7 @@ const FORM = {
   },
   async policy(f) {
     const fd = new FormData(f), n = (k, min, max) => Math.min(max, Math.max(min, parseInt(fd.get(k), 10) || 0));
-    const policy = { ...pol(), deposit: n('deposit', 100, 100000), holdMinutes: n('holdMinutes', 5, 60), rescheduleHours: n('rescheduleHours', 0, 168), lateMinutes: n('lateMinutes', 0, 120), leadMinutes: n('leadMinutes', 0, 1440), bookAheadDays: n('bookAheadDays', 1, 90) };
+    const policy = { ...pol(), deposit: n('deposit', 100, 100000), holdMinutes: n('holdMinutes', 5, 60), rescheduleHours: n('rescheduleHours', 0, 168), lateMinutes: n('lateMinutes', 0, 120), leadMinutes: n('leadMinutes', 0, 1440), bookAheadDays: n('bookAheadDays', 1, 90), rebookDays: n('rebookDays', 0, 120) };
     if (await saveInfo({ policy })) toast('Booking rules saved');
   }
 };
@@ -1035,6 +1071,7 @@ function startWatches() {
   watchCol('customers', db.collection('customers'));
   watchCol('inventory', db.collection('inventory'));
   watchCol('payouts', db.collection('payouts'));
+  watchCol('waitlist', db.collection('waitlist').where('date', '>=', addDays(today(), -7)));
 }
 setInterval(() => { if (S.canAdmin && $('#modal').hidden && !document.activeElement.matches('input,select,textarea')) schedule(); }, 60000);
 

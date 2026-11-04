@@ -10,7 +10,8 @@ const S = {
   info: null, loaded: false, slow: false, menuTab: 'him', painted: false,
   slots: {}, slotsDate: '', slotsLoaded: false, unsub: null,
   bk: { group: 'him', svc: {}, barber: '', date: '', time: '', name: '', phone: '', email: '', notes: '', consent: false },
-  err: '', busy: false, last: null, lb: -1
+  err: '', busy: false, last: null, lb: -1,
+  wl: { open: false, window: 'any', consent: false, done: '', err: '', busy: false }
 };
 const PREVIEW = { ...STARTER, barbers: STARTER_STAFF.map(publicBarber) };
 const info = () => S.info || PREVIEW;
@@ -209,7 +210,7 @@ function booker() {
     </section>
     <section class="step" id="st-3" ${st.picked ? '' : 'aria-disabled="true"'}><div class="step-h"><span class="n ${st.when ? 'ok' : ''}">${st.when ? ic('check') : 3}</span><h3>Pick a date and time</h3>${st.when ? `<span class="done">${fmtDate(b.date)}, ${fmtTime(b.time)}</span>` : ''}</div>
       <div class="dates" role="group" aria-label="Date">${dates.map(d => { const x = new Date(`${d.date}T00:00:00Z`); return `<button type="button" class="dchip" data-act="bkDate" data-v="${d.date}" aria-pressed="${d.date === b.date}" ${d.closed || d.off || !st.picked ? 'disabled' : ''}><small>${DAYS[x.getUTCDay()]}</small><b>${x.getUTCDate()}</b><span>${d.closed ? 'Closed' : d.off ? 'Off' : MONTHS[x.getUTCMonth()]}</span></button>`; }).join('')}</div>
-      ${st.picked && b.date ? (S.slotsLoaded ? `<div class="times-in">${timeChips(times, b.time, 'bkTime')}</div>` : '<p class="muted small"><span class="spinner"></span> Checking free times…</p>') : `<p class="muted small">${st.picked ? 'Pick a date to see free times.' : 'Choose a service first.'}</p>`}
+      ${st.picked && b.date ? (S.slotsLoaded ? `<div class="times-in">${timeChips(times, b.time, 'bkTime')}</div>${waitlistBox(times)}` : '<p class="muted small"><span class="spinner"></span> Checking free times…</p>') : `<p class="muted small">${st.picked ? 'Pick a date to see free times.' : 'Choose a service first.'}</p>`}
     </section>
     <section class="step" id="st-4" ${st.when ? '' : 'aria-disabled="true"'}><div class="step-h"><span class="n ${st.details ? 'ok' : ''}">${st.details ? ic('check') : 4}</span><h3>Your details</h3></div>
       <div class="fgrid">
@@ -235,6 +236,19 @@ function booker() {
       <p class="paynote">${ic('check')} Secure payment by PayMongo: GCash, Maya, card or QR Ph</p>
     </div>
   </aside></div>`;
+}
+function waitlistBox(times) {
+  const w = S.wl, b = S.bk, full = !times.some(t => t.barbers.length);
+  if (w.done) return `<div class="wl done-wl">${ic('check')}<div><b>You’re on the waitlist for ${fmtDate(w.done)}.</b><p class="muted small">We’ll text you if a matching slot opens. It goes to whoever books first.</p></div></div>`;
+  if (!w.open) return `<button type="button" class="wl-link${full ? ' wl-strong' : ''}" data-act="wlOpen">${full ? `Fully booked on ${fmtDate(b.date)}? Join the waitlist` : 'Can’t find a time that works? Join the waitlist'} ${ic('arrow')}</button>`;
+  const WIN = [['any', 'Any time'], ['morning', 'Morning'], ['afternoon', 'Afternoon'], ['evening', 'Evening']];
+  return `<div class="wl"><div class="wl-h"><b>Waitlist for ${fmtDate(b.date)}${b.barber ? ' with ' + esc(barber(b.barber)?.name || '') : ''}</b><button type="button" class="icon-btn" data-act="wlClose" aria-label="Close">${ic('close')}</button></div>
+    <div class="seg" role="group" aria-label="Time of day">${WIN.map(([k, l]) => `<button type="button" data-act="wlWin" data-v="${k}" aria-pressed="${w.window === k}">${l}</button>`).join('')}</div>
+    <div class="fgrid">${fieldIn('Full name', 'wl-name', 'name', 'text', 'name')}${fieldIn('Mobile number', 'wl-phone', 'phone', 'tel', 'tel', '0917 123 4567')}</div>
+    ${fieldIn('Email (optional)', 'wl-email', 'email', 'email', 'email', 'you@example.com')}
+    <label class="consent"><input type="checkbox" id="wl-consent" data-bind="wl.consent" ${w.consent ? 'checked' : ''}><span>Text or email me if a slot opens that day. No deposit is taken until I book.</span></label>
+    ${w.err ? `<p class="err shake" role="alert">${esc(w.err)}</p>` : ''}
+    <button type="button" class="btn btn-primary" data-act="wlJoin" ${w.busy ? 'disabled' : ''}>${w.busy ? '<span class="spinner"></span> Adding you…' : 'Join the waitlist'}</button></div>`;
 }
 function fieldIn(label, id, key, type, ac, ph = '') {
   return `<div class="field"><label for="${id}">${esc(label)}</label><input id="${id}" type="${type}" data-bind="bk.${key}" data-live value="${esc(S.bk[key])}" autocomplete="${ac}" ${ph ? `placeholder="${esc(ph)}"` : ''}></div>`;
@@ -303,8 +317,19 @@ const ACT = {
   bkGroup(el) { if (S.bk.group === el.dataset.v) return; S.bk.group = el.dataset.v; S.bk.svc = {}; S.bk.barber = ''; S.bk.time = ''; renderBooker(); },
   bkSvc(el) { const id = el.dataset.id; if (S.bk.svc[id]) { S.bk.svc[id] = false; S.bk.time = ''; } else pickService(id); renderBooker(); },
   bkBarber(el) { S.bk.barber = el.dataset.id; S.bk.time = ''; S.err = ''; const b = barber(S.bk.barber); if (b && S.bk.date && !(b.days || []).includes(dowOf(S.bk.date))) S.bk.date = firstDate(); watchSlots(); renderBooker(); goStep(3); },
-  bkDate(el) { S.bk.date = el.dataset.v; S.bk.time = ''; S.err = ''; watchSlots(); renderBooker(); },
+  bkDate(el) { S.bk.date = el.dataset.v; S.bk.time = ''; S.err = ''; S.wl.done = ''; S.wl.err = ''; watchSlots(); renderBooker(); },
   bkTime(el) { S.bk.time = el.dataset.v; S.err = ''; renderBooker(); goStep(4); },
+  wlOpen() { S.wl.open = true; S.wl.err = ''; renderBooker(); },
+  wlClose() { S.wl.open = false; renderBooker(); },
+  wlWin(el) { S.wl.window = el.dataset.v; renderBooker(); },
+  async wlJoin() {
+    const b = S.bk, w = S.wl; w.busy = true; w.err = ''; renderBooker();
+    try {
+      await call('joinWaitlist', { name: b.name, phone: b.phone, email: b.email, date: b.date, window: w.window, barberId: b.barber, serviceIds: Object.keys(b.svc).filter(k => b.svc[k]), consent: w.consent });
+      w.done = b.date; w.open = false;
+    } catch (e) { w.err = e.message || 'Couldn’t add you to the waitlist.'; }
+    w.busy = false; renderBooker();
+  },
   bookWith(el) {
     const b = barber(el.dataset.id); if (!b) return;
     const g = (b.groups || ['him'])[0];

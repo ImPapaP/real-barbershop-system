@@ -26,7 +26,7 @@ service cloud.firestore {
 
     match /{col}/{id} {
       allow read, write: if isAdmin()
-        && col in ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts'];
+        && col in ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts', 'waitlist'];
     }
   }
 }

@@ -99,3 +99,29 @@ test('messages', () => {
   assert.match(mail.subject, /Booking confirmed/);
   assert.match(mail.html, /booking\.html\?id=1&amp;t=2/);
 });
+
+import { windowOf, parseSlotId, waitlistMatches } from '../src/core.js';
+test('waitlist helpers', () => {
+  assert.equal(windowOf('09:30'), 'morning');
+  assert.equal(windowOf('13:00'), 'afternoon');
+  assert.equal(windowOf('18:30'), 'evening');
+  assert.deepEqual(parseSlotId('rey_20261105_1430'), { barberId: 'rey', date: '2026-11-05', time: '14:30' });
+  assert.deepEqual(parseSlotId('a_b_20261105_0900'), { barberId: 'a_b', date: '2026-11-05', time: '09:00' });
+  const slot = { barberId: 'rey', time: '14:30' };
+  assert.equal(waitlistMatches({ barberId: '', window: 'any' }, slot), true);
+  assert.equal(waitlistMatches({ barberId: 'lyn', window: 'any' }, slot), false);
+  assert.equal(waitlistMatches({ barberId: 'rey', window: 'morning' }, slot), false);
+  assert.equal(waitlistMatches({ barberId: 'rey', window: 'afternoon' }, slot), true);
+});
+test('trim reminder and slot-opened messages', () => {
+  const p = { name: 'Juan dela Cruz', date: '2026-11-06', time: '14:30', barberName: 'Reymart' };
+  for (const k of ['rebook', 'slot_open']) {
+    const sms = smsText(k, p, info);
+    assert.ok(sms.length > 20 && !/https?:/.test(sms), k);
+    assert.ok(!/^TEST/i.test(sms));
+    const mail = emailContent(k, p, info, 'https://x.web.app/#book');
+    assert.match(mail.html, /Book now/);
+  }
+  assert.match(smsText('rebook', p, info), /Hi Juan, it's been 4 weeks/);
+  assert.match(smsText('slot_open', p, info), /Fri 6 Nov at 2:30 PM with Reymart/);
+});

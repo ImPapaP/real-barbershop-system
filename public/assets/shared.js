@@ -2,7 +2,7 @@
 export const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 20, leadMinutes: 60, bookAheadDays: 30, step: 30, maxReschedules: 2 };
+export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 20, leadMinutes: 60, bookAheadDays: 30, step: 30, maxReschedules: 2, rebookDays: 28 };
 
 export const $ = (s, r = document) => r.querySelector(s);
 export const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -171,3 +171,6 @@ export function icsFor({ title, date, time, mins, location, description }) {
     `DTSTAMP:${toUtc(Date.now())}`, `DTSTART:${toUtc(start)}`, `DTEND:${toUtc(end)}`, `SUMMARY:${e(title)}`, `LOCATION:${e(location)}`, `DESCRIPTION:${e(description)}`,
     'BEGIN:VALARM', 'TRIGGER:-PT2H', 'ACTION:DISPLAY', 'DESCRIPTION:Haircut in 2 hours', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
 }
+
+export const windowOfTime = t => toMin(t) < 720 ? 'morning' : toMin(t) < 1020 ? 'afternoon' : 'evening';
+export const phoneKey = p => String(p || '').replace(/\D/g, '').replace(/^63/, '0');

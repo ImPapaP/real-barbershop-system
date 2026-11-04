@@ -159,6 +159,12 @@ You chose to start fresh, so:
 
 Texts never contain links, because Philippine networks may block texts with URLs. The booking link goes by email.
 
+## Repeat business
+
+- **Time for a trim**: `sendRebookReminders` runs at 10 AM every day. It texts (and emails, if known) clients whose last visit was 28 days ago and who have nothing booked. Change the number of days, or set it to 0 to turn this off, in Shop setup → Online booking rules. Clients → **Due for a trim** lists who's due and lets you send one now. Tick "Don't send trim reminders" on a client to opt them out.
+- **Loyalty card**: the customer's booking page shows their stamps, for example "6 of 10 visits". Visits count when a sale is rung up for that client, matched by mobile number.
+- **Waitlist**: when a day is full, customers can join its waitlist for a time of day and, optionally, a barber. When a booking is cancelled, rescheduled or an unpaid hold expires, the first 5 matching people get a text and email. It's first come, first served. The Schedule tab shows the waitlist for each day.
+
 ## Files
 
 ```
