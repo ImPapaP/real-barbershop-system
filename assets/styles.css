@@ -642,3 +642,20 @@ a.rating:hover{border-color:var(--star)}
 .steps-ol li::before{content:counter(st);display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;font-weight:800;font-size:13px}
 .steps-ol .btn{margin-left:6px;vertical-align:middle}
 .steps-ol b{white-space:nowrap}
+
+/* ---------- haircut tiers: one haircut, then add-ons ---------- */
+.substep{display:flex;align-items:center;gap:10px;font-weight:700;margin:14px 0 10px}
+.substep:first-of-type{margin-top:4px}
+.substep span{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--ink);color:var(--bg);font-size:12px}
+.substep small{font-weight:500;color:var(--muted);font-size:12.5px}
+.tier-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:12px}
+.tier-col{border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--surface-2);transition:border-color .2s,background .2s;min-width:0}
+.tier-col.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent-soft) 60%,var(--surface-2))}
+.tier-h{display:grid;gap:2px;margin:2px 4px 10px}
+.tier-h b{font:800 20px/1 var(--f-display);text-transform:uppercase;letter-spacing:.04em}
+.tier-h small{color:var(--muted);font-size:12.5px}
+.pick.one{grid-template-columns:1fr}
+.pickcard.radio .tick{border-radius:50%}
+.pickcard:disabled{opacity:.5;cursor:not-allowed}
+.tier-note{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;margin:-2px 0 8px}
+.tier-note .ic{width:15px;height:15px;color:var(--accent)}

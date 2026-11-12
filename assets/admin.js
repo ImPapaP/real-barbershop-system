@@ -574,7 +574,7 @@ function vSetup() {
     </form></section>
   <section class="panel"><div class="panel-h"><h2>Services & prices</h2><button class="btn btn-sm btn-primary" data-act="newService">+ Service</button></div>
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Service</th><th>For</th><th>Category</th><th class="r">Minutes</th><th class="r">Price</th><th>On website</th><th></th></tr></thead><tbody>
-      ${services().map(s => `<tr><td><b>${esc(s.name)}</b><div class="muted small">${esc(s.desc || '')}</div></td><td>${s.group === 'her' ? 'Her' : 'Him'}</td><td>${esc(s.cat || '')}</td><td class="r">${esc(s.mins)}</td><td class="r"><b>${esc(priceLabel(s, cur()))}</b></td><td>${s.active !== false ? chip({ kind: 'good', icon: '✓', label: 'Shown' }) : chip({ kind: 'mute', icon: '–', label: 'Hidden' })}</td><td><div class="acts"><button class="btn btn-sm btn-ghost" data-act="editService" data-id="${esc(s.id)}">Edit</button><button class="btn btn-sm btn-danger" data-act="delService" data-id="${esc(s.id)}">Remove</button></div></td></tr>`).join('')}
+      ${services().map(s => `<tr><td><b>${esc(s.name)}</b><div class="muted small">${esc(s.desc || '')}</div></td><td>${s.group === 'her' ? 'Her' : 'Him'}${s.tier ? ` · ${s.tier === 'deluxe' ? 'Deluxe' : 'Regular'}` : ''}${s.kind === 'extra' ? ' · Add-on' : ''}</td><td>${esc(s.cat || '')}</td><td class="r">${esc(s.mins)}</td><td class="r"><b>${esc(priceLabel(s, cur()))}</b></td><td>${s.active !== false ? chip({ kind: 'good', icon: '✓', label: 'Shown' }) : chip({ kind: 'mute', icon: '–', label: 'Hidden' })}</td><td><div class="acts"><button class="btn btn-sm btn-ghost" data-act="editService" data-id="${esc(s.id)}">Edit</button><button class="btn btn-sm btn-danger" data-act="delService" data-id="${esc(s.id)}">Remove</button></div></td></tr>`).join('')}
     </tbody></table></div></section>
   <section class="panel"><div class="panel-h"><h2>Who can use this dashboard</h2></div>
     <p class="muted" style="max-width:72ch">Anyone with a sign-in whose user ID is in the <b>admins</b> collection in Firebase. To add a staff account: create the user in Firebase console → Authentication, copy their User UID, then add a document with that ID in Firestore → admins. README step 3 has the details.</p></section>`;
@@ -685,6 +685,7 @@ function staffModal(b) {
     <div class="fgrid">${field('Specialty (shown on website)', `<input id="m-sspec" name="specialty" value="${esc(c.specialty || '')}">`, 'm-sspec')}${field('Phone', `<input id="m-sphone" name="phone" value="${esc(c.phone || '')}">`, 'm-sphone')}</div>
     <div class="fgrid">${field('Commission rate (%)', `<input id="m-srate" name="rate" type="number" min="0" max="100" value="${esc(c.rate ?? 50)}" required>`, 'm-srate')}${field('Chair number', `<input id="m-schair" name="chair" type="number" min="1" max="20" value="${esc(c.chair || '')}">`, 'm-schair')}</div>
     <fieldset class="field"><legend>Takes bookings for</legend><div class="row">${[['him', 'Men’s services'], ['her', 'Women’s services']].map(([k, l]) => `<label class="check"><input type="checkbox" name="groups" value="${k}" ${(c.groups || ['him']).includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</div></fieldset>
+    <fieldset class="field"><legend>Men’s haircuts they do</legend><div class="row">${[['deluxe', 'Deluxe (senior barber)'], ['regular', 'Regular']].map(([k, l]) => `<label class="check"><input type="checkbox" name="tiers" value="${k}" ${(c.tiers || []).includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</div><p class="muted small">Online, clients can only book this barber for these haircuts. Add-ons work with either.</p></fieldset>
     <fieldset class="field"><legend>Days in</legend><div class="row">${[1, 2, 3, 4, 5, 6, 0].map(d => `<label class="check"><input type="checkbox" name="days" value="${d}" ${(c.days || []).includes(d) ? 'checked' : ''}>${DAYS[d]}</label>`).join('')}</div></fieldset>
     ${b ? `<label class="row small"><input type="checkbox" name="active" ${c.active !== false ? 'checked' : ''}> Currently working here (unticked: hidden from the website and booking)</label>` : ''}
     <p class="err" id="m-err" hidden></p>${mFoot(b ? 'Save changes' : 'Add')}</form>`);
@@ -711,6 +712,7 @@ function serviceModal(s) {
   openModal(s ? 'Edit service' : 'Add service', `<form class="stack" data-form="service" data-id="${esc(c.id || '')}">
     <div class="fgrid">${field('Service name', `<input id="m-vname" name="name" value="${esc(c.name || '')}" required>`, 'm-vname')}${field('Menu section', `<input id="m-vcat" name="cat" list="svc-cats" value="${esc(c.cat || '')}"><datalist id="svc-cats">${cats.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`, 'm-vcat')}</div>
     <div class="fgrid three">${field('For', `<select id="m-vgroup" name="group">${opt('him', 'Him', c.group !== 'her')}${opt('her', 'Her', c.group === 'her')}</select>`, 'm-vgroup')}${field('Price (' + cur() + ')', `<input id="m-vprice" name="price" inputmode="decimal" value="${esc(c.price ?? '')}" required>`, 'm-vprice')}${field('Minutes', `<input id="m-vmins" name="mins" type="number" min="30" step="30" value="${esc(c.mins)}">`, 'm-vmins')}</div>
+    <div class="fgrid">${field('Booking type (men)', `<select id="m-vkind" name="kind">${opt('', 'Regular service', !c.kind)}${opt('base', 'Haircut (client picks one)', c.kind === 'base')}${opt('extra', 'Add-on to a haircut', c.kind === 'extra')}</select>`, 'm-vkind')}${field('Haircut level', `<select id="m-vtier" name="tier">${opt('', 'Any barber', !c.tier)}${opt('deluxe', 'Deluxe (senior barbers)', c.tier === 'deluxe')}${opt('regular', 'Regular barbers', c.tier === 'regular')}</select>`, 'm-vtier')}</div>
     ${field('Description', `<input id="m-vdesc" name="desc" value="${esc(c.desc || '')}">`, 'm-vdesc')}
     <label class="row small"><input type="checkbox" name="priceFrom" ${c.priceFrom ? 'checked' : ''}> Show as “from” price (final price depends on hair length)</label>
     <label class="row small"><input type="checkbox" name="active" ${c.active !== false ? 'checked' : ''}> Show on website and at checkout</label>
@@ -953,7 +955,7 @@ const FORM = {
     if (!name) return modalErr(f, 'Enter a name.');
     if (rate < 0 || rate > 100) return modalErr(f, 'Commission must be between 0 and 100%.');
     const groups = fd.getAll('groups'); if (!groups.length) return modalErr(f, 'Pick men’s or women’s services (or both).');
-    const data = { name, title: String(fd.get('title') || '').trim(), phone: String(fd.get('phone') || '').trim(), specialty: String(fd.get('specialty') || '').trim(), rate, groups, chair: fd.get('chair') ? +fd.get('chair') : '', days: fd.getAll('days').map(Number).sort() };
+    const data = { name, title: String(fd.get('title') || '').trim(), phone: String(fd.get('phone') || '').trim(), specialty: String(fd.get('specialty') || '').trim(), rate, groups, tiers: fd.getAll('tiers'), chair: fd.get('chair') ? +fd.get('chair') : '', days: fd.getAll('days').map(Number).sort() };
     const id = f.dataset.id;
     const ok = id ? await patch('staff', id, { ...data, active: fd.has('active') }) : await put('staff', newId(), { ...data, active: true, since: today() });
     if (ok) { closeModal(); toast(id ? `${name} updated` : `${name} added`); setTimeout(syncPublicBarbers, 400); }
@@ -991,7 +993,7 @@ const FORM = {
     if (!name) return modalErr(f, 'Enter the service name.');
     if (price < 0) return modalErr(f, 'Enter a price.');
     const mins = Math.max(pol().step, Math.round((parseInt(fd.get('mins'), 10) || 60) / pol().step) * pol().step);
-    const data = { name, cat: String(fd.get('cat') || '').trim() || 'Services', group: String(fd.get('group')), price: round2(price), mins, desc: String(fd.get('desc') || '').trim(), priceFrom: fd.has('priceFrom'), active: fd.has('active') };
+    const data = { name, cat: String(fd.get('cat') || '').trim() || 'Services', group: String(fd.get('group')), price: round2(price), mins, desc: String(fd.get('desc') || '').trim(), kind: String(fd.get('kind') || ''), tier: String(fd.get('tier') || ''), priceFrom: fd.has('priceFrom'), active: fd.has('active') };
     const list = services().map(s => ({ ...s }));
     if (f.dataset.id) { const k = list.findIndex(s => s.id === f.dataset.id); if (k >= 0) list[k] = { ...list[k], ...data }; } else list.push({ id: newId(), ...data });
     if (await saveInfo({ services: list })) { closeModal(); toast(f.dataset.id ? 'Service updated' : `${name} added`); }
