@@ -517,9 +517,9 @@ function exportXlsx() {
   const byCat = EXP_CATS.map(c => [c, sum(s.exps.filter(x => x.cat === c), x => x.amount)]).filter(x => x[1]).sort((a, b) => b[1] - a[1]);
   sum1.push([{ v: 'Expenses by category', s: 'section' }, { v: '', s: 'section' }], ...(byCat.length ? byCat.map(([k, v]) => [k, M(v)]) : [['No expenses']]), []);
   const payRows = staffAll().map(b => ({ b, P: payFor(b, r) })).filter(({ P }) => P.days || P.x.length).sort((a, b) => b.P.total - a.P.total);
-  sum1.push(['By barber', 'Days worked', 'Daily pay', 'Commission', 'Tips', 'Total pay', 'Service sales', 'Shop’s share', 'Shop fills', 'Earns his keep?'].map((t, i) => ({ v: t, s: i ? 'sectionR' : 'section' })),
-    ...payRows.map(({ b, P }) => [`${b.name} (${money(P.daily)}/day + ${b.rate || 0}%)`, { v: P.days, s: 'int' }, M(P.base), M(P.comm), M(P.tips), M(P.total), M(P.svc), M(P.share), M(P.fills),
-      { v: !P.daily ? 'No daily pay' : P.net >= 0 ? `Yes, +${money(P.net)} · covered ${P.covered} of ${P.days} days` : `No · covered ${P.covered} of ${P.days} days (needs ${money(P.need)}/day)`, s: 'text' }]));
+  sum1.push(['By barber', 'Days worked', 'Clients', 'Brings in', 'Daily pay', 'Commission', 'Shop pays him', 'Pay % of sales', 'Left for the shop', 'Tips (from clients)'].map((t, i) => ({ v: t, s: i ? 'sectionR' : 'section' })),
+    ...payRows.map(({ b, P }) => [`${b.name} (${money(P.daily)}/day + ${b.rate || 0}%)`, { v: P.days, s: 'int' }, { v: P.x.length, s: 'int' }, M(P.svc), M(P.base), M(P.comm), M(P.pay),
+      P.svc ? { v: `${Math.round(P.pay / P.svc * 100)}%`, s: 'text' } : '–', M(P.svc - P.pay), M(P.tips)]));
   sum1.push([], [{ v: `Exported ${new Date().toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}. Income excludes tips, which go to the barbers. Barber pay = guaranteed daily pay for each day worked + commission on services.`, s: 'sub' }]);
 
   // Daily
@@ -545,7 +545,7 @@ function exportXlsx() {
   if (eRows.length) expSh.push(totalRow(5, 5, 4 + eRows.length, 'Total', [4]));
 
   const blob = buildXlsx([
-    { name: 'Summary', cols: [40, 14, 14, 14, 12, 14, 15, 14, 13, 44], rows: sum1 },
+    { name: 'Summary', cols: [40, 13, 10, 14, 13, 14, 15, 14, 17, 18], rows: sum1 },
     { name: 'Day by day', cols: [18, 10, 15, 14, 15, 15, 15], rows: daily, freeze: 'A5', filter: dRows.length ? `A4:G${4 + dRows.length}` : '' },
     { name: 'Sales', cols: [18, 10, 14, 22, 14, 34, 22, 13, 13, 13, 12, 11, 13, 13, 14, 13], rows: salesSh, freeze: 'A5', filter: sRows.length ? `A4:P${4 + sRows.length}` : '' },
     { name: 'Expenses', cols: [18, 18, 36, 16, 15], rows: expSh, freeze: 'A5', filter: eRows.length ? `A4:E${4 + eRows.length}` : '' }
@@ -601,27 +601,26 @@ function vMoney() {
 }
 
 // ---------- tab: team ----------
-// Does each barber earn his keep? Compares the shop's share of his services with his guaranteed daily pay.
+// What the shop pays each barber (daily pay + commission) compared with what his services bring in.
 function keepPanel(list, r) {
-  const rows = list.map(b => ({ b, P: payFor(b, r) })).filter(({ P }) => P.days && P.daily);
+  const rows = list.map(b => ({ b, P: payFor(b, r) })).filter(({ P }) => P.days || P.x.length);
   if (!rows.length) return '';
-  const fills = sum(rows, x => x.P.fills), gain = sum(rows.filter(x => x.P.net > 0), x => x.P.net);
-  return `<section class="panel"><div class="panel-h"><h2>Does each barber earn his keep?</h2><span class="muted small">${fills ? `Shop filled ${money(fills)} of daily pay in this period` : 'Every barber covered his daily pay'}</span></div>
-    <p class="muted small" style="margin:-4px 0 14px">The shop keeps ${esc(100 - (Number(rows[0].b.rate) || 0))}% of each service. That share has to pay for the barber’s guaranteed daily pay. When it doesn’t, the shop fills the gap from its own pocket.</p>
-    <div class="tbl-wrap keep-tbl"><table class="tbl"><thead><tr><th>Name</th><th class="r">Needs a day</th><th class="r">Did a day (avg)</th><th class="r">Days covered</th><th class="r">Shop’s share</th><th class="r">Daily pay</th><th class="r">Result</th></tr></thead><tbody>
-    ${rows.sort((a, b) => a.P.net - b.P.net).map(({ b, P }) => {
-      const pct = P.need ? Math.min(100, Math.round(P.perDay / P.need * 100)) : 100, ok = P.net >= 0;
-      return `<tr><td><div class="row" style="flex-wrap:nowrap">${av(b)}<div><b>${esc(b.name)}</b><div class="muted small nowrap">${money(P.daily)}/day · keeps ${esc(100 - (Number(b.rate) || 0))}%</div></div></div></td>
-        <td class="r">${money(P.need)}</td>
-        <td class="r"><div class="keep"><span class="keep-bar"><i style="width:${pct}%" class="${ok ? 'ok' : 'bad'}"></i></span>${money(P.perDay)}</div></td>
-        <td class="r">${P.covered} of ${P.days}</td><td class="r">${money(P.share, 1)}</td><td class="r">${money(-P.base, 1)}</td>
-        <td class="r">${ok ? `<span class="chip chip-good">✓ Earns his keep · +${money(P.net)}</span>` : `<span class="chip chip-bad">Shop fills ${money(P.fills)}</span>`}</td></tr>`;
-    }).join('')}</tbody></table></div>
-    <ul class="keep-cards">${rows.map(({ b, P }) => { const pct = P.need ? Math.min(100, Math.round(P.perDay / P.need * 100)) : 100, ok = P.net >= 0;
-      return `<li><div class="row" style="flex-wrap:nowrap">${av(b)}<div class="grow"><b>${esc(b.name)}</b><div class="muted small">${money(P.daily)}/day · needs ${money(P.need)} in services a day</div></div></div>
-        <div class="keep-line"><span class="keep-bar wide"><i style="width:${pct}%" class="${ok ? 'ok' : 'bad'}"></i></span><span class="small">${money(P.perDay)} avg</span></div>
-        <div class="row" style="justify-content:space-between"><span class="muted small">Covered ${P.covered} of ${P.days} days · share ${money(P.share)} vs pay ${money(P.base)}</span>${ok ? `<span class="chip chip-good">✓ +${money(P.net)}</span>` : `<span class="chip chip-bad">Fills ${money(P.fills)}</span>`}</div></li>`; }).join('')}</ul>
-    <p class="muted small" style="margin-top:12px">“Needs a day” is the service sales he has to bring in each day for the shop’s share to cover his daily pay (daily pay ÷ shop’s %). “Days covered” counts the days he did that. “Shop fills” is daily pay minus the shop’s share for the whole period.${gain ? ` Together, barbers who earned their keep left the shop ${money(gain)} after their daily pay.` : ''}</p></section>`;
+  const T = { svc: sum(rows, x => x.P.svc), paid: sum(rows, x => x.P.pay) }, top = Math.max(1, ...rows.map(x => Math.max(x.P.svc, x.P.pay)));
+  const pctOf = P => P.svc ? Math.round(P.pay / P.svc * 100) : null;
+  const verdict = P => P.svc - P.pay >= 0 ? `<span class="chip chip-good">+${money(P.svc - P.pay)} for the shop</span>` : `<span class="chip chip-bad">Shop pays ${money(P.pay - P.svc)} more</span>`;
+  const bars = P => `<div class="vs"><span class="vs-row"><i class="in" style="width:${P.svc / top * 100}%"></i></span><span class="vs-row"><i class="out ${P.pay > P.svc ? 'bad' : ''}" style="width:${P.pay / top * 100}%"></i></span></div>`;
+  return `<section class="panel"><div class="panel-h"><h2>Pay vs what each barber brings in</h2><span class="muted small">All barbers: brought in ${money(T.svc)}, paid ${money(T.paid)}</span></div>
+    <p class="muted small" style="margin:-4px 0 14px"><span class="key in"></span>Brings in: his service sales after discounts. <span class="key out"></span>Shop pays him: daily pay + commission (tips come from clients, so they’re left out). Whatever is left pays for rent, bills and profit.</p>
+    <div class="tbl-wrap keep-tbl"><table class="tbl"><thead><tr><th>Name</th><th class="r">Brings in</th><th class="r">Daily pay</th><th class="r">Commission</th><th class="r">Shop pays him</th><th style="width:160px"></th><th class="r">Pay is</th><th class="r">Result</th></tr></thead><tbody>
+    ${rows.sort((x, y) => (x.P.svc - x.P.pay) - (y.P.svc - y.P.pay)).map(({ b, P }) => `<tr><td><div class="row" style="flex-wrap:nowrap">${av(b)}<div><b>${esc(b.name)}</b><div class="muted small nowrap">${P.days} days · ${P.x.length} clients</div></div></div></td>
+      <td class="r"><b>${money(P.svc)}</b></td><td class="r">${money(P.base)}</td><td class="r">${money(P.comm)}</td><td class="r"><b>${money(P.pay)}</b></td>
+      <td>${bars(P)}</td><td class="r">${pctOf(P) === null ? '–' : `<span class="${P.pay > P.svc ? 'down' : ''}">${pctOf(P)}%</span><div class="muted small">of sales</div>`}</td><td class="r">${verdict(P)}</td></tr>`).join('')}
+    </tbody></table></div>
+    <ul class="keep-cards">${rows.map(({ b, P }) => `<li><div class="row" style="flex-wrap:nowrap">${av(b)}<div class="grow"><b>${esc(b.name)}</b><div class="muted small">${P.days} days · ${P.x.length} clients</div></div>${verdict(P)}</div>
+      ${bars(P)}
+      <div class="keep-nums"><span><small>Brings in</small><b>${money(P.svc)}</b></span><span><small>Shop pays him</small><b>${money(P.pay)}</b></span><span><small>Pay is</small><b class="${P.pay > P.svc ? 'down' : ''}">${pctOf(P) === null ? '–' : pctOf(P) + '% of sales'}</b></span></div>
+      <p class="muted small" style="margin:0">${money(P.base)} daily pay + ${money(P.comm)} commission</p></li>`).join('')}</ul>
+    <p class="muted small" style="margin-top:12px">With a guaranteed daily pay plus ${esc(rows[0].b.rate || 0)}% commission, a barber pays for himself once his services pass his daily pay ÷ ${esc(100 - (Number(rows[0].b.rate) || 0))}% each day: ${[...new Set(rows.map(x => x.P.daily).filter(Boolean))].sort((x, y) => x - y).map(d => `${money(d / Math.max(0.01, 1 - (Number(rows[0].b.rate) || 0) / 100))} a day for ${money(d)}/day`).join(', ')}.</p></section>`;
 }
 function owedFor(id) { const b = staffById(id); const earned = b ? payFor(b, [payStart(b), today()]).total : 0; const paid = sum(S.payouts.filter(p => p.barberId === id), p => p.amount); return round2(earned - paid); }
 function vTeam() {

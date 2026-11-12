@@ -188,7 +188,7 @@ Each barber earns a **guaranteed daily pay** for every day they work, plus **60%
 - A day counts as worked when the barber rang up a sale that day, or when it's one of their scheduled days and they weren't marked absent. Mark absences, or someone coming in on a day off, in **Schedule → Who's in**.
 - Days only count from the barber's start date and from the first sale recorded in the system, so old dates don't build up pay.
 - **Barbers** shows days worked, daily pay, commission, tips, total earned, and what's owed since the last payout.
-- **Does each barber earn his keep?** (Barbers tab): the shop's 40% of his services has to cover his daily pay. It shows the sales he needs a day (₱1,250 for ₱500/day, ₱1,750 for ₱700/day), his average, how many days he covered it, and either how much he left the shop after his pay or how much the shop had to fill. The Excel Summary has the same columns. Net profit everywhere (and in the Excel export) subtracts daily pay and commission.
+- **Pay vs what each barber brings in** (Barbers tab): his service sales next to what the shop pays him (daily pay + commission), pay as a % of his sales, and how much is left for the shop or how much more the shop pays than he brings in. A barber pays for himself once his services pass his daily pay ÷ 40% a day (₱1,250 for ₱500/day, ₱1,750 for ₱700/day). The Excel Summary has the same columns.
 
 ## Repeat business
 
