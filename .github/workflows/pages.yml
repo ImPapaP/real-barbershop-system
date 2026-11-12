@@ -6,7 +6,7 @@ name: Publish preview to gh-pages
 on:
   push:
     branches: [main]
-    paths: ['public/**', '.github/workflows/pages.yml']
+    paths: ['public/**', 'tools/stamp_assets.py', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:
@@ -27,9 +27,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp tools/stamp_assets.py /tmp/stamp_assets.py
           git subtree split --prefix public -b preview
           git checkout preview
+          python3 /tmp/stamp_assets.py .   # ?v=<hash> on scripts and styles so browsers pick up changes right away
           touch .nojekyll
-          git add .nojekyll
+          git add -A
           git commit -m "Publish preview from ${GITHUB_SHA::7}" || true
           git push -f origin preview:gh-pages

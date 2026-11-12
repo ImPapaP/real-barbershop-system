@@ -207,6 +207,7 @@ public/
   assets/firebase-backend.js · demo-backend.js
   assets/site.js · booking.js · admin.js · styles.css
 .github/workflows/pages.yml   publishes public/ to GitHub Pages
+tools/stamp_assets.py     adds ?v=<hash> to scripts and styles so visitors always get the latest version
 ```
 
 ## Notes
