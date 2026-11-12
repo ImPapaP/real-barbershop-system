@@ -180,6 +180,15 @@ Men pick **one haircut**, either **Deluxe** (Deluxe Haircut or a BL1–BL4 promo
 - Change it in the dashboard: **Barbers → Edit → Men’s haircuts they do**, and **Shop setup → Services → Booking type / Haircut level**.
 - The booking functions check the same rules, so they can't be skipped.
 
+## Barber pay
+
+Each barber earns a **guaranteed daily pay** for every day they work, plus **60% commission** on every service they do (after discounts). The shop keeps the other 40%, minus the daily pay. Tips go fully to the barber.
+
+- Starting rates: Deluxe barbers ₱700 a day, Regular barbers ₱500 a day, both + 60%. Dave (women's services) starts at ₱0 a day + 60%. Change any of it in **Barbers → Edit**.
+- A day counts as worked when the barber rang up a sale that day, or when it's one of their scheduled days and they weren't marked absent. Mark absences, or someone coming in on a day off, in **Schedule → Who's in**.
+- Days only count from the barber's start date and from the first sale recorded in the system, so old dates don't build up pay.
+- **Barbers** shows days worked, daily pay, commission, tips, total earned, what the shop keeps, and what's owed since the last payout. Net profit everywhere (and in the Excel export) subtracts daily pay and commission.
+
 ## Repeat business
 
 - **Time for a trim**: `sendRebookReminders` runs at 10 AM every day. It texts (and emails, if known) clients whose last visit was 28 days ago and who have nothing booked. Change the number of days, or set it to 0 to turn this off, in Shop setup → Online booking rules. Clients → **Due for a trim** lists who's due and lets you send one now. Tick "Don't send trim reminders" on a client to opt them out.
