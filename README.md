@@ -216,4 +216,5 @@ tools/stamp_assets.py     adds ?v=<hash> to scripts and styles so visitors alway
 - **Spam protection**: one unpaid booking per mobile number at a time. For more protection, turn on Firebase **App Check** with reCAPTCHA.
 - **Photos**: upload the homepage photo, gallery and team photos in the dashboard under **Website**. They're resized in the browser before upload. Reviews and the announcement bar are managed there too.
 - **Logo**: the site uses a text wordmark. To use the shop’s logo, add the image as `public/assets/logo.png` and swap it into the header in `assets/site.js`.
+- **Exports**: Income & expenses → **Download Excel** gives a workbook with Summary, Day by day, Sales and Expenses sheets (real dates, peso formatting, filters and totals). **CSV** is the plain version for other apps. Both cover the period you have selected.
 - **Firebase SDK version**: the pages load Firebase 10.14.1 from Google's CDN. To update, change the version in `public/assets/fb.js`.
