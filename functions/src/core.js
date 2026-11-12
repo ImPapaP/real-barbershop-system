@@ -13,7 +13,8 @@ export const DEFAULT_POLICY = {
   step: 30,              // slot grid in minutes
   maxReschedules: 2,
   onlineBooking: true,   // the shop can switch online booking off in Shop setup
-  rebookDays: 28         // days after a visit to send a "time for a trim" text (0 = off)
+  rebookDays: 28,        // days after a visit to send a "time for a trim" text (0 = off)
+  lastBooking: '19:00'   // latest start time for online bookings ('' = until the service would end at closing)
 };
 
 export const pad = n => String(n).padStart(2, '0');
@@ -99,6 +100,7 @@ export function validateRequest(info, data, now = Date.now()) {
   const mins = services.reduce((t, s) => t + (Number(s.mins) || pol.step), 0);
   const start = toMin(time);
   if (start < toMin(h.open) || start + mins > toMin(h.close)) return { ok: false, error: 'That time is outside opening hours.' };
+  if (pol.lastBooking && start > toMin(pol.lastBooking)) return { ok: false, error: `The last booking of the day starts at ${fmtTime(pol.lastBooking)}.` };
   const at = startMs(date, time);
   if (at < now + pol.leadMinutes * 60e3) return { ok: false, error: `Book at least ${pol.leadMinutes} minutes ahead.` };
   const barberId = String(r.barberId || '');

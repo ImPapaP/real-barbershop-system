@@ -151,3 +151,11 @@ test('men pick one Deluxe or Regular haircut, plus add-ons, with the right barbe
   assert.match(validateRequest(t, { ...base, serviceIds: ['reg'], barberId: 'lyndon' }, NOW).error, /doesn’t do that haircut/);
   assert.equal(go(['blow']).ok, true); // women's services have no haircut rule
 });
+
+test('no online booking starts after the last booking time (7:00 PM by default)', () => {
+  const t = { ...info, hours: [0, 1, 2, 3, 4, 5, 6].map(d => ({ d, open: '09:00', close: '20:00' })), services: [{ id: 'cut', name: 'Eyebrows', price: 120, mins: 15, group: 'him', active: true }], barbers: [{ id: 'mac', groups: ['him'], days: [0, 1, 2, 3, 4, 5, 6] }] };
+  const at = time => validateRequest(t, { ...base, serviceIds: ['cut'], barberId: '', time }, NOW);
+  assert.equal(at('19:00').ok, true);
+  assert.match(at('19:30').error, /last booking of the day starts at 7:00 PM/);
+  assert.equal(validateRequest({ ...t, policy: { lastBooking: '' } }, { ...base, serviceIds: ['cut'], barberId: '', time: '19:00' }, NOW).ok, true);
+});
