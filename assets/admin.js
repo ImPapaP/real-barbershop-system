@@ -199,9 +199,15 @@ function workedOn(b, d) {
 function daysIn(r) { const out = [], end = r[1] < today() ? r[1] : today(); for (let d = r[0]; d <= end; d = addDays(d, 1)) out.push(d); return out; }
 function payFor(b, r) {
   const x = S.sales.filter(v => v.barberId === b.id && inR(v.date, r));
-  const days = daysIn(r).filter(d => workedOn(b, d)).length, daily = Number(b.dailyPay) || 0;
+  const worked = daysIn(r).filter(d => workedOn(b, d)), days = worked.length, daily = Number(b.dailyPay) || 0;
   const comm = round2(sum(x, v => v.commission)), tips = sum(x, v => v.tip), base = days * daily;
-  return { x, days, daily, base, comm, tips, pay: round2(base + comm), total: round2(base + comm + tips), svc: sum(x, v => Math.max(0, (v.svcTotal || 0) - (v.discount || 0))) };
+  const svcOf = v => Math.max(0, (v.svcTotal || 0) - (v.discount || 0)), svc = sum(x, svcOf);
+  // Does he earn his keep? The shop's share of his services (100% − his rate) has to cover his daily pay.
+  const keepRate = Math.max(0, 1 - (Number(b.rate) || 0) / 100), share = round2(svc - comm);
+  const need = keepRate ? daily / keepRate : 0; // services needed per day to cover the daily pay
+  const covered = worked.filter(d => sum(x.filter(v => v.date === d), svcOf) * keepRate >= daily - 0.005).length;
+  return { x, days, daily, base, comm, tips, svc, share, need, covered, net: round2(share - base), fills: round2(Math.max(0, base - share)),
+    perDay: days ? svc / days : 0, pay: round2(base + comm), total: round2(base + comm + tips) };
 }
 const basePayOn = d => sum(staffAll(), b => workedOn(b, d) ? Number(b.dailyPay) || 0 : 0);
 function summary(r) {
@@ -511,8 +517,9 @@ function exportXlsx() {
   const byCat = EXP_CATS.map(c => [c, sum(s.exps.filter(x => x.cat === c), x => x.amount)]).filter(x => x[1]).sort((a, b) => b[1] - a[1]);
   sum1.push([{ v: 'Expenses by category', s: 'section' }, { v: '', s: 'section' }], ...(byCat.length ? byCat.map(([k, v]) => [k, M(v)]) : [['No expenses']]), []);
   const payRows = staffAll().map(b => ({ b, P: payFor(b, r) })).filter(({ P }) => P.days || P.x.length).sort((a, b) => b.P.total - a.P.total);
-  sum1.push(['By barber', 'Days worked', 'Daily pay', 'Commission', 'Tips', 'Total pay', 'Service sales', 'Shop keeps'].map((t, i) => ({ v: t, s: i ? 'sectionR' : 'section' })),
-    ...payRows.map(({ b, P }) => [`${b.name} (${money(P.daily)}/day + ${b.rate || 0}%)`, { v: P.days, s: 'int' }, M(P.base), M(P.comm), M(P.tips), M(P.total), M(P.svc), M(P.svc - P.comm - P.base)]));
+  sum1.push(['By barber', 'Days worked', 'Daily pay', 'Commission', 'Tips', 'Total pay', 'Service sales', 'Shop’s share', 'Shop fills', 'Earns his keep?'].map((t, i) => ({ v: t, s: i ? 'sectionR' : 'section' })),
+    ...payRows.map(({ b, P }) => [`${b.name} (${money(P.daily)}/day + ${b.rate || 0}%)`, { v: P.days, s: 'int' }, M(P.base), M(P.comm), M(P.tips), M(P.total), M(P.svc), M(P.share), M(P.fills),
+      { v: !P.daily ? 'No daily pay' : P.net >= 0 ? `Yes, +${money(P.net)} · covered ${P.covered} of ${P.days} days` : `No · covered ${P.covered} of ${P.days} days (needs ${money(P.need)}/day)`, s: 'text' }]));
   sum1.push([], [{ v: `Exported ${new Date().toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}. Income excludes tips, which go to the barbers. Barber pay = guaranteed daily pay for each day worked + commission on services.`, s: 'sub' }]);
 
   // Daily
@@ -538,7 +545,7 @@ function exportXlsx() {
   if (eRows.length) expSh.push(totalRow(5, 5, 4 + eRows.length, 'Total', [4]));
 
   const blob = buildXlsx([
-    { name: 'Summary', cols: [40, 14, 14, 14, 12, 14, 15, 14], rows: sum1 },
+    { name: 'Summary', cols: [40, 14, 14, 14, 12, 14, 15, 14, 13, 44], rows: sum1 },
     { name: 'Day by day', cols: [18, 10, 15, 14, 15, 15, 15], rows: daily, freeze: 'A5', filter: dRows.length ? `A4:G${4 + dRows.length}` : '' },
     { name: 'Sales', cols: [18, 10, 14, 22, 14, 34, 22, 13, 13, 13, 12, 11, 13, 13, 14, 13], rows: salesSh, freeze: 'A5', filter: sRows.length ? `A4:P${4 + sRows.length}` : '' },
     { name: 'Expenses', cols: [18, 18, 36, 16, 15], rows: expSh, freeze: 'A5', filter: eRows.length ? `A4:E${4 + eRows.length}` : '' }
@@ -594,6 +601,28 @@ function vMoney() {
 }
 
 // ---------- tab: team ----------
+// Does each barber earn his keep? Compares the shop's share of his services with his guaranteed daily pay.
+function keepPanel(list, r) {
+  const rows = list.map(b => ({ b, P: payFor(b, r) })).filter(({ P }) => P.days && P.daily);
+  if (!rows.length) return '';
+  const fills = sum(rows, x => x.P.fills), gain = sum(rows.filter(x => x.P.net > 0), x => x.P.net);
+  return `<section class="panel"><div class="panel-h"><h2>Does each barber earn his keep?</h2><span class="muted small">${fills ? `Shop filled ${money(fills)} of daily pay in this period` : 'Every barber covered his daily pay'}</span></div>
+    <p class="muted small" style="margin:-4px 0 14px">The shop keeps ${esc(100 - (Number(rows[0].b.rate) || 0))}% of each service. That share has to pay for the barber’s guaranteed daily pay. When it doesn’t, the shop fills the gap from its own pocket.</p>
+    <div class="tbl-wrap keep-tbl"><table class="tbl"><thead><tr><th>Name</th><th class="r">Needs a day</th><th class="r">Did a day (avg)</th><th class="r">Days covered</th><th class="r">Shop’s share</th><th class="r">Daily pay</th><th class="r">Result</th></tr></thead><tbody>
+    ${rows.sort((a, b) => a.P.net - b.P.net).map(({ b, P }) => {
+      const pct = P.need ? Math.min(100, Math.round(P.perDay / P.need * 100)) : 100, ok = P.net >= 0;
+      return `<tr><td><div class="row" style="flex-wrap:nowrap">${av(b)}<div><b>${esc(b.name)}</b><div class="muted small nowrap">${money(P.daily)}/day · keeps ${esc(100 - (Number(b.rate) || 0))}%</div></div></div></td>
+        <td class="r">${money(P.need)}</td>
+        <td class="r"><div class="keep"><span class="keep-bar"><i style="width:${pct}%" class="${ok ? 'ok' : 'bad'}"></i></span>${money(P.perDay)}</div></td>
+        <td class="r">${P.covered} of ${P.days}</td><td class="r">${money(P.share, 1)}</td><td class="r">${money(-P.base, 1)}</td>
+        <td class="r">${ok ? `<span class="chip chip-good">✓ Earns his keep · +${money(P.net)}</span>` : `<span class="chip chip-bad">Shop fills ${money(P.fills)}</span>`}</td></tr>`;
+    }).join('')}</tbody></table></div>
+    <ul class="keep-cards">${rows.map(({ b, P }) => { const pct = P.need ? Math.min(100, Math.round(P.perDay / P.need * 100)) : 100, ok = P.net >= 0;
+      return `<li><div class="row" style="flex-wrap:nowrap">${av(b)}<div class="grow"><b>${esc(b.name)}</b><div class="muted small">${money(P.daily)}/day · needs ${money(P.need)} in services a day</div></div></div>
+        <div class="keep-line"><span class="keep-bar wide"><i style="width:${pct}%" class="${ok ? 'ok' : 'bad'}"></i></span><span class="small">${money(P.perDay)} avg</span></div>
+        <div class="row" style="justify-content:space-between"><span class="muted small">Covered ${P.covered} of ${P.days} days · share ${money(P.share)} vs pay ${money(P.base)}</span>${ok ? `<span class="chip chip-good">✓ +${money(P.net)}</span>` : `<span class="chip chip-bad">Fills ${money(P.fills)}</span>`}</div></li>`; }).join('')}</ul>
+    <p class="muted small" style="margin-top:12px">“Needs a day” is the service sales he has to bring in each day for the shop’s share to cover his daily pay (daily pay ÷ shop’s %). “Days covered” counts the days he did that. “Shop fills” is daily pay minus the shop’s share for the whole period.${gain ? ` Together, barbers who earned their keep left the shop ${money(gain)} after their daily pay.` : ''}</p></section>`;
+}
 function owedFor(id) { const b = staffById(id); const earned = b ? payFor(b, [payStart(b), today()]).total : 0; const paid = sum(S.payouts.filter(p => p.barberId === id), p => p.amount); return round2(earned - paid); }
 function vTeam() {
   const r = periodRange(S.period), s = summary(r);
@@ -602,13 +631,14 @@ function vTeam() {
   return `${pageHead(rangeLabel(r), 'Barbers', `<button class="btn btn-primary" data-act="newStaff">+ Barber or stylist</button>`)}
   ${periodBar()}
   <section class="panel"><div class="panel-h"><h2>Pay and commissions</h2><label class="row small"><input type="checkbox" id="t-arch" data-bind="showArchived" data-live ${S.showArchived ? 'checked' : ''}> Show former staff</label></div>
-    ${list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th class="r">Days worked</th><th class="r">Daily pay</th><th class="r">Clients</th><th class="r">Service sales</th><th class="r">Commission</th><th class="r">Tips</th><th class="r">Earned</th><th class="r">Shop keeps</th><th class="r">Owed now</th><th></th></tr></thead><tbody>
-    ${list.map(b => { const P = payFor(b, r), owed = owedFor(b.id), shopKeeps = round2(P.svc - P.comm - P.base);
+    ${list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th class="r">Days worked</th><th class="r">Daily pay</th><th class="r">Clients</th><th class="r">Service sales</th><th class="r">Commission</th><th class="r">Tips</th><th class="r">Earned</th><th class="r">Owed now</th><th></th></tr></thead><tbody>
+    ${list.map(b => { const P = payFor(b, r), owed = owedFor(b.id);
       return `<tr><td><div class="row" style="flex-wrap:nowrap">${av(b)}<div><b>${esc(b.name)}</b>${b.active === false ? ' <span class="muted small">(former)</span>' : ''}<div class="muted small nowrap">${esc(b.title || '')}${b.chair ? ' · Chair ' + esc(b.chair) : ''}</div><div class="muted small nowrap">${money(P.daily)}/day + ${esc(b.rate || 0)}%</div></div></div></td>
-      <td class="r">${P.days}</td><td class="r">${money(P.base)}</td><td class="r">${P.x.length}</td><td class="r">${money(P.svc)}</td><td class="r">${money(P.comm, 1)}</td><td class="r">${money(P.tips)}</td><td class="r"><b>${money(P.total, 1)}</b></td><td class="r"><span class="${shopKeeps < 0 ? 'down' : ''}">${money(shopKeeps, 1)}</span></td><td class="r"><b class="${owed > 0 ? '' : 'muted'}">${money(owed, 1)}</b></td>
+      <td class="r">${P.days}</td><td class="r">${money(P.base)}</td><td class="r">${P.x.length}</td><td class="r">${money(P.svc)}</td><td class="r">${money(P.comm, 1)}</td><td class="r">${money(P.tips)}</td><td class="r"><b>${money(P.total, 1)}</b></td><td class="r"><b class="${owed > 0 ? '' : 'muted'}">${money(owed, 1)}</b></td>
       <td><div class="acts"><button class="btn btn-sm btn-primary" data-act="payStaff" data-id="${esc(b.id)}" ${owed <= 0 ? 'disabled' : ''}>Pay</button><button class="btn btn-sm btn-ghost" data-act="editStaff" data-id="${esc(b.id)}">Edit</button></div></td></tr>`; }).join('')}
     </tbody></table></div>` : '<p class="empty">No staff yet. Use “+ Barber or stylist”, or load the starter team in Shop setup.</p>'}
-    <p class="muted small" style="margin-top:12px">Earned = guaranteed daily pay for each day worked + commission (their rate × service sales after discounts) + tips. “Shop keeps” is service sales minus their commission and daily pay; it’s red when the daily pay cost more than their sales brought in. A day counts as worked when they had a sale, or it’s one of their days in and they weren’t marked absent in Schedule → Who’s in. “Owed now” is everything earned minus payouts.</p></section>
+    <p class="muted small" style="margin-top:12px">Earned = guaranteed daily pay for each day worked + commission (their rate × service sales after discounts) + tips. A day counts as worked when they had a sale, or it’s one of their days in and they weren’t marked absent in Schedule → Who’s in. “Owed now” is everything earned minus payouts.</p></section>
+  ${keepPanel(list.filter(b => b.active !== false), r)}
   <section class="panel"><div class="panel-h"><h2>Payout history</h2></div>
     ${pays.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Paid on</th><th>Name</th><th>Note</th><th class="r">Amount</th><th></th></tr></thead><tbody>${pays.map(p => `<tr><td class="num">${fmtDate(p.date)}</td><td>${esc(staffName(p.barberId))}</td><td>${esc(p.note || '')}</td><td class="r"><b>${money(p.amount, 1)}</b></td><td><div class="acts"><button class="btn btn-sm btn-danger" data-act="delPayout" data-id="${esc(p.id)}">Delete</button></div></td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">No payouts recorded yet.</p>'}</section>`;
 }
