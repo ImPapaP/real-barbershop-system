@@ -1,6 +1,7 @@
 // Shop dashboard: schedule, checkout, income & expenses, barbers, clients, inventory, setup.
 // Sign-in is Firebase Auth; only users listed in the admins/ collection get in (see firestore.rules).
 import { db, demo, demoBar, resetDemo, login, logout, resetPassword, onAuth, uploadImage, deleteImage, call } from './fb.js';
+import { buildXlsx, xlDate, xlTime, colName } from './xlsx.js';
 import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, publicBarber, DEFAULT_POLICY, startMs, resizeImage, initials, phoneKey, morph } from './shared.js';
 
 // ---------- constants ----------
@@ -412,6 +413,92 @@ function salesTable(list, more) {
 }
 
 // ---------- tab: money ----------
+const ICON_DL = '<svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3v10M5.5 8.5L10 13l4.5-4.5M4 16.5h12"/></svg>';
+const fileBase = r => `${info().shop.name.replace(/[^\w-]+/g, '-')}_${r[0] === r[1] ? r[0] : `${r[0]}_to_${r[1]}`}`;
+function saveBlob(blob, name) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+// Rows for every money record in the period, shared by the Excel and CSV exports.
+function exportRows(r) {
+  const s = summary(r);
+  const lineNames = (x, kind) => (x.lines || []).filter(l => l.kind === kind).map(l => l.qty > 1 ? `${l.name} ×${l.qty}` : l.name).join(', ');
+  const sales = [...s.sales].sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || ''))).map(x => ({
+    type: 'Sale', date: x.date, time: x.time || '', client: x.name || 'Walk-in', barber: staffName(x.barberId),
+    services: lineNames(x, 'service'), products: lineNames(x, 'product'), method: x.method || '',
+    svc: x.svcTotal || 0, prod: x.prodTotal || 0, disc: -(x.discount || 0), tip: x.tip || 0, total: x.total || 0,
+    online: x.depositCredit || 0, shop: (x.total || 0) - (x.depositCredit || 0), comm: x.commission || 0
+  }));
+  const kept = [...s.kept].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)).map(a => ({
+    type: a.status === 'no_show' ? 'Kept deposit (no-show)' : 'Kept deposit', date: a.date, time: a.time || '', client: a.name || '', barber: staffName(a.barberId),
+    services: svcNames(a.serviceIds), products: '', method: methodName(a.deposit.method), svc: 0, prod: 0, disc: 0, tip: 0,
+    total: a.deposit.amount, online: a.deposit.amount, shop: 0, comm: 0
+  }));
+  const exps = [...s.exps].sort((a, b) => a.date.localeCompare(b.date)).map(e => ({ date: e.date, cat: e.cat, desc: e.desc || '', method: e.method || '', amount: e.amount || 0 }));
+  return { s, sales: [...sales, ...kept].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)), exps };
+}
+function exportXlsx() {
+  const r = periodRange(S.period), { s, sales, exps } = exportRows(r), shop = info().shop;
+  const M = v => ({ v: Math.round(v * 100) / 100, s: 'money' }), D = d => ({ v: xlDate(d), s: 'date' });
+  const H = (t, i, numFrom) => ({ v: t, s: i >= numFrom ? 'headR' : 'head' });
+  const totalRow = (n, first, last, label, moneyCols, intCols = []) => Array.from({ length: n }, (_, c) => {
+    if (c === 0) return { v: label, s: 'label' };
+    const L = colName(c);
+    if (moneyCols.includes(c)) return { f: `SUBTOTAL(9,${L}${first}:${L}${last})`, s: 'total' };
+    if (intCols.includes(c)) return { f: `SUBTOTAL(9,${L}${first}:${L}${last})`, s: 'intB' };
+    return { v: '', s: 'label' };
+  });
+  const head = (t) => [[{ v: shop.name, s: 'title' }], [{ v: `${t} · ${rangeLabel(r)}`, s: 'sub' }], []];
+
+  // Summary
+  const sum1 = [...head('Income & expenses'),
+    [{ v: 'Overview', s: 'section' }, { v: 'Amount', s: 'sectionR' }],
+    ['Service sales', M(s.svc)], ['Product sales', M(s.prod)], ['Discounts given', M(-s.disc)], ['Deposits kept (no-shows, cancellations)', M(s.keptAmt)],
+    [{ v: 'Income (excl. tips)', s: 'label' }, { v: s.income, s: 'total' }],
+    ['Barber commissions', M(-s.comm)], ['Expenses', M(-s.exp)],
+    [{ v: 'Net profit', s: 'label' }, { v: s.profit, s: 'total' }], [],
+    ['Clients served', { v: s.count, s: 'int' }], ['Average ticket', M(s.avg)], ['Tips collected for barbers', M(s.tips)], ['Paid online as deposits', M(s.deposits + s.keptAmt)], []];
+  const byMethod = METHODS.map(m => [m, sum(s.sales.filter(x => x.method === m), x => (x.total || 0) - (x.depositCredit || 0))]);
+  byMethod.push(['Online deposits (PayMongo)', s.deposits + s.keptAmt]);
+  sum1.push([{ v: 'Payments received', s: 'section' }, { v: '', s: 'section' }], ...byMethod.filter(x => x[1]).sort((a, b) => b[1] - a[1]).map(([k, v]) => [k, M(v)]), []);
+  const byCat = EXP_CATS.map(c => [c, sum(s.exps.filter(x => x.cat === c), x => x.amount)]).filter(x => x[1]).sort((a, b) => b[1] - a[1]);
+  sum1.push([{ v: 'Expenses by category', s: 'section' }, { v: '', s: 'section' }], ...(byCat.length ? byCat.map(([k, v]) => [k, M(v)]) : [['No expenses']]), []);
+  const bars = {}; for (const x of s.sales) { const k = staffName(x.barberId); const b = bars[k] = bars[k] || { n: 0, svc: 0, comm: 0, tip: 0 }; b.n++; b.svc += x.svcTotal || 0; b.comm += x.commission || 0; b.tip += x.tip || 0; }
+  sum1.push([{ v: 'By barber', s: 'section' }, { v: 'Clients', s: 'sectionR' }, { v: 'Service sales', s: 'sectionR' }, { v: 'Commission', s: 'sectionR' }, { v: 'Tips', s: 'sectionR' }],
+    ...Object.entries(bars).sort((a, b) => b[1].svc - a[1].svc).map(([k, b]) => [k, { v: b.n, s: 'int' }, M(b.svc), M(b.comm), M(b.tip)]));
+  sum1.push([], [{ v: `Exported ${new Date().toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}. Income excludes tips, which go to the barbers.`, s: 'sub' }]);
+
+  // Daily
+  const days = [], end = r[1] < today() ? r[1] : today(); for (let d = r[0]; d <= end; d = addDays(d, 1)) days.push(d); // no future days
+  const dRows = days.map(d => {
+    const ds = s.sales.filter(x => x.date === d), inc = sum(ds, netOf) + sum(s.kept.filter(a => a.date === d), a => a.deposit.amount);
+    const ex = sum(s.exps.filter(e => e.date === d), e => e.amount), cm = sum(ds, x => x.commission);
+    return [D(d), { v: ds.length, s: 'int' }, M(inc), M(cm), M(ex), { v: Math.round((inc - cm - ex) * 100) / 100, s: 'money' }];
+  }).filter(x => x[1].v || x[2].v || x[4].v || days.length <= 31) // long periods skip days with nothing recorded
+    .map((x, i) => { x[5].f = `C${i + 5}-D${i + 5}-E${i + 5}`; return x; });
+  const daily = [...head('Day by day'), ['Date', 'Clients', 'Income', 'Commissions', 'Expenses', 'Profit'].map((t, i) => H(t, i, 1)), ...dRows];
+  if (dRows.length) daily.push(totalRow(6, 5, 4 + dRows.length, 'Total', [2, 3, 4, 5], [1]));
+
+  // Sales
+  const SH = ['Date', 'Time', 'Type', 'Client', 'Barber', 'Services', 'Products', 'Payment', 'Services ₱', 'Products ₱', 'Discount', 'Tip', 'Total', 'Paid online', 'Paid at shop', 'Commission'];
+  const sRows = sales.map(x => [D(x.date), x.time ? { v: xlTime(x.time), s: 'time' } : '', x.type, x.client, x.barber, x.services, x.products, x.method, M(x.svc), M(x.prod), M(x.disc), M(x.tip), M(x.total), M(x.online), M(x.shop), M(x.comm)]);
+  const salesSh = [...head('Sales'), SH.map((t, i) => H(t, i, 8)), ...sRows];
+  if (sRows.length) salesSh.push(totalRow(SH.length, 5, 4 + sRows.length, 'Total', [8, 9, 10, 11, 12, 13, 14, 15]));
+
+  // Expenses
+  const eRows = exps.map(e => [D(e.date), e.cat, e.desc, e.method, M(e.amount)]);
+  const expSh = [...head('Expenses'), ['Date', 'Category', 'Description', 'Paid by', 'Amount'].map((t, i) => H(t, i, 4)), ...eRows];
+  if (eRows.length) expSh.push(totalRow(5, 5, 4 + eRows.length, 'Total', [4]));
+
+  const blob = buildXlsx([
+    { name: 'Summary', cols: [40, 16, 16, 16, 14], rows: sum1 },
+    { name: 'Day by day', cols: [18, 10, 15, 15, 15, 15], rows: daily, freeze: 'A5', filter: dRows.length ? `A4:F${4 + dRows.length}` : '' },
+    { name: 'Sales', cols: [18, 10, 14, 22, 14, 34, 22, 13, 13, 13, 12, 11, 13, 13, 14, 13], rows: salesSh, freeze: 'A5', filter: sRows.length ? `A4:P${4 + sRows.length}` : '' },
+    { name: 'Expenses', cols: [18, 18, 36, 16, 15], rows: expSh, freeze: 'A5', filter: eRows.length ? `A4:E${4 + eRows.length}` : '' }
+  ], { title: `${shop.name} income and expenses, ${rangeLabel(r)}`, author: shop.name });
+  saveBlob(blob, fileBase(r) + '.xlsx');
+  toast('Excel file downloaded');
+}
 function periodBar() {
   return `<div class="toolbar"><div class="seg" role="group" aria-label="Period">${PERIODS.map(([k, l]) => `<button type="button" data-act="period" data-v="${k}" aria-pressed="${S.period === k}">${l}</button>`).join('')}</div>
   ${S.period === 'custom' ? `<div class="datenav"><input type="date" id="p-from" data-bind="from" data-live value="${esc(S.from || addDays(today(), -6))}" aria-label="From"><span class="muted">to</span><input type="date" id="p-to" data-bind="to" data-live value="${esc(S.to || today())}" aria-label="To"></div>` : ''}</div>`;
@@ -428,7 +515,7 @@ function vMoney() {
   const top = Object.entries(svcMap).map(([k, v]) => ({ label: k, value: v.v, text: `${v.n} × · ${money(v.v)}` })).sort((a, b) => b.value - a.value).slice(0, 6);
   const sales = [...s.sales].sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
   const exps = [...s.exps].sort((a, b) => b.date.localeCompare(a.date));
-  return `${pageHead(rangeLabel(r), 'Income & expenses', `<button class="btn" data-act="exportCsv">Export CSV</button><button class="btn btn-primary" data-act="newExpense">+ Expense</button>`)}
+  return `${pageHead(rangeLabel(r), 'Income & expenses', `<button class="btn" data-act="exportXlsx">${ICON_DL}Download Excel</button><button class="btn btn-ghost" data-act="exportCsv">CSV</button><button class="btn btn-primary" data-act="newExpense">+ Expense</button>`)}
   ${periodBar()}
   <section class="kpis">
     ${kpi('Income', money(s.income), `<span class="d">${s.count} clients · avg ticket ${money(s.avg)}</span>`)}
@@ -845,17 +932,16 @@ const ACT = {
   newExpense() { expenseModal(null); },
   editExpense(el) { const e = S.expenses.find(x => x.id === el.dataset.id); if (e) expenseModal(e); },
   async delExpense(el) { if (!armed(el)) return; if (await del('expenses', el.dataset.id)) toast('Expense deleted'); },
+  exportXlsx() { try { exportXlsx(); } catch (e) { console.error(e); toast('Couldn’t create the Excel file. Try CSV instead.'); } },
   exportCsv() {
-    const r = periodRange(S.period), s = summary(r);
-    const rows = [['Type', 'Date', 'Time', 'Client / description', 'Barber / category', 'Items', 'Payment', 'Online deposit', 'Discount', 'Tip', 'Commission', 'Amount']];
-    for (const x of [...s.sales].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))) rows.push(['Sale', x.date, x.time, x.name || 'Walk-in', staffName(x.barberId), (x.lines || []).map(l => `${l.name} x${l.qty}`).join('; '), x.method, x.depositCredit || 0, x.discount || 0, x.tip || 0, x.commission || 0, x.total]);
-    for (const a of s.kept) rows.push(['Kept deposit', a.date, a.time, a.name, staffName(a.barberId), svcNames(a.serviceIds), methodName(a.deposit.method), a.deposit.amount, '', '', '', a.deposit.amount]);
-    for (const e of [...s.exps].sort((a, b) => a.date.localeCompare(b.date))) rows.push(['Expense', e.date, '', e.desc || '', e.cat, '', e.method || '', '', '', '', '', -e.amount]);
-    const csv = '﻿' + rows.map(row => row.map(v => { const t = String(v ?? ''); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; }).join(',')).join('\r\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `${info().shop.name.replace(/[^\w-]+/g, '-')}-${r[0]}-to-${r[1]}.csv`;
-    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    // Dates are written as text like "Thu 12 Nov 2026" so spreadsheet apps don't reformat them or show ####.
+    const r = periodRange(S.period), { sales, exps } = exportRows(r);
+    const dt = d => fmtDate(d, true).replace(',', '');
+    const rows = [['Date', 'Time', 'Type', 'Client / description', 'Barber / category', 'Services', 'Products', 'Payment', 'Services', 'Products', 'Discount', 'Tip', 'Total', 'Paid online', 'Paid at shop', 'Commission']];
+    for (const x of sales) rows.push([dt(x.date), x.time ? fmtTime(x.time) : '', x.type, x.client, x.barber, x.services, x.products, x.method, x.svc, x.prod, x.disc, x.tip, x.total, x.online, x.shop, x.comm]);
+    for (const e of exps) rows.push([dt(e.date), '', 'Expense', e.desc, e.cat, '', '', e.method, '', '', '', '', -e.amount, '', '', '']);
+    const csv = '\ufeff' + rows.map(row => row.map(v => { const t = String(v ?? ''); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; }).join(',')).join('\r\n');
+    saveBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), fileBase(r) + '.csv');
   },
   newStaff() { staffModal(null); },
   editStaff(el) { const b = staffById(el.dataset.id); if (b) staffModal(b); },
