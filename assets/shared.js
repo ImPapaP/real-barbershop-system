@@ -129,14 +129,14 @@ export const STARTER = {
     // tier decides which barbers can take it: deluxe = senior barbers, regular = regular barbers.
     S60('h1', 'Deluxe Haircut', 399, 'him', 'Deluxe', 'Haircut of choice, shampoo and rinse, hot towel, arm and head massage, aloe vera moisturizing treatment and premiere grooming', { mins: 60, kind: 'base', tier: 'deluxe' }),
     S60('p1', 'BL1 · Deluxe Haircut + Beard Sculpting', 600, 'him', 'Deluxe promos', 'Save ₱29', { mins: 75, kind: 'base', tier: 'deluxe', includes: ['h7'] }),
-    S60('p2', 'BL2 · Deluxe Haircut + Hair Spa', 900, 'him', 'Deluxe promos', 'Save ₱49', { mins: 90, kind: 'base', tier: 'deluxe', includes: ['h2'] }),
-    S60('p3', 'BL3 · Deluxe Haircut + Dandruff Control', 1000, 'him', 'Deluxe promos', 'Save ₱49', { mins: 90, kind: 'base', tier: 'deluxe', includes: ['h3'] }),
-    S60('p4', 'BL4 · Deluxe Haircut + L’Oréal Hair Color', 1100, 'him', 'Deluxe promos', 'Save ₱49', { mins: 120, kind: 'base', tier: 'deluxe', includes: ['h4'] }),
+    S60('p2', 'BL2 · Deluxe Haircut + Hair Spa', 900, 'him', 'Deluxe promos', 'Save ₱49', { usesProduct: true, mins: 90, kind: 'base', tier: 'deluxe', includes: ['h2'] }),
+    S60('p3', 'BL3 · Deluxe Haircut + Dandruff Control', 1000, 'him', 'Deluxe promos', 'Save ₱49', { usesProduct: true, mins: 90, kind: 'base', tier: 'deluxe', includes: ['h3'] }),
+    S60('p4', 'BL4 · Deluxe Haircut + L’Oréal Hair Color', 1100, 'him', 'Deluxe promos', 'Save ₱49', { usesProduct: true, mins: 120, kind: 'base', tier: 'deluxe', includes: ['h4'] }),
     S60('h8', 'Signature Haircut', 299, 'him', 'Regular', 'Any style, shampoo and rinse, hot towel, and grooming with exclusive hair products', { mins: 45, kind: 'base', tier: 'regular' }),
     S60('h9', 'Regular Haircut', 249, 'him', 'Regular', 'Any style, with grooming using exclusive hair products', { mins: 45, kind: 'base', tier: 'regular' }),
-    S60('h2', 'Hair Spa', 550, 'him', 'Add-ons', '', { mins: 30, kind: 'extra' }),
-    S60('h3', 'Dandruff Control', 650, 'him', 'Add-ons', '', { mins: 30, kind: 'extra' }),
-    S60('h4', 'Hair Color (L’Oréal)', 750, 'him', 'Add-ons', '', { mins: 60, kind: 'extra' }),
+    S60('h2', 'Hair Spa', 550, 'him', 'Add-ons', '', { usesProduct: true, mins: 30, kind: 'extra' }),
+    S60('h3', 'Dandruff Control', 650, 'him', 'Add-ons', '', { usesProduct: true, mins: 30, kind: 'extra' }),
+    S60('h4', 'Hair Color (L’Oréal)', 750, 'him', 'Add-ons', '', { usesProduct: true, mins: 60, kind: 'extra' }),
     S60('h5', 'Basic Hair Art', 549, 'him', 'Add-ons', '', { mins: 30, kind: 'extra' }),
     S60('h6', 'Beard Shave with Cream', 200, 'him', 'Add-ons', '', { mins: 15, kind: 'extra' }),
     S60('h7', 'Beard Sculpting', 230, 'him', 'Add-ons', '', { mins: 20, kind: 'extra' }),
@@ -144,34 +144,36 @@ export const STARTER = {
     S60('f2', 'Women’s Regular Haircut', 275, 'her', 'For her', '', { mins: 45 }),
     S60('f3', 'Blow Dry with Shampoo', 230, 'her', 'For her', '', { mins: 45 }),
     S60('f4', 'Hair Styling', 470, 'her', 'For her', 'Curled or straightened', { mins: 60 }),
-    S60('f5', 'Hair Color (Organique)', 1000, 'her', 'Color & treatments', '', { mins: 120, priceFrom: true }),
-    S60('f6', 'Hair Color (Revlon)', 1200, 'her', 'Color & treatments', '', { mins: 120, priceFrom: true }),
-    S60('f7', 'Hair Color (L’Oréal)', 1500, 'her', 'Color & treatments', '', { mins: 120, priceFrom: true }),
-    S60('f8', 'Root Touch Up', 1000, 'her', 'Color & treatments', '', { mins: 90 }),
-    S60('f9', 'Highlights', 1500, 'her', 'Color & treatments', '', { mins: 150, priceFrom: true }),
-    S60('f10', 'Balayage', 3000, 'her', 'Color & treatments', '', { mins: 180, priceFrom: true }),
-    S60('f11', 'Keratin Blow-out', 1500, 'her', 'Color & treatments', '', { mins: 120 }),
-    S60('f12', 'Nano-Protein Treatment', 2500, 'her', 'Color & treatments', '', { mins: 150 }),
-    S60('f13', 'Hair Rebond', 1500, 'her', 'Color & treatments', '', { mins: 240, priceFrom: true }),
-    S60('f14', 'Moroccan Hot Oil Treatment', 450, 'her', 'Color & treatments', '', { mins: 45 }),
-    S60('f15', 'Semi Di Lino Hot Oil Treatment', 550, 'her', 'Color & treatments', '', { mins: 45 }),
+    S60('f5', 'Hair Color (Organique)', 1000, 'her', 'Color & treatments', '', { usesProduct: true, mins: 120, priceFrom: true }),
+    S60('f6', 'Hair Color (Revlon)', 1200, 'her', 'Color & treatments', '', { usesProduct: true, mins: 120, priceFrom: true }),
+    S60('f7', 'Hair Color (L’Oréal)', 1500, 'her', 'Color & treatments', '', { usesProduct: true, mins: 120, priceFrom: true }),
+    S60('f8', 'Root Touch Up', 1000, 'her', 'Color & treatments', '', { usesProduct: true, mins: 90 }),
+    S60('f9', 'Highlights', 1500, 'her', 'Color & treatments', '', { usesProduct: true, mins: 150, priceFrom: true }),
+    S60('f10', 'Balayage', 3000, 'her', 'Color & treatments', '', { usesProduct: true, mins: 180, priceFrom: true }),
+    S60('f11', 'Keratin Blow-out', 1500, 'her', 'Color & treatments', '', { usesProduct: true, mins: 120 }),
+    S60('f12', 'Nano-Protein Treatment', 2500, 'her', 'Color & treatments', '', { usesProduct: true, mins: 150 }),
+    S60('f13', 'Hair Rebond', 1500, 'her', 'Color & treatments', '', { usesProduct: true, mins: 240, priceFrom: true }),
+    S60('f14', 'Moroccan Hot Oil Treatment', 450, 'her', 'Color & treatments', '', { usesProduct: true, mins: 45 }),
+    S60('f15', 'Semi Di Lino Hot Oil Treatment', 550, 'her', 'Color & treatments', '', { usesProduct: true, mins: 45 }),
     S60('f16', 'Eyebrow Shaping', 120, 'her', 'For her', '', { mins: 15 })
   ],
   barbers: []
 };
 export const STARTER_STAFF = [
-  { id: 'lyndon', name: 'Lyndon', title: 'Senior barber', specialty: 'Classic cuts and beard sculpting', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 1 },
-  { id: 'rod', name: 'Roderick', title: 'Senior barber', specialty: 'Hair art and designs', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 2 },
-  { id: 'reymart', name: 'Reymart', title: 'Senior barber', specialty: 'Fades and deluxe cuts', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 3 },
-  { id: 'angelo', name: 'Angelo', title: 'Senior barber', specialty: 'Haircuts and hair spa', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 4 },
-  { id: 'ed', name: 'Joe Ed', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 5 },
-  { id: 'renz', name: 'Renz', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 6 },
-  { id: 'jay', name: 'Jay', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 7 },
-  { id: 'vince', name: 'Vince', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 8 },
-  { id: 'mac', name: 'Mac', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 9 },
-  { id: 'dave', name: 'Dave', title: 'Stylist', specialty: 'Color, rebond and styling', groups: ['her'], rate: 60, dailyPay: 0, chair: 10 }
+  { id: 'lyndon', name: 'Lyndon', role: 'barber', title: 'Senior barber', specialty: 'Classic cuts and beard sculpting', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 1 },
+  { id: 'rod', name: 'Roderick', role: 'barber', title: 'Senior barber', specialty: 'Hair art and designs', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 2 },
+  { id: 'reymart', name: 'Reymart', role: 'barber', title: 'Senior barber', specialty: 'Fades and deluxe cuts', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 3 },
+  { id: 'angelo', name: 'Angelo', role: 'barber', title: 'Senior barber', specialty: 'Haircuts and hair spa', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 4 },
+  { id: 'ed', name: 'Joe Ed', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 5 },
+  { id: 'renz', name: 'Renz', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 6 },
+  { id: 'jay', name: 'Jay', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 7 },
+  { id: 'vince', name: 'Vince', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 8 },
+  { id: 'mac', name: 'Mac', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 9 },
+  { id: 'dave', name: 'Dave', role: 'stylist', title: 'Stylist', specialty: 'Color, rebond and styling', groups: ['her'], rate: 55, dailyPay: 1000, productFee: { threshold: 1500, low: 50, high: 100 }, chair: 10 },
+  { id: 'luz', name: 'Luz', role: 'stylist', title: 'Stylist', specialty: 'Hair treatments and styling', groups: ['her'], rate: 60, dailyPay: 0, productFee: { threshold: 1500, low: 50, high: 100 }, chair: 11 },
+  { id: 'liza', name: 'Liza', role: 'stylist', title: 'Stylist', specialty: 'Hair treatments and styling', groups: ['her'], rate: 60, dailyPay: 0, productFee: { threshold: 1500, low: 50, high: 100 }, chair: 12 },
 ].map(b => ({ ...b, phone: '', days: [0, 1, 2, 3, 4, 5, 6], active: true }));
-export const publicBarber = b => ({ id: b.id, name: b.name, title: b.title || '', specialty: b.specialty || '', groups: b.groups || ['him'], tiers: b.tiers || [], days: b.days || [], chair: b.chair || '', photo: b.photo || '' });
+export const publicBarber = b => ({ id: b.id, name: b.name, role: b.role || 'barber', title: b.title || '', specialty: b.specialty || '', groups: b.groups || ['him'], tiers: b.tiers || [], days: b.days || [], chair: b.chair || '', photo: b.photo || '' });
 
 // Shrinks a photo in the browser before upload: longest side `max` px, JPEG. Returns a Blob.
 export async function resizeImage(file, max = 1600, quality = 0.82) {
@@ -262,4 +264,32 @@ export function dur(mins) {
   const m = Math.round(Number(mins) || 0), h = Math.floor(m / 60), r = m % 60;
   if (!h) return `${m} min`;
   return `${h} hr${h > 1 ? 's' : ''}${r ? ` ${r} min` : ''}`;
+}
+
+// ---------- staff roles ----------
+// Service staff take bookings and earn commission. Support staff (receptionist, maintenance) only get daily pay.
+export const ROLES = { barber: 'Barber', stylist: 'Hair stylist', nails: 'Nail technician', reception: 'Receptionist', maintenance: 'Maintenance' };
+export const SERVICE_ROLES = ['barber', 'stylist', 'nails'];
+export const isServiceStaff = b => SERVICE_ROLES.includes((b && b.role) || 'barber');
+
+// ---------- commission ----------
+// For services that use salon products, staff with a product fee give the shop a fixed amount first
+// (e.g. ₱50 on a service under ₱1,500, ₱100 from ₱1,500 up). What's left is split by their rate.
+// The staff share is rounded DOWN to the whole peso; the shop keeps the rest.
+export const PRODUCT_FEE = { threshold: 1500, low: 50, high: 100 };
+export function productFeeFor(staff, svc, unitPrice) {
+  const f = staff && staff.productFee; if (!f || !svc || !svc.usesProduct) return 0;
+  return unitPrice >= (f.threshold ?? 1500) ? (f.high ?? 100) : (f.low ?? 50);
+}
+// lines: [{ kind: 'service', ref, price, qty }], discount: pesos off the bill (taken from services first), lookup: id -> service
+export function commissionFor(staff, lines, discount, lookup) {
+  const svcLines = (lines || []).filter(l => l.kind === 'service');
+  const total = svcLines.reduce((t, l) => t + l.price * (l.qty || 1), 0); if (!total) return { commission: 0, fees: 0 };
+  const disc = Math.min(Math.max(0, discount || 0), total);
+  let base = 0, fees = 0;
+  for (const l of svcLines) {
+    const q = l.qty || 1, gross = l.price * q, fee = productFeeFor(staff, lookup(l.ref), l.price) * q;
+    fees += fee; base += Math.max(0, gross - disc * gross / total - fee);
+  }
+  return { commission: commissionOf(base, staff ? staff.rate : 0), fees };
 }
