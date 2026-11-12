@@ -97,7 +97,7 @@ export function timeChips(times, selected, actName = 'pickTime') {
 }
 
 // ---------- starter menu: REAL Barbers, Antipolo (from their Setmore page; edit in Shop setup) ----------
-const S60 = (id, name, price, group, cat, desc = '', extra = {}) => ({ id, name, price, mins: 60, group, cat, desc, active: true, ...extra });
+const S60 = (id, name, price, group, cat, desc = '', extra = {}) => ({ id, name, price, mins: 60, group, cat, desc, active: true, ...extra }); // mins: how long it takes; sets how long the chair is blocked
 export const STARTER = {
   shop: {
     name: 'REAL Barbers', wordmark: 'R3AL BARBERS', tagline: 'Best looks realized.',
@@ -123,35 +123,35 @@ export const STARTER = {
   services: [
     // Men: pick ONE haircut (kind 'base'), Deluxe or Regular, then any add-ons (kind 'extra').
     // tier decides which barbers can take it: deluxe = senior barbers, regular = regular barbers.
-    S60('h1', 'Deluxe Haircut', 399, 'him', 'Deluxe', 'Haircut of choice, shampoo and rinse, hot towel, arm and head massage, aloe vera moisturizing treatment and premiere grooming', { kind: 'base', tier: 'deluxe' }),
-    S60('p1', 'BL1 · Deluxe Haircut + Beard Sculpting', 600, 'him', 'Deluxe promos', 'Save ₱29', { kind: 'base', tier: 'deluxe', includes: ['h7'] }),
-    S60('p2', 'BL2 · Deluxe Haircut + Hair Spa', 900, 'him', 'Deluxe promos', 'Save ₱49', { kind: 'base', tier: 'deluxe', includes: ['h2'] }),
-    S60('p3', 'BL3 · Deluxe Haircut + Dandruff Control', 1000, 'him', 'Deluxe promos', 'Save ₱49', { kind: 'base', tier: 'deluxe', includes: ['h3'] }),
-    S60('p4', 'BL4 · Deluxe Haircut + L’Oréal Hair Color', 1100, 'him', 'Deluxe promos', 'Save ₱49', { kind: 'base', tier: 'deluxe', includes: ['h4'] }),
-    S60('h8', 'Signature Haircut', 299, 'him', 'Regular', 'Any style, shampoo and rinse, hot towel, and grooming with exclusive hair products', { kind: 'base', tier: 'regular' }),
-    S60('h9', 'Regular Haircut', 249, 'him', 'Regular', 'Any style, with grooming using exclusive hair products', { kind: 'base', tier: 'regular' }),
-    S60('h2', 'Hair Spa', 550, 'him', 'Add-ons', '', { kind: 'extra' }),
-    S60('h3', 'Dandruff Control', 650, 'him', 'Add-ons', '', { kind: 'extra' }),
-    S60('h4', 'Hair Color (L’Oréal)', 750, 'him', 'Add-ons', '', { kind: 'extra' }),
-    S60('h5', 'Basic Hair Art', 549, 'him', 'Add-ons', '', { kind: 'extra' }),
-    S60('h6', 'Beard Shave with Cream', 200, 'him', 'Add-ons', '', { kind: 'extra' }),
-    S60('h7', 'Beard Sculpting', 230, 'him', 'Add-ons', '', { kind: 'extra' }),
-    S60('f1', 'Hair and Makeup', 1500, 'her', 'For her'),
-    S60('f2', 'Women’s Regular Haircut', 275, 'her', 'For her'),
-    S60('f3', 'Blow Dry with Shampoo', 230, 'her', 'For her'),
-    S60('f4', 'Hair Styling', 470, 'her', 'For her', 'Curled or straightened'),
-    S60('f5', 'Hair Color (Organique)', 1000, 'her', 'Color & treatments', '', { priceFrom: true }),
-    S60('f6', 'Hair Color (Revlon)', 1200, 'her', 'Color & treatments', '', { priceFrom: true }),
-    S60('f7', 'Hair Color (L’Oréal)', 1500, 'her', 'Color & treatments', '', { priceFrom: true }),
-    S60('f8', 'Root Touch Up', 1000, 'her', 'Color & treatments'),
-    S60('f9', 'Highlights', 1500, 'her', 'Color & treatments', '', { priceFrom: true }),
-    S60('f10', 'Balayage', 3000, 'her', 'Color & treatments', '', { priceFrom: true }),
-    S60('f11', 'Keratin Blow-out', 1500, 'her', 'Color & treatments'),
-    S60('f12', 'Nano-Protein Treatment', 2500, 'her', 'Color & treatments'),
-    S60('f13', 'Hair Rebond', 1500, 'her', 'Color & treatments', '', { priceFrom: true }),
-    S60('f14', 'Moroccan Hot Oil Treatment', 450, 'her', 'Color & treatments'),
-    S60('f15', 'Semi Di Lino Hot Oil Treatment', 550, 'her', 'Color & treatments'),
-    S60('f16', 'Eyebrow Shaping', 120, 'her', 'For her')
+    S60('h1', 'Deluxe Haircut', 399, 'him', 'Deluxe', 'Haircut of choice, shampoo and rinse, hot towel, arm and head massage, aloe vera moisturizing treatment and premiere grooming', { mins: 60, kind: 'base', tier: 'deluxe' }),
+    S60('p1', 'BL1 · Deluxe Haircut + Beard Sculpting', 600, 'him', 'Deluxe promos', 'Save ₱29', { mins: 75, kind: 'base', tier: 'deluxe', includes: ['h7'] }),
+    S60('p2', 'BL2 · Deluxe Haircut + Hair Spa', 900, 'him', 'Deluxe promos', 'Save ₱49', { mins: 90, kind: 'base', tier: 'deluxe', includes: ['h2'] }),
+    S60('p3', 'BL3 · Deluxe Haircut + Dandruff Control', 1000, 'him', 'Deluxe promos', 'Save ₱49', { mins: 90, kind: 'base', tier: 'deluxe', includes: ['h3'] }),
+    S60('p4', 'BL4 · Deluxe Haircut + L’Oréal Hair Color', 1100, 'him', 'Deluxe promos', 'Save ₱49', { mins: 120, kind: 'base', tier: 'deluxe', includes: ['h4'] }),
+    S60('h8', 'Signature Haircut', 299, 'him', 'Regular', 'Any style, shampoo and rinse, hot towel, and grooming with exclusive hair products', { mins: 45, kind: 'base', tier: 'regular' }),
+    S60('h9', 'Regular Haircut', 249, 'him', 'Regular', 'Any style, with grooming using exclusive hair products', { mins: 30, kind: 'base', tier: 'regular' }),
+    S60('h2', 'Hair Spa', 550, 'him', 'Add-ons', '', { mins: 30, kind: 'extra' }),
+    S60('h3', 'Dandruff Control', 650, 'him', 'Add-ons', '', { mins: 30, kind: 'extra' }),
+    S60('h4', 'Hair Color (L’Oréal)', 750, 'him', 'Add-ons', '', { mins: 60, kind: 'extra' }),
+    S60('h5', 'Basic Hair Art', 549, 'him', 'Add-ons', '', { mins: 30, kind: 'extra' }),
+    S60('h6', 'Beard Shave with Cream', 200, 'him', 'Add-ons', '', { mins: 15, kind: 'extra' }),
+    S60('h7', 'Beard Sculpting', 230, 'him', 'Add-ons', '', { mins: 20, kind: 'extra' }),
+    S60('f1', 'Hair and Makeup', 1500, 'her', 'For her', '', { mins: 90 }),
+    S60('f2', 'Women’s Regular Haircut', 275, 'her', 'For her', '', { mins: 45 }),
+    S60('f3', 'Blow Dry with Shampoo', 230, 'her', 'For her', '', { mins: 45 }),
+    S60('f4', 'Hair Styling', 470, 'her', 'For her', 'Curled or straightened', { mins: 60 }),
+    S60('f5', 'Hair Color (Organique)', 1000, 'her', 'Color & treatments', '', { mins: 120, priceFrom: true }),
+    S60('f6', 'Hair Color (Revlon)', 1200, 'her', 'Color & treatments', '', { mins: 120, priceFrom: true }),
+    S60('f7', 'Hair Color (L’Oréal)', 1500, 'her', 'Color & treatments', '', { mins: 120, priceFrom: true }),
+    S60('f8', 'Root Touch Up', 1000, 'her', 'Color & treatments', '', { mins: 90 }),
+    S60('f9', 'Highlights', 1500, 'her', 'Color & treatments', '', { mins: 150, priceFrom: true }),
+    S60('f10', 'Balayage', 3000, 'her', 'Color & treatments', '', { mins: 180, priceFrom: true }),
+    S60('f11', 'Keratin Blow-out', 1500, 'her', 'Color & treatments', '', { mins: 120 }),
+    S60('f12', 'Nano-Protein Treatment', 2500, 'her', 'Color & treatments', '', { mins: 150 }),
+    S60('f13', 'Hair Rebond', 1500, 'her', 'Color & treatments', '', { mins: 240, priceFrom: true }),
+    S60('f14', 'Moroccan Hot Oil Treatment', 450, 'her', 'Color & treatments', '', { mins: 45 }),
+    S60('f15', 'Semi Di Lino Hot Oil Treatment', 550, 'her', 'Color & treatments', '', { mins: 45 }),
+    S60('f16', 'Eyebrow Shaping', 120, 'her', 'For her', '', { mins: 15 })
   ],
   barbers: []
 };
@@ -252,3 +252,10 @@ export const brand = (text, cls = '') => `<img class="logo-mark ${cls}" src="${L
 // Barber's commission: rate × services after discounts, rounded DOWN to the whole peso; the shop gets the
 // rest. 50% of ₱399 → barber ₱199, shop ₱200.
 export const commissionOf = (svcAfterDiscount, rate) => Math.floor(Math.max(0, svcAfterDiscount) * (Number(rate) || 0) / 100 + 1e-9);
+
+// 45 -> "45 min", 60 -> "1 hr", 90 -> "1 hr 30 min", 120 -> "2 hrs"
+export function dur(mins) {
+  const m = Math.round(Number(mins) || 0), h = Math.floor(m / 60), r = m % 60;
+  if (!h) return `${m} min`;
+  return `${h} hr${h > 1 ? 's' : ''}${r ? ` ${r} min` : ''}`;
+}
