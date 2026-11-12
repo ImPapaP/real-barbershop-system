@@ -2,7 +2,7 @@
 export const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 20, leadMinutes: 60, bookAheadDays: 30, step: 30, maxReschedules: 2, rebookDays: 28, onlineBooking: true };
+export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 20, leadMinutes: 60, bookAheadDays: 30, step: 30, maxReschedules: 2, rebookDays: 28, onlineBooking: true, lastBooking: '19:00' };
 
 export const $ = (s, r = document) => r.querySelector(s);
 export const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -71,7 +71,8 @@ export function availableTimes(info, { services, date, barberId, ignoreBookingId
   const mins = sum(services, s => s.mins || pol.step);
   const bars = eligibleBarbers(info, services, date, barberId);
   const out = [];
-  for (let m = toMin(h.open); m + mins <= toMin(h.close); m += pol.step) {
+  const last = pol.lastBooking ? toMin(pol.lastBooking) : Infinity; // latest start time, e.g. 7:00 PM
+  for (let m = toMin(h.open); m + mins <= toMin(h.close) && m <= last; m += pol.step) {
     const t = fromMin(m);
     if (startMs(date, t) < ms + pol.leadMinutes * 60e3) continue;
     const free = bars.filter(b => blockTimes(t, mins, pol.step).every(bt => { const s = slots[slotId(b.id, date, bt)]; return !isActiveSlot(s, ms) || (ignoreBookingId && s.bookingId === ignoreBookingId); }));
@@ -129,7 +130,7 @@ export const STARTER = {
     S60('p3', 'BL3 · Deluxe Haircut + Dandruff Control', 1000, 'him', 'Deluxe promos', 'Save ₱49', { mins: 90, kind: 'base', tier: 'deluxe', includes: ['h3'] }),
     S60('p4', 'BL4 · Deluxe Haircut + L’Oréal Hair Color', 1100, 'him', 'Deluxe promos', 'Save ₱49', { mins: 120, kind: 'base', tier: 'deluxe', includes: ['h4'] }),
     S60('h8', 'Signature Haircut', 299, 'him', 'Regular', 'Any style, shampoo and rinse, hot towel, and grooming with exclusive hair products', { mins: 45, kind: 'base', tier: 'regular' }),
-    S60('h9', 'Regular Haircut', 249, 'him', 'Regular', 'Any style, with grooming using exclusive hair products', { mins: 30, kind: 'base', tier: 'regular' }),
+    S60('h9', 'Regular Haircut', 249, 'him', 'Regular', 'Any style, with grooming using exclusive hair products', { mins: 45, kind: 'base', tier: 'regular' }),
     S60('h2', 'Hair Spa', 550, 'him', 'Add-ons', '', { mins: 30, kind: 'extra' }),
     S60('h3', 'Dandruff Control', 650, 'him', 'Add-ons', '', { mins: 30, kind: 'extra' }),
     S60('h4', 'Hair Color (L’Oréal)', 750, 'him', 'Add-ons', '', { mins: 60, kind: 'extra' }),
