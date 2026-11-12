@@ -159,3 +159,12 @@ test('no online booking starts after the last booking time (7:00 PM by default)'
   assert.match(at('19:30').error, /last booking of the day starts at 7:00 PM/);
   assert.equal(validateRequest({ ...t, policy: { lastBooking: '' } }, { ...base, serviceIds: ['cut'], barberId: '', time: '19:00' }, NOW).ok, true);
 });
+
+test('bookings start on the hour, and phone bookings at :30 block the hours they touch', () => {
+  const t = { ...info, policy: { ...info.policy, step: undefined } }; delete t.policy.step;
+  assert.equal(validateRequest(t, { ...base, time: '14:00' }, NOW).ok, true);
+  assert.match(validateRequest(t, { ...base, time: '14:30' }, NOW).error, /listed times/);
+  assert.deepEqual(blockTimes('10:00', 45, 60), ['10:00']);
+  assert.deepEqual(blockTimes('10:00', 90, 60), ['10:00', '11:00']);
+  assert.deepEqual(blockTimes('10:30', 45, 60), ['10:00', '11:00']);
+});

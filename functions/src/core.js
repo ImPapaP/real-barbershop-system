@@ -10,7 +10,7 @@ export const DEFAULT_POLICY = {
   lateMinutes: 20,       // shown to customers: this late = cancelled, deposit kept
   leadMinutes: 60,       // earliest booking is this far from now
   bookAheadDays: 30,     // how far ahead customers can book
-  step: 30,              // slot grid in minutes
+  step: 60,              // bookings start on the hour; also the slot grid in minutes
   maxReschedules: 2,
   onlineBooking: true,   // the shop can switch online booking off in Shop setup
   rebookDays: 28,        // days after a visit to send a "time for a trim" text (0 = off)
@@ -29,9 +29,11 @@ export function phNow(ms = Date.now()) {
 }
 export const policyOf = info => ({ ...DEFAULT_POLICY, ...(info && info.policy || {}) });
 export const slotId = (barberId, date, time) => `${barberId}_${date.replace(/-/g, '')}_${time.replace(':', '')}`;
+// Grid slots a booking occupies. Start is snapped down and the end up to the grid, so a phone booking
+// at 10:30 for 45 min blocks the 10:00 and 11:00 slots.
 export function blockTimes(time, mins, step) {
-  const n = Math.max(1, Math.ceil(mins / step));
-  return Array.from({ length: n }, (_, i) => fromMin(toMin(time) + i * step));
+  const s = Math.floor(toMin(time) / step) * step, e = Math.max(s + step, Math.ceil((toMin(time) + mins) / step) * step);
+  return Array.from({ length: (e - s) / step }, (_, i) => fromMin(s + i * step));
 }
 export function isActiveSlot(slot, now) {
   if (!slot) return false;

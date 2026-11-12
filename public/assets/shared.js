@@ -2,7 +2,7 @@
 export const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 20, leadMinutes: 60, bookAheadDays: 30, step: 30, maxReschedules: 2, rebookDays: 28, onlineBooking: true, lastBooking: '19:00' };
+export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 20, leadMinutes: 60, bookAheadDays: 30, step: 60, maxReschedules: 2, rebookDays: 28, onlineBooking: true, lastBooking: '19:00' };
 
 export const $ = (s, r = document) => r.querySelector(s);
 export const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -41,7 +41,10 @@ export function openStatus(info, ms = Date.now()) {
 
 // ---------- availability (mirrors the checks in functions/src/core.js) ----------
 export const slotId = (barberId, date, time) => `${barberId}_${date.replace(/-/g, '')}_${time.replace(':', '')}`;
-export const blockTimes = (time, mins, step) => Array.from({ length: Math.max(1, Math.ceil(mins / step)) }, (_, i) => fromMin(toMin(time) + i * step));
+export function blockTimes(time, mins, step) { // snapped to the grid, like core.js
+  const s = Math.floor(toMin(time) / step) * step, e = Math.max(s + step, Math.ceil((toMin(time) + mins) / step) * step);
+  return Array.from({ length: (e - s) / step }, (_, i) => fromMin(s + i * step));
+}
 export const isActiveSlot = (s, now) => !!s && (s.state === 'booked' || (s.state === 'held' && (s.holdUntil || 0) > now));
 // ---------- haircut tiers (mirrors functions/src/core.js) ----------
 export const TIERS = { deluxe: 'Deluxe', regular: 'Regular' };
