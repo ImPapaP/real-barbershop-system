@@ -566,6 +566,7 @@ function vSetup() {
         ${field('Book up to (days ahead)', `<input id="po-ahead" name="bookAheadDays" type="number" min="1" max="90" value="${esc(p.bookAheadDays)}">`, 'po-ahead')}
         ${field('“Time for a trim” text after (days, 0 = off)', `<input id="po-rebook" name="rebookDays" type="number" min="0" max="120" value="${esc(p.rebookDays ?? 28)}">`, 'po-rebook')}
       </div>
+      <label class="consent"><input type="checkbox" id="po-online" name="onlineBooking" ${p.onlineBooking ? 'checked' : ''}><span><b>Take online bookings with a deposit.</b> Turn this on only after the booking backend and PayMongo are set up (checklist part 2). While it’s off, the website asks customers to call or message the shop instead.</span></label>
       <p class="muted small">PayMongo needs at least ₱100 per payment. The website shows these rules to customers before they pay.</p>
       <div class="modal-f"><button class="btn btn-primary" type="submit">Save rules</button></div>
     </form></section>
@@ -574,7 +575,7 @@ function vSetup() {
       ${services().map(s => `<tr><td><b>${esc(s.name)}</b><div class="muted small">${esc(s.desc || '')}</div></td><td>${s.group === 'her' ? 'Her' : 'Him'}</td><td>${esc(s.cat || '')}</td><td class="r">${esc(s.mins)}</td><td class="r"><b>${esc(priceLabel(s, cur()))}</b></td><td>${s.active !== false ? chip({ kind: 'good', icon: '✓', label: 'Shown' }) : chip({ kind: 'mute', icon: '–', label: 'Hidden' })}</td><td><div class="acts"><button class="btn btn-sm btn-ghost" data-act="editService" data-id="${esc(s.id)}">Edit</button><button class="btn btn-sm btn-danger" data-act="delService" data-id="${esc(s.id)}">Remove</button></div></td></tr>`).join('')}
     </tbody></table></div></section>
   <section class="panel"><div class="panel-h"><h2>Who can use this dashboard</h2></div>
-    <p class="muted" style="max-width:72ch">Anyone with a sign-in whose user ID is in the <b>admins</b> collection in Firebase. To add a staff account: create the user in Firebase console → Authentication, copy their User UID, then add a document with that ID in Firestore → admins. README step 4 has the details.</p></section>`;
+    <p class="muted" style="max-width:72ch">Anyone with a sign-in whose user ID is in the <b>admins</b> collection in Firebase. To add a staff account: create the user in Firebase console → Authentication, copy their User UID, then add a document with that ID in Firestore → admins. README step 3 has the details.</p></section>`;
 }
 
 // ---------- tab: website (photos, gallery, announcement, reviews) ----------
@@ -632,7 +633,7 @@ async function handleUpload(input) {
     if (kind === 'hero') { const old = info().shop.heroPhotoPath; await saveInfo({ shop: { ...info().shop, heroPhoto: done[0].url, heroPhotoPath: done[0].path } }); deleteImage(old); toast('Homepage photo updated'); }
     else if (kind === 'gallery') { await saveInfo({ gallery: [...(info().gallery || []), ...done.map(d => ({ id: newId(), url: d.url, path: d.path, caption: '' }))] }); toast(`${done.length} photo${done.length > 1 ? 's' : ''} added`); }
     else { const id = kind.slice(6), b = staffById(id); if (b) { await patch('staff', id, { photo: done[0].url, photoPath: done[0].path }); deleteImage(b.photoPath); setTimeout(syncPublicBarbers, 400); toast(`${b.name}’s photo updated`); } }
-  } catch (e) { console.error(e); toast(/quota|exceeded/i.test(e.message || e.name) ? 'The demo can’t store more photos in this browser. Remove some first.' : (e.message || 'Upload failed. Try again.'), 'bad'); }
+  } catch (e) { console.error(e); toast(/quota|exceeded/i.test(e.message || e.name) ? 'The demo can’t store more photos in this browser. Remove some first.' : /^storage\//.test(e.code || '') ? 'Photo uploads need Firebase Storage, which comes with the Blaze plan (checklist part 2).' : (e.message || 'Upload failed. Try again.'), 'bad'); }
   S.uploading = ''; input.value = ''; render();
 }
 
@@ -1024,7 +1025,7 @@ const FORM = {
   },
   async policy(f) {
     const fd = new FormData(f), n = (k, min, max) => Math.min(max, Math.max(min, parseInt(fd.get(k), 10) || 0));
-    const policy = { ...pol(), deposit: n('deposit', 100, 100000), holdMinutes: n('holdMinutes', 5, 60), rescheduleHours: n('rescheduleHours', 0, 168), lateMinutes: n('lateMinutes', 0, 120), leadMinutes: n('leadMinutes', 0, 1440), bookAheadDays: n('bookAheadDays', 1, 90), rebookDays: n('rebookDays', 0, 120) };
+    const policy = { ...pol(), deposit: n('deposit', 100, 100000), holdMinutes: n('holdMinutes', 5, 60), rescheduleHours: n('rescheduleHours', 0, 168), lateMinutes: n('lateMinutes', 0, 120), leadMinutes: n('leadMinutes', 0, 1440), bookAheadDays: n('bookAheadDays', 1, 90), rebookDays: n('rebookDays', 0, 120), onlineBooking: fd.has('onlineBooking') };
     if (await saveInfo({ policy })) toast('Booking rules saved');
   }
 };

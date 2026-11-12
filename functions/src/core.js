@@ -12,6 +12,7 @@ export const DEFAULT_POLICY = {
   bookAheadDays: 30,     // how far ahead customers can book
   step: 30,              // slot grid in minutes
   maxReschedules: 2,
+  onlineBooking: true,   // the shop can switch online booking off in Shop setup
   rebookDays: 28         // days after a visit to send a "time for a trim" text (0 = off)
 };
 
@@ -70,6 +71,7 @@ export function validateRequest(info, data, now = Date.now()) {
   const date = String(r.date || '');
   const time = String(r.time || '');
   const ids = Array.isArray(r.serviceIds) ? [...new Set(r.serviceIds.map(String))].slice(0, 6) : [];
+  if (pol.onlineBooking === false) return { ok: false, error: 'Online booking is off right now. Please call or message the shop to book.' };
   if (!name) return { ok: false, error: 'Enter your name.' };
   if (!phone) return { ok: false, error: 'Enter a valid mobile number, like 0917 123 4567.' };
   if (!validEmail(email)) return { ok: false, error: 'Enter a valid email address.' };

@@ -2,7 +2,7 @@
 export const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 20, leadMinutes: 60, bookAheadDays: 30, step: 30, maxReschedules: 2, rebookDays: 28 };
+export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 20, leadMinutes: 60, bookAheadDays: 30, step: 30, maxReschedules: 2, rebookDays: 28, onlineBooking: true };
 
 export const $ = (s, r = document) => r.querySelector(s);
 export const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -96,7 +96,7 @@ export const STARTER = {
   announcement: { active: false, text: '', link: '' },
   gallery: [],
   reviews: [],
-  policy: { ...DEFAULT_POLICY },
+  policy: { ...DEFAULT_POLICY, onlineBooking: false }, // turned on in Shop setup once the paid backend is deployed
   hours: [0, 1, 2, 3, 4, 5, 6].map(d => ({ d, open: '09:00', close: '20:00', closed: false })),
   services: [
     S60('h1', 'Deluxe Haircut', 399, 'him', 'For him', 'Shampoo, hot towel, massage and aloe vera treatment'),

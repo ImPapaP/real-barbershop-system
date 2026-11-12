@@ -23,7 +23,7 @@ function seed() {
   const m = new Map(), T = phNow().date, day = n => addDays(T, n);
   let r = 11; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
   const pick = a => a[Math.floor(rnd() * a.length)];
-  m.set('public/info', { ...clone(STARTER), barbers: STARTER_STAFF.map(publicBarber) });
+  m.set('public/info', { ...clone(STARTER), policy: { ...STARTER.policy, onlineBooking: true }, barbers: STARTER_STAFF.map(publicBarber) });
   STARTER_STAFF.forEach(({ id, ...b }) => m.set('staff/' + id, { ...b, since: '2024-01-15' }));
   m.set('admins/demo', { role: 'owner' });
   const svc = STARTER.services, him = svc.filter(s => s.group === 'him'), her = svc.filter(s => s.group === 'her' && !s.priceFrom);
