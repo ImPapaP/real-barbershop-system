@@ -732,7 +732,7 @@ function vSetup() {
         ${field('Late arrival cancels after (min)', `<input id="po-late" name="lateMinutes" type="number" min="0" max="120" value="${esc(p.lateMinutes)}">`, 'po-late')}
         ${field('Earliest booking from now (min)', `<input id="po-lead" name="leadMinutes" type="number" min="0" max="1440" value="${esc(p.leadMinutes)}">`, 'po-lead')}
         ${field('Book up to (days ahead)', `<input id="po-ahead" name="bookAheadDays" type="number" min="1" max="90" value="${esc(p.bookAheadDays)}">`, 'po-ahead')}
-        ${field('Last booking starts at', `<input id="po-last" name="lastBooking" type="time" step="1800" value="${esc(p.lastBooking ?? '19:00')}">`, 'po-last', 'Online bookings can’t start later than this. Leave empty to allow any time that finishes by closing.')}
+        ${field('Last booking starts at', `<input id="po-last" name="lastBooking" type="time" step="3600" value="${esc(p.lastBooking ?? '19:00')}">`, 'po-last', 'Online bookings can’t start later than this. Leave empty to allow any time that finishes by closing.')}
         ${field('“Time for a trim” text after (days, 0 = off)', `<input id="po-rebook" name="rebookDays" type="number" min="0" max="120" value="${esc(p.rebookDays ?? 28)}">`, 'po-rebook')}
       </div>
       <label class="consent"><input type="checkbox" id="po-online" name="onlineBooking" ${p.onlineBooking ? 'checked' : ''}><span><b>Take online bookings with a deposit.</b> Turn this on only after the booking backend and PayMongo are set up (checklist part 2). While it’s off, the website asks customers to call or message the shop instead.</span></label>
