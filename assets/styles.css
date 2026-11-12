@@ -785,3 +785,16 @@ html{font-synthesis-weight:none}
   .brick::after{background:radial-gradient(ellipse 80% 40% at 50% 22%,rgba(255,255,255,.2),rgba(255,255,255,.05) 60%,transparent 80%),radial-gradient(ellipse 140% 90% at 50% 40%,transparent 40%,rgba(0,0,0,.75) 100%)}
 }
 @media (prefers-reduced-motion:reduce){.hero-anim .hero-mark{animation:none}}
+
+/* step A: Deluxe or Regular */
+.tier-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px}
+.tier-card{position:relative;display:grid;gap:4px;text-align:left;padding:16px 18px;border:1.5px solid var(--line-2);border-radius:14px;background:var(--surface);color:var(--ink);cursor:pointer;font:inherit;transition:border-color .15s,box-shadow .15s,transform .15s}
+.tier-card:hover{border-color:var(--ink)}
+.tier-card b{font:400 24px/1.05 var(--f-slab);letter-spacing:.01em}
+.tier-card .tc-from{font-weight:700}
+.tier-card small{color:var(--muted);font-size:12.5px}
+.tier-card.on{border-color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent),4px 4px 0 var(--accent);background:var(--accent-soft);transform:translate(-2px,-2px)}
+.tier-card .tick{position:absolute;top:12px;right:12px;width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;opacity:0;transform:scale(.6);transition:.2s}
+.tier-card.on .tick{opacity:1;transform:none}
+.tier-card .tick .ic{width:14px;height:14px}
+.pick.one-col{grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr))}
