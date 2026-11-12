@@ -238,3 +238,13 @@ function morphEl(f, t) {
   morphChildren(f, t);
   if (tag === 'SELECT') { const sel = t.querySelector('option[selected]'); const v = sel ? sel.value : (f.options[0] && f.options[0].value); if (!active && v != null && f.value !== v) f.value = v; }
 }
+
+// ---------- brand: the shop's badge logo + the wordmark with the mirrored E from the logo ----------
+export const LOGO = new URL('./logo-192.png', import.meta.url).href;
+export const LOGO_LG = new URL('./logo.png', import.meta.url).href;
+// "R3AL BARBERS" / "REAL BARBERS" -> R + mirrored E + AL BARBERS, like the badge
+export function wordmarkText(text) {
+  const t = String(text || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  return t.replace(/\bR(?:3|E)AL\b/i, m => `${m[0]}<span class="mirror-e" aria-hidden="true">E</span><span class="sr">E</span>${m.slice(2)}`);
+}
+export const brand = (text, cls = '') => `<img class="logo-mark ${cls}" src="${LOGO}" alt="" width="40" height="40"><span class="wm-text">${wordmarkText(text)}</span>`;

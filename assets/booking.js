@@ -1,7 +1,7 @@
 // "Your booking" page, opened from the confirmation email or after paying on PayMongo.
 // Shows the booking status and lets the customer reschedule or cancel within the policy.
 import { db, call, demoBar, resetDemo } from './fb.js';
-import { $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, MONTHS, dowOf, sum, policyOf, availableTimes, bookableDates, timeChips, STARTER, icsFor } from './shared.js';
+import { $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, MONTHS, dowOf, sum, policyOf, availableTimes, bookableDates, timeChips, STARTER, icsFor, brand, LOGO_LG } from './shared.js';
 
 const q = new URLSearchParams(location.search);
 const ID = q.get('id') || '', TOKEN = q.get('t') || '';
@@ -16,7 +16,7 @@ const m = n => money(n, info().shop.currency || '₱');
 function render() { $('#app').innerHTML = shell(body()); }
 function shell(inner) {
   const shop = info().shop;
-  return `${demoBar('admin/')}<header class="site-head"><div class="wrap head-in"><a class="wordmark" href="./"><span class="mark" aria-hidden="true">R3</span>${esc(shop.wordmark || shop.name)}</a><nav class="site-nav"><a class="btn btn-sm" href="./#book">Book again</a></nav></div></header>
+  return `${demoBar('admin/')}<header class="site-head"><div class="wrap head-in"><a class="wordmark" href="./">${brand(shop.wordmark || shop.name)}</a><nav class="site-nav"><a class="btn btn-sm" href="./#book">Book again</a></nav></div></header>
   <main class="sec"><div class="wrap" style="max-width:760px;display:grid;gap:18px">${inner}</div></main>
   <footer class="site-foot"><div class="wrap"><span>${esc(shop.name)} · ${esc(shop.phone)}</span><span>${esc(shop.address)}</span></div></footer>`;
 }
