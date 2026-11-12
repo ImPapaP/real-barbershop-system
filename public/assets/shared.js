@@ -172,6 +172,8 @@ export const STARTER_STAFF = [
   { id: 'dave', name: 'Dave', role: 'stylist', title: 'Stylist', specialty: 'Color, rebond and styling', groups: ['her'], rate: 55, dailyPay: 1000, productFee: { threshold: 1500, low: 50, high: 100 }, chair: 10 },
   { id: 'luz', name: 'Luz', role: 'stylist', title: 'Stylist', specialty: 'Hair treatments and styling', groups: ['her'], rate: 60, dailyPay: 0, productFee: { threshold: 1500, low: 50, high: 100 }, chair: 11 },
   { id: 'liza', name: 'Liza', role: 'stylist', title: 'Stylist', specialty: 'Hair treatments and styling', groups: ['her'], rate: 60, dailyPay: 0, productFee: { threshold: 1500, low: 50, high: 100 }, chair: 12 },
+  { id: 'alex', name: 'Alex', role: 'reception', title: 'Receptionist', specialty: '', groups: [], rate: 0, dailyPay: 700 },
+  { id: 'airyl', name: 'Airyl', role: 'reception', title: 'Receptionist', specialty: '', groups: [], rate: 0, dailyPay: 700 },
 ].map(b => ({ ...b, phone: '', days: [0, 1, 2, 3, 4, 5, 6], active: true }));
 export const publicBarber = b => ({ id: b.id, name: b.name, role: b.role || 'barber', title: b.title || '', specialty: b.specialty || '', groups: b.groups || ['him'], tiers: b.tiers || [], days: b.days || [], chair: b.chair || '', photo: b.photo || '' });
 
