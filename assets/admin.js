@@ -2,7 +2,7 @@
 // Sign-in is Firebase Auth; only users listed in the admins/ collection get in (see firestore.rules).
 import { db, demo, demoBar, resetDemo, login, logout, resetPassword, onAuth, uploadImage, deleteImage, call } from './fb.js';
 import { buildXlsx, xlDate, xlTime, colName } from './xlsx.js';
-import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, publicBarber, DEFAULT_POLICY, startMs, resizeImage, initials, phoneKey, morph, brand, LOGO_LG } from './shared.js';
+import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, publicBarber, DEFAULT_POLICY, startMs, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf } from './shared.js';
 
 // ---------- constants ----------
 const METHODS = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer'];
@@ -612,7 +612,7 @@ function keepPanel(list, r) {
   return `<section class="panel"><div class="panel-h"><h2>Pay vs what each barber brings in</h2><span class="muted small">All barbers: brought in ${money(T.svc)}, paid ${money(T.paid)}</span></div>
     <p class="muted small" style="margin:-4px 0 14px"><span class="key in"></span>Brings in: his service sales after discounts. <span class="key out"></span>Shop pays him: daily pay + commission (tips come from clients, so they’re left out). Whatever is left pays for rent, bills and profit.</p>
     <div class="tbl-wrap keep-tbl"><table class="tbl"><thead><tr><th>Name</th><th class="r">Brings in</th><th class="r">Daily pay</th><th class="r">Commission</th><th class="r">Shop pays him</th><th style="width:160px"></th><th class="r">Pay is</th><th class="r">Result</th></tr></thead><tbody>
-    ${rows.sort((x, y) => (x.P.svc - x.P.pay) - (y.P.svc - y.P.pay)).map(({ b, P }) => `<tr><td><div class="row" style="flex-wrap:nowrap">${av(b)}<div><b>${esc(b.name)}</b><div class="muted small nowrap">${P.days} days · ${P.x.length} clients</div></div></div></td>
+    ${rows.sort((x, y) => (x.P.svc - x.P.pay) - (y.P.svc - y.P.pay)).map(({ b, P }) => `<tr><td><div class="row" style="flex-wrap:nowrap">${av(b)}<div><b>${esc(b.name)}</b><div class="muted small nowrap">${P.days} days · ${P.x.length} clients · ${esc(b.rate || 0)}/${esc(100 - (Number(b.rate) || 0))}</div></div></div></td>
       <td class="r"><b>${money(P.svc)}</b></td><td class="r">${money(P.base)}</td><td class="r">${money(P.comm)}</td><td class="r"><b>${money(P.pay)}</b></td>
       <td>${bars(P)}</td><td class="r">${pctOf(P) === null ? '–' : `<span class="${P.pay > P.svc ? 'down' : ''}">${pctOf(P)}%</span><div class="muted small">of sales</div>`}</td><td class="r">${verdict(P)}</td></tr>`).join('')}
     </tbody></table></div>
@@ -620,7 +620,7 @@ function keepPanel(list, r) {
       ${bars(P)}
       <div class="keep-nums"><span><small>Brings in</small><b>${money(P.svc)}</b></span><span><small>Shop pays him</small><b>${money(P.pay)}</b></span><span><small>Pay is</small><b class="${P.pay > P.svc ? 'down' : ''}">${pctOf(P) === null ? '–' : pctOf(P) + '% of sales'}</b></span></div>
       <p class="muted small" style="margin:0">${money(P.base)} daily pay + ${money(P.comm)} commission</p></li>`).join('')}</ul>
-    <p class="muted small" style="margin-top:12px">With a guaranteed daily pay plus ${esc(rows[0].b.rate || 0)}% commission, a barber pays for himself once his services pass his daily pay ÷ ${esc(100 - (Number(rows[0].b.rate) || 0))}% each day: ${[...new Set(rows.map(x => x.P.daily).filter(Boolean))].sort((x, y) => x - y).map(d => `${money(d / Math.max(0.01, 1 - (Number(rows[0].b.rate) || 0) / 100))} a day for ${money(d)}/day`).join(', ')}.</p></section>`;
+    <p class="muted small" style="margin-top:12px">A barber pays for himself once his services pass his daily pay ÷ the shop’s % each day: ${[...new Map(rows.filter(x => x.P.daily).map(x => [`${x.P.daily}_${x.b.rate}`, x])).values()].sort((x, y) => x.P.daily - y.P.daily).map(({ b, P }) => `${money(P.need)} a day on ${money(P.daily)}/day + ${esc(b.rate || 0)}%`).join(', ')}.</p></section>`;
 }
 function owedFor(id) { const b = staffById(id); const earned = b ? payFor(b, [payStart(b), today()]).total : 0; const paid = sum(S.payouts.filter(p => p.barberId === id), p => p.amount); return round2(earned - paid); }
 function vTeam() {
@@ -849,7 +849,7 @@ function staffModal(b) {
   openModal(b ? `Edit ${b.name}` : 'Add barber or stylist', `<form class="stack" data-form="staff" data-id="${esc(c.id || '')}">
     <div class="fgrid">${field('Name', `<input id="m-sname" name="name" value="${esc(c.name || '')}" required>`, 'm-sname')}${field('Title', `<input id="m-stitle" name="title" value="${esc(c.title || '')}" placeholder="Senior barber, Stylist">`, 'm-stitle')}</div>
     <div class="fgrid">${field('Specialty (shown on website)', `<input id="m-sspec" name="specialty" value="${esc(c.specialty || '')}">`, 'm-sspec')}${field('Phone', `<input id="m-sphone" name="phone" value="${esc(c.phone || '')}">`, 'm-sphone')}</div>
-    <div class="fgrid">${field('Guaranteed daily pay (₱)', `<input id="m-sdaily" name="dailyPay" type="number" min="0" step="any" value="${esc(c.dailyPay ?? 0)}" required>`, 'm-sdaily', 'Paid for every day worked, even with no clients')}${field('Commission on services (%)', `<input id="m-srate" name="rate" type="number" min="0" max="100" value="${esc(c.rate ?? 60)}" required>`, 'm-srate', 'On top of the daily pay. The shop keeps the rest.')}${field('Chair number', `<input id="m-schair" name="chair" type="number" min="1" max="20" value="${esc(c.chair || '')}">`, 'm-schair')}</div>
+    <div class="fgrid">${field('Guaranteed daily pay (₱)', `<input id="m-sdaily" name="dailyPay" type="number" min="0" step="any" value="${esc(c.dailyPay ?? 0)}" required>`, 'm-sdaily', 'Paid for every day worked, even with no clients')}${field('Commission on services (%)', `<input id="m-srate" name="rate" type="number" min="0" max="100" value="${esc(c.rate ?? 60)}" required>`, 'm-srate', 'On top of the daily pay, rounded down to the peso. The shop keeps the rest. Seniors 50, juniors 60.')}${field('Chair number', `<input id="m-schair" name="chair" type="number" min="1" max="20" value="${esc(c.chair || '')}">`, 'm-schair')}</div>
     <fieldset class="field"><legend>Takes bookings for</legend><div class="row">${[['him', 'Men’s services'], ['her', 'Women’s services']].map(([k, l]) => `<label class="check"><input type="checkbox" name="groups" value="${k}" ${(c.groups || ['him']).includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</div></fieldset>
     <fieldset class="field"><legend>Men’s haircuts they do</legend><div class="row">${[['deluxe', 'Deluxe (senior barber)'], ['regular', 'Regular']].map(([k, l]) => `<label class="check"><input type="checkbox" name="tiers" value="${k}" ${(c.tiers || []).includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</div><p class="muted small">Online, clients can only book this barber for these haircuts. Add-ons work with either.</p></fieldset>
     <fieldset class="field"><legend>Days in</legend><div class="row">${[1, 2, 3, 4, 5, 6, 0].map(d => `<label class="check"><input type="checkbox" name="days" value="${d}" ${(c.days || []).includes(d) ? 'checked' : ''}>${DAYS[d]}</label>`).join('')}</div></fieldset>
@@ -987,7 +987,7 @@ const ACT = {
       const appt = p.apptId ? S.appointments.find(a => a.id === p.apptId) : null;
       const customerId = (appt && appt.customerId) || await ensureCustomer(p.name, p.phone, appt && appt.email, p.save);
       const b = staffById(p.barberId), rate = Number(b && b.rate) || 0;
-      const commission = round2(Math.max(0, T.svc - T.disc) * rate / 100);
+      const commission = commissionOf(T.svc - T.disc, rate); // rounded down: the shop gets the extra centavos
       const id = newId();
       const sale = {
         date: today(), time: nowHM(), at: Date.now(), customerId, name: p.name.trim() || 'Walk-in', phone: p.phone.trim(), barberId: p.barberId,
