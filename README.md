@@ -79,7 +79,7 @@ This uploads the website and the database security rules. The site is now at `ht
 
 #### 5. Load the menu and team
 
-Open `https://<your-project-id>.web.app/admin/`, sign in, and click **Load starter menu**. It saves REAL Barbers' Setmore services and prices and a starter team (Deluxe: Lyndon, Roderick, Reymart, Angelo; Regular: Mac, Ed; Dave for women’s services), the real Setmore reviews, and the GCash number for down payments. Then:
+Open `https://<your-project-id>.web.app/admin/`, sign in, and click **Load starter menu**. It saves REAL Barbers' Setmore services and prices and a starter team (Deluxe: Lyndon, Roderick, Reymart, Angelo; Regular: Joe Ed, Renz, Jay, Vince, Mac; Dave for women’s services), the real Setmore reviews, and the GCash number for down payments. Then:
 
 - **Barbers**: fix names, days in, commission rates, and who takes men's or women's bookings.
 - **Shop setup**: check the address, hours, prices and durations. Setmore listed every service as 1 hour, so set the real lengths (balayage, rebond and so on take longer).
@@ -175,7 +175,7 @@ Texts never contain links, because Philippine networks may block texts with URLs
 
 Men pick **one haircut**, either **Deluxe** (Deluxe Haircut or a BL1–BL4 promo) or **Regular** (Signature or Regular Haircut), then any **add-ons** (hair spa, color, beard and so on).
 
-- Deluxe haircuts can only be booked with the senior barbers (Lyndon, Roderick, Reymart, Angelo). Regular haircuts can only be booked with Mac and Ed. Add-ons work with either.
+- Deluxe haircuts can only be booked with the senior barbers (Lyndon, Roderick, Reymart, Angelo). Regular haircuts can only be booked with Joe Ed, Renz, Jay, Vince and Mac. Add-ons work with either.
 - An add-on that's already in the chosen promo (for example Hair Spa with BL2) can't be added twice.
 - Change it in the dashboard: **Barbers → Edit → Men’s haircuts they do**, and **Shop setup → Services → Booking type / Haircut level**.
 - The booking functions check the same rules, so they can't be skipped.
