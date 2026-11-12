@@ -3,7 +3,7 @@
 import { db, call, demo, demoBar, resetDemo } from './fb.js';
 import {
   $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, DAYS_LONG, MONTHS, sum, phNow, dowOf, policyOf, openStatus,
-  availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph
+  availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph, brand, LOGO_LG
 } from './shared.js';
 
 const S = {
@@ -72,7 +72,7 @@ function ratingChip(sh, light) {
 
 function page() {
   const I = info(), shop = I.shop, st = openStatus(I), today = phNow(), an = I.announcement || {};
-  if (!S.loaded) return `<div class="center"><div><span class="wordmark"><span class="mark" aria-hidden="true">R3</span>${esc(shop.wordmark || shop.name)}</span><p class="muted">${S.slow ? `We can’t load the booking calendar right now. Call us at <b>${esc(shop.phone)}</b>.` : '<span class="spinner"></span>'}</p></div></div>`;
+  if (!S.loaded) return `<div class="center"><div><span class="wordmark">${brand(shop.wordmark || shop.name)}</span><p class="muted">${S.slow ? `We can’t load the booking calendar right now. Call us at <b>${esc(shop.phone)}</b>.` : '<span class="spinner"></span>'}</p></div></div>`;
   const th = I.hours.find(h => h.d === today.dow);
   const inToday = (I.barbers || []).filter(b => (b.days || []).includes(today.dow));
   const cuts = svcs().filter(s => (s.group || 'him') === 'him' && /haircut$/i.test(s.name)).sort((x, y) => x.price - y.price);
@@ -83,7 +83,7 @@ function page() {
   return `${demoBar('admin/')}
   ${an.active && an.text ? `<div class="announce">${an.link ? `<a href="${esc(an.link)}" target="_blank" rel="noopener">${esc(an.text)} ${ic('arrow')}</a>` : `<span>${esc(an.text)}</span>`}</div>` : ''}
   <header class="site-head" id="site-head"><div class="wrap head-in">
-    <a class="wordmark" href="#top" data-act="top"><span class="mark" aria-hidden="true">R3</span>${esc(shop.wordmark || shop.name)}</a>
+    <a class="wordmark" href="#top" data-act="top" aria-label="${esc(shop.name)} home">${brand(shop.wordmark || shop.name)}</a>
     <nav class="site-nav" aria-label="Sections">
       <button class="lnk" data-act="scroll" data-to="services">Services</button>
       ${gal.length || demo ? '<button class="lnk" data-act="scroll" data-to="gallery">Gallery</button>' : ''}
@@ -95,7 +95,8 @@ function page() {
   ${S.last && S.last.date >= today.date ? `<div class="wrap" style="padding-block:12px"><p class="note row" style="justify-content:space-between"><span>You have a booking for <b>${fmtDate(S.last.date)}, ${fmtTime(S.last.time)}</b>.</span><a class="btn btn-sm" href="booking.html?id=${encodeURIComponent(S.last.id)}&t=${encodeURIComponent(S.last.token)}">View booking</a></p></div>` : ''}
 
   <section class="hero-x${shop.heroPhoto ? ' has-photo' : ''}" id="top">
-    ${shop.heroPhoto ? `<div class="hero-photo" style="background-image:url('${esc(shop.heroPhoto)}')" role="img" aria-label="Inside ${esc(shop.name)}"></div>` : '<div class="hero-glow" aria-hidden="true"><i></i><i></i></div>'}
+    ${shop.heroPhoto ? `<div class="hero-photo" style="background-image:url('${esc(shop.heroPhoto)}')" role="img" aria-label="Inside ${esc(shop.name)}"></div>` : ''}
+    <div class="brick" aria-hidden="true"></div>
     <div class="wrap hero-grid${anim}">
       <div class="hero-copy">
         <div class="row hero-chips"><span class="chip open-chip"><b aria-hidden="true" class="${st.open ? 'pulse' : ''}" style="color:${st.open ? 'var(--good)' : 'var(--hero-muted)'}">●</b>${esc(st.text)}</span>${ratingChip(shop, true)}</div>
@@ -108,6 +109,8 @@ function page() {
           ${policyOf(I).onlineBooking ? `<div><dt>Deposit to book</dt><dd>${m(policyOf(I).deposit)}</dd></div>` : '<div><dt>Walk-ins</dt><dd>Welcome</dd></div>'}
         </dl>
       </div>
+      <div class="hero-side">
+      <img class="hero-logo" src="${LOGO_LG}" alt="${esc(shop.name)} logo: Best looks realized" width="400" height="400">
       <aside class="hero-card" aria-label="Today at the shop">
         <p class="eyebrow">Today, ${DAYS_LONG[today.dow]}</p>
         <p class="today-hours">${th && !th.closed ? `${fmtTime(th.open)} – ${fmtTime(th.close)}` : 'Closed today'}</p>
@@ -115,6 +118,7 @@ function page() {
         <p class="row small">${ic('pin')}${esc(shop.address)}</p>
         <p class="row small">${ic('phone')}<b>${esc(shop.phone)}</b><button class="btn btn-sm btn-ghost" data-act="copy" data-text="${esc(shop.phone)}">Copy</button></p>
       </aside>
+      </div>
     </div>
   </section>
   <div class="marquee" aria-hidden="true"><div class="track">${[0, 1].map(() => `<span>${svcs().filter(s => s.group !== 'her').slice(0, 7).concat(svcs().filter(s => s.group === 'her').slice(0, 4)).map(s => `${esc(s.name)} ${ic('scissors')}`).join(' ')}</span>`).join('')}</div></div>
@@ -166,7 +170,7 @@ function page() {
     <h3 class="sec-title reveal" style="font-size:30px;margin:48px 0 16px">Booking policy</h3>
     ${policyCards()}
   </div></section>
-  <footer class="site-foot"><div class="wrap"><span class="wordmark" style="font-size:18px"><span class="mark" aria-hidden="true" style="width:24px;height:24px;font-size:10px">R3</span>${esc(shop.wordmark || shop.name)}</span><span>${esc(shop.address)} · ${esc(shop.phone)}</span><span>© ${today.date.slice(0, 4)} ${esc(shop.name)}</span></div></footer>
+  <footer class="site-foot"><div class="wrap"><span class="wordmark" style="font-size:18px">${brand(shop.wordmark || shop.name, 'sm')}</span><span>${esc(shop.address)} · ${esc(shop.phone)}</span><span>© ${today.date.slice(0, 4)} ${esc(shop.name)}</span></div></footer>
   <div class="mbar" id="mbar" hidden><div><b id="mbar-t">Book a chair</b><small id="mbar-s">${policyOf(I).onlineBooking ? m(policyOf(I).deposit) + ' deposit secures your slot' : 'Call or message us to book'}</small></div><button class="btn btn-accent" data-act="mbar">Book now</button></div>
   <div id="lightbox" hidden></div>`;
 }

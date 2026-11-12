@@ -2,7 +2,7 @@
 // Sign-in is Firebase Auth; only users listed in the admins/ collection get in (see firestore.rules).
 import { db, demo, demoBar, resetDemo, login, logout, resetPassword, onAuth, uploadImage, deleteImage, call } from './fb.js';
 import { buildXlsx, xlDate, xlTime, colName } from './xlsx.js';
-import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, publicBarber, DEFAULT_POLICY, startMs, resizeImage, initials, phoneKey, morph } from './shared.js';
+import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, publicBarber, DEFAULT_POLICY, startMs, resizeImage, initials, phoneKey, morph, brand, LOGO_LG } from './shared.js';
 
 // ---------- constants ----------
 const METHODS = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer'];
@@ -90,7 +90,7 @@ const ICONS = {
   out: '<path d="M8 4H4v12h4M12 6l4 4-4 4M16 10H8"/>'
 };
 const icon = n => `<svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n]}</svg>`;
-const mark = () => `<span class="wordmark" style="font-size:20px"><span class="mark" aria-hidden="true" style="width:26px;height:26px;font-size:11px">R3</span><span>${esc(info().shop.wordmark || info().shop.name)}</span></span>`;
+const mark = () => `<span class="wordmark" style="font-size:20px">${brand(info().shop.wordmark || info().shop.name, 'sm')}</span>`
 
 // ---------- feedback & writes ----------
 let toastT;
@@ -138,10 +138,10 @@ function inner() {
     <main class="main"><div class="main-in${S.enter ? ' enter' : ''}">${loadingNote()}${S.infoMissing ? setupBanner() : ''}${TAB_VIEWS[tab]()}</div></main>
   </div>`;
 }
-function gate(title, msg, signOut) { return `<div class="center"><div>${mark()}<h1 style="font:800 34px/1 var(--f-display);text-transform:uppercase">${esc(title)}</h1><p class="muted">${esc(msg)}</p>${signOut ? '<button class="btn" data-act="logout">Sign out</button>' : ''}</div></div>`; }
+function gate(title, msg, signOut) { return `<div class="center"><div><img class="logo-hero" src="${LOGO_LG}" alt="" width="180" height="180"><h1 style="font:400 30px/1.1 var(--f-slab)">${esc(title)}</h1><p class="muted">${esc(msg)}</p>${signOut ? '<button class="btn" data-act="logout">Sign out</button>' : ''}</div></div>`; }
 function loginView() {
   return `<div class="center"><form class="panel stack" data-form="login" style="width:min(100%,380px);text-align:left">
-    <div>${mark()}</div><h1 style="font:800 30px/1 var(--f-display);text-transform:uppercase">Staff sign in</h1>
+    <img class="logo-hero" src="${LOGO_LG}" alt="${esc(info().shop.name)}" width="180" height="180"><h1 style="font:400 28px/1.1 var(--f-slab);text-align:center">Staff sign in</h1>
     ${field('Email', `<input id="l-email" name="email" type="email" autocomplete="username" required>`, 'l-email')}
     ${field('Password', `<input id="l-pass" name="pass" type="password" autocomplete="current-password" required>`, 'l-pass')}
     ${demo ? '<p class="hint">Demo: any email and password signs you in.</p>' : ''}${S.loginErr ? `<p class="err" role="alert">${esc(S.loginErr)}</p>` : ''}${S.loginMsg ? `<p class="hint">${esc(S.loginMsg)}</p>` : ''}

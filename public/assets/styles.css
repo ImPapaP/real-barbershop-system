@@ -1,29 +1,31 @@
 /* Layout: public shop site (signboard header, menu-board price list, booking) + admin app shell (sidebar, KPI row, panels, receipt-style checkout). Barber-pole red/white/blue is the signature, used sparingly. */
 /* REAL Barbers: black and white like the shop's signage, one electric-blue accent from its neon. */
 :root{
-  --bg:#f4f5f7; --surface:#ffffff; --surface-2:#eceef2; --ink:#0b0d12; --ink-2:#444b5a; --muted:#697183;
-  --line:#dfe2e8; --line-2:#c6cbd5;
-  --accent:#1b5cff; --accent-soft:#e6edff; --red:#d03b3b; --blue:#1b5cff; --pole-white:#ffffff;
+  --bg:#f3f3f1; --surface:#ffffff; --surface-2:#ebebe8; --ink:#0b0b0c; --ink-2:#45464b; --muted:#6c6d73;
+  --line:#e0e0dc; --line-2:#c9c9c4;
+  --accent:#0b0d12; --accent-soft:#e9eaee; --accent-ink:#ffffff; --red:#d03b3b; --blue:#1b5cff; --pole-white:#ffffff;
   --hero:#0b0d12; --hero-ink:#f3f5fa; --hero-muted:#a3aabb;
   --s1:#2a78d6; --s2:#eb6834;
   --good:#0ca30c; --warn:#e3a008; --bad:#d03b3b; --info:#2a78d6;
   --good-ink:#006300; --bad-ink:#b3261e;
   --shadow:0 1px 2px rgba(11,13,18,.06),0 10px 28px rgba(11,13,18,.08);
   --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --f-slab:"Alfa Slab One","Rockwell Extra Bold",Rockwell,"Roboto Slab",Georgia,serif;
+  --f-mark:"Montserrat","Helvetica Neue",Arial,sans-serif;
   --f-body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
   --r:12px;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#0a0c11; --surface:#12161f; --surface-2:#1a202c; --ink:#eef1f7; --ink-2:#b0b8c8; --muted:#8a93a6;
-  --line:#232a38; --line-2:#323b4e; --accent:#4d84ff; --accent-soft:#16213d; --red:#e5544a; --blue:#4d84ff; --pole-white:#eef1f7;
-  --hero:#05070b; --hero-ink:#f3f5fa; --hero-muted:#a3aabb;
+  --bg:#0b0b0c; --surface:#151517; --surface-2:#1e1e21; --ink:#f2f2f0; --ink-2:#bdbdb8; --muted:#8f8f8a;
+  --line:#262a31; --line-2:#363b45; --accent:#f3f5fa; --accent-soft:#1f232b; --accent-ink:#0b0d12; --red:#e5544a; --blue:#4d84ff; --pole-white:#eef1f7;
+  --hero:#070708; --hero-ink:#f3f5fa; --hero-muted:#a3aabb;
   --s1:#3987e5; --s2:#d95926; --good-ink:#3fcf6b; --bad-ink:#ff7b70;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px rgba(0,0,0,.35); color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#0a0c11; --surface:#12161f; --surface-2:#1a202c; --ink:#eef1f7; --ink-2:#b0b8c8; --muted:#8a93a6;
-  --line:#232a38; --line-2:#323b4e; --accent:#4d84ff; --accent-soft:#16213d; --red:#e5544a; --blue:#4d84ff; --pole-white:#eef1f7;
-  --hero:#05070b; --hero-ink:#f3f5fa; --hero-muted:#a3aabb;
+  --bg:#0b0b0c; --surface:#151517; --surface-2:#1e1e21; --ink:#f2f2f0; --ink-2:#bdbdb8; --muted:#8f8f8a;
+  --line:#262a31; --line-2:#363b45; --accent:#f3f5fa; --accent-soft:#1f232b; --accent-ink:#0b0d12; --red:#e5544a; --blue:#4d84ff; --pole-white:#eef1f7;
+  --hero:#070708; --hero-ink:#f3f5fa; --hero-muted:#a3aabb;
   --s1:#3987e5; --s2:#d95926; --good-ink:#3fcf6b; --bad-ink:#ff7b70;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px rgba(0,0,0,.35); color-scheme:dark}
 html{-webkit-text-size-adjust:100%}
@@ -57,7 +59,7 @@ a{color:inherit}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .btn-primary{background:var(--ink);color:var(--surface);border-color:var(--ink)}
 .btn-primary:hover{background:var(--ink-2);border-color:var(--ink-2)}
-.btn-accent{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn-accent{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .btn-accent:hover{background:var(--accent);filter:brightness(1.1)}
 .btn-ghost{background:transparent}
 .btn-danger{color:var(--bad-ink)}
@@ -138,7 +140,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .barbers{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr));gap:16px}
 .barber{background:var(--bg);border:1px solid var(--line);border-radius:var(--r);padding:18px;display:grid;gap:12px;align-content:start}
 .mono{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;font:800 24px/1 var(--f-display);color:var(--surface);background:var(--ink);position:relative}
-.mono small{position:absolute;right:-4px;bottom:-4px;background:var(--accent);color:#fff;font:700 10px/1 var(--f-body);padding:4px 5px;border-radius:999px;border:2px solid var(--bg)}
+.mono small{position:absolute;right:-4px;bottom:-4px;background:var(--accent);color:var(--accent-ink);font:700 10px/1 var(--f-body);padding:4px 5px;border-radius:999px;border:2px solid var(--bg)}
 .barber h3{font:800 24px/1 var(--f-display);text-transform:uppercase}
 .days{display:flex;gap:4px;flex-wrap:wrap}
 .days span{font-size:11px;font-weight:700;width:30px;text-align:center;padding:4px 0;border-radius:6px;background:var(--surface-2);color:var(--muted)}
@@ -351,7 +353,7 @@ details.tbl-view summary{cursor:pointer;color:var(--ink-2);font-weight:600}
 .tgroup{display:grid;gap:6px}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
 .tchip{padding:9px 12px;border:1px solid var(--line-2);border-radius:8px;background:var(--surface);cursor:pointer;font-weight:600;font-size:14px;font-variant-numeric:tabular-nums;min-width:92px}
-.tchip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.tchip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .tchip:disabled{text-decoration:line-through;opacity:.4;cursor:not-allowed}
 .summary{position:sticky;top:calc(env(safe-area-inset-top,0px) + 76px);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
 .summary-b{padding:18px;display:grid;gap:12px}
@@ -376,7 +378,7 @@ details.tbl-view summary{cursor:pointer;color:var(--ink-2);font-weight:600}
    v2: photos, motion and polish
    ========================================================= */
 :root{ --star:#f5b301; --ease:cubic-bezier(.2,.7,.2,1); }
-.announce{background:var(--accent);color:#fff;text-align:center;font-size:14px;font-weight:600;padding:9px max(16px,env(safe-area-inset-right,0px)) 9px max(16px,env(safe-area-inset-left,0px))}
+.announce{background:var(--accent);color:var(--accent-ink);text-align:center;font-size:14px;font-weight:600;padding:9px max(16px,env(safe-area-inset-right,0px)) 9px max(16px,env(safe-area-inset-left,0px))}
 .announce a{color:#fff;text-decoration:none;display:inline-flex;gap:6px;align-items:center}
 .announce a:hover{text-decoration:underline}
 .site-head{transition:box-shadow .25s,background .25s}
@@ -508,17 +510,17 @@ a.rating:hover{border-color:var(--star)}
 .progress li span{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--surface-2);font-size:11px;transition:background .3s,color .3s}
 .progress li span .ic{width:13px;height:13px}
 .progress li.done{color:var(--ink)}
-.progress li.done span{background:var(--accent);color:#fff}
+.progress li.done span{background:var(--accent);color:var(--accent-ink)}
 @media (max-width:560px){.progress li{font-size:0;gap:0}.progress li span{font-size:11px}}
 .step{transition:opacity .3s,border-color .3s,box-shadow .3s}
 .step:focus-within{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 10%,transparent)}
 .step-h .n{transition:background .3s}
-.step-h .n.ok{background:var(--accent);color:#fff}
+.step-h .n.ok{background:var(--accent);color:var(--accent-ink)}
 .step-h .n .ic{width:15px;height:15px}
 .pickcard{position:relative;transition:border-color .2s,background .2s,transform .15s,box-shadow .2s}
 .pickcard:active:not(:disabled){transform:scale(.98)}
 .pickcard:disabled{opacity:.5;cursor:not-allowed}
-.pickcard .tick{position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;transform:scale(0);transition:transform .25s var(--ease)}
+.pickcard .tick{position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;transform:scale(0);transition:transform .25s var(--ease)}
 .pickcard .tick .ic{width:13px;height:13px}
 .pickcard[aria-pressed="true"] .tick{transform:scale(1)}
 .pickcard[aria-pressed="true"] b{padding-right:24px}
@@ -628,7 +630,7 @@ a.rating:hover{border-color:var(--star)}
 .loyalty .muted{color:color-mix(in srgb,var(--surface) 65%,transparent)}
 .stamps{display:grid;grid-template-columns:repeat(5,40px);gap:8px}
 .stamps span{width:40px;height:40px;border-radius:50%;border:2px dashed color-mix(in srgb,var(--surface) 35%,transparent);display:grid;place-items:center;font:800 13px/1 var(--f-display);color:color-mix(in srgb,var(--surface) 55%,transparent)}
-.stamps span.on{border:0;background:var(--accent);color:#fff;animation:pop .4s var(--ease) both;animation-delay:calc(var(--i) * 60ms + .4s)}
+.stamps span.on{border:0;background:var(--accent);color:var(--accent-ink);animation:pop .4s var(--ease) both;animation-delay:calc(var(--i) * 60ms + .4s)}
 .stamps span.free{border-style:solid;border-color:var(--star);color:var(--star);font-size:10px}
 @media (max-width:620px){.loyalty{grid-template-columns:1fr}}
 .offline-book{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:24px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:24px}
@@ -639,7 +641,7 @@ a.rating:hover{border-color:var(--star)}
 /* ---------- phone booking steps ---------- */
 .steps-ol{list-style:none;counter-reset:st;display:grid;gap:10px;margin:12px 0;padding:0}
 .steps-ol li{counter-increment:st;display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;align-items:start;line-height:1.5}
-.steps-ol li::before{content:counter(st);display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;font-weight:800;font-size:13px}
+.steps-ol li::before{content:counter(st);display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-weight:800;font-size:13px}
 .steps-ol .btn{margin-left:6px;vertical-align:middle}
 .steps-ol b{white-space:nowrap}
 
@@ -695,3 +697,74 @@ a.rating:hover{border-color:var(--star)}
 .keep-nums span{display:grid;gap:2px;min-width:0}
 .keep-nums small{color:var(--muted);font-size:11.5px}
 .keep-nums b{font-size:14px}
+
+
+/* =====================================================================
+   Brand: built around the REAL Barbers badge. Black and white, a lit brick
+   wall like the logo photo, slab lettering like "BEST LOOKS REALIZED", and the
+   wordmark with the mirrored E.
+   ===================================================================== */
+html{font-synthesis-weight:none}
+.wordmark{display:inline-flex;align-items:center;gap:10px;font:800 21px/1 var(--f-mark);letter-spacing:.02em;text-transform:uppercase;text-decoration:none;white-space:nowrap}
+.wordmark .mark{display:none}
+.logo-mark{width:44px;height:44px;flex:none;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
+.logo-mark.sm{width:34px;height:34px}
+.mirror-e{display:inline-block;transform:scaleX(-1)}
+@media (max-width:420px){.wordmark{font-size:17px;gap:8px}.logo-mark{width:38px;height:38px}}
+
+/* dark surfaces (hero, dark sections) always use a white accent */
+.hero-x,.dark-sec{--accent:#f3f5fa;--accent-ink:#0b0d12;--accent-soft:rgba(255,255,255,.08)}
+
+/* the brick wall */
+.brick{position:absolute;inset:0;z-index:0;pointer-events:none;background-color:#141416;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='56' viewBox='0 0 120 56'%3E%3Cg fill='none' stroke='%23050506' stroke-width='3'%3E%3Cpath d='M0 1.5h120M0 29.5h120M1.5 0v28M61.5 0v28M31.5 28v28M91.5 28v28'/%3E%3C/g%3E%3Cg fill='%23ffffff'%3E%3Crect x='4' y='4' width='55' height='23' opacity='.035'/%3E%3Crect x='64' y='4' width='55' height='23' opacity='.02'/%3E%3Crect x='34' y='32' width='55' height='22' opacity='.03'/%3E%3Crect x='94' y='32' width='26' height='22' opacity='.045'/%3E%3Crect x='0' y='32' width='29' height='22' opacity='.045'/%3E%3C/g%3E%3C/svg%3E");
+  background-size:120px 56px}
+.brick::after{content:"";position:absolute;inset:0;background:
+  radial-gradient(ellipse 44% 62% at 76% 46%,rgba(255,255,255,.22),rgba(255,255,255,.06) 55%,transparent 75%),
+  radial-gradient(ellipse 120% 90% at 50% 40%,transparent 40%,rgba(0,0,0,.75) 100%)}
+.hero-x::before{display:none}
+.hero-x.has-photo .brick{display:none}
+
+/* hero */
+.hero-x h1{font:400 clamp(40px,6.6vw,86px)/.98 var(--f-slab);letter-spacing:.01em;max-width:12ch;text-shadow:0 3px 0 #000,0 0 40px rgba(0,0,0,.6)}
+.hero-side{display:grid;gap:22px;justify-items:center;align-self:center}
+.hero-logo{width:min(100%,400px);height:auto;aspect-ratio:1;max-width:100%;filter:drop-shadow(0 0 28px rgba(255,255,255,.28)) drop-shadow(0 18px 30px rgba(0,0,0,.6));transform:rotate(-2deg)}
+.hero-anim .hero-logo{animation:stamp .9s var(--ease) both .15s}
+@keyframes stamp{0%{opacity:0;transform:scale(1.25) rotate(-8deg)}60%{opacity:1;transform:scale(.97) rotate(-1deg)}100%{transform:scale(1) rotate(-2deg)}}
+.hero-side .hero-card{width:100%}
+.hero-x .btn-accent{box-shadow:0 0 0 1px #fff,0 8px 24px rgba(255,255,255,.12)}
+.hero-x .chip{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:var(--hero-ink)}
+@media (max-width:860px){
+  .hero-grid{display:flex;flex-direction:column;align-items:stretch;gap:26px}
+  .hero-side{display:contents}
+  .hero-logo{order:-1;width:min(64vw,250px);align-self:center;margin-bottom:-6px}
+  .hero-x{padding-block:36px 44px}
+}
+@media (prefers-reduced-motion:reduce){.hero-anim .hero-logo{animation:none}}
+
+/* slab lettering for headings and labels, like the badge */
+.sec-title,.board h3,.tier-h b,.step-h h3,.ticket h1,.ticket h2,.center h1,.login h1,.login h2{font-family:var(--f-slab);font-weight:400;letter-spacing:.01em}
+.sec-title{font-size:clamp(28px,4.2vw,44px);line-height:1.05}
+.board h3{font-size:19px;color:var(--ink)!important;border-bottom:3px double var(--ink)!important}
+.promo h3{border-bottom-style:double!important}
+.sec-head .eyebrow,.dark-sec .eyebrow{color:var(--ink-2)}
+.dark-sec .eyebrow{color:#bdbdb8}
+
+/* stamp badges for promos and highlights */
+.promo{background:var(--surface);border:2px solid var(--ink);box-shadow:5px 5px 0 var(--ink)}
+.marquee{background:#0b0b0c;color:#f2f2f0;border-block:3px double #f2f2f0}
+.marquee .ic{color:#f2f2f0}
+
+/* site footer: small brick strip */
+.site-foot{position:relative;background:#0b0b0c;color:#d8d8d4;border-top:3px double var(--line-2)}
+.site-foot a{color:#f2f2f0}
+
+/* booking page and dashboard sign-in */
+.logo-hero{display:block;width:min(180px,50vw);height:auto;margin:0 auto 14px;filter:drop-shadow(0 6px 16px rgba(0,0,0,.25))}
+.site-foot{--muted:#a3a39e;--ink:#f2f2f0;--line:#2a2a2d}
+/* more slab headings: page titles, cards, modals, booking page */
+.page-head h1,.barber h3,.summary h3,.modal-h h2,.status-hero h1,.ticket h2,.today h2{font-family:var(--f-slab);font-weight:400;letter-spacing:.01em}
+.page-head h1{font-size:34px}
+.barber h3,.summary h3,.modal-h h2{font-size:21px}
+.status-hero h1{font-size:clamp(30px,5vw,46px);line-height:1.05}
+.marquee span{font-family:var(--f-slab);font-weight:400;font-size:19px;letter-spacing:.04em}
