@@ -5,7 +5,7 @@ import {
   startMs, phNow, addDays, sum
 } from './shared.js';
 
-const KEY = 'rb-demo-v3', USER_KEY = 'rb-demo-user';
+const KEY = 'rb-demo-v4', USER_KEY = 'rb-demo-user';
 const clone = o => o === undefined ? undefined : JSON.parse(JSON.stringify(o));
 const listeners = new Set();
 let store = new Map();

@@ -32,6 +32,7 @@ const ICON = {
   arrow: '<path d="M4 10h12M11 5l5 5-5 5"/>',
   check: '<path d="M4.5 10.5l3.5 3.5 7.5-8"/>',
   scissors: '<circle cx="6" cy="14.5" r="2.5"/><circle cx="14" cy="14.5" r="2.5"/><path d="M7.6 12.6L15 3M12.4 12.6L5 3"/>',
+  user: '<circle cx="10" cy="6.5" r="3.2"/><path d="M3.5 17.5a6.5 6.5 0 0113 0"/>',
   close: '<path d="M5 5l10 10M15 5L5 15"/>', left: '<path d="M12.5 4.5L7 10l5.5 5.5"/>', right: '<path d="M7.5 4.5L13 10l-5.5 5.5"/>'
 };
 const ic = (n, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
@@ -61,7 +62,7 @@ function hoursSummary(hrs) {
 }
 function ratingChip(sh, light) {
   if (sh.googleRating === '' || sh.googleRating == null) return '';
-  const inner = `${ic('star', 'star')}<b>${Number(sh.googleRating).toFixed(1)}</b><span>${sh.googleCount ? `${sh.googleCount} Google reviews` : 'on Google'}</span>`;
+  const inner = `${ic('star', 'star')}<b>${Number(sh.googleRating).toFixed(1)}</b><span>${sh.googleCount ? `${sh.googleCount} ${esc(sh.ratingSource || 'Google')} reviews` : `on ${esc(sh.ratingSource || 'Google')}`}</span>`;
   return sh.googleUrl ? `<a class="rating${light ? ' light' : ''}" href="${esc(sh.googleUrl)}" target="_blank" rel="noopener">${inner}</a>` : `<span class="rating${light ? ' light' : ''}">${inner}</span>`;
 }
 
@@ -70,7 +71,8 @@ function page() {
   if (!S.loaded) return `<div class="center"><div><span class="wordmark"><span class="mark" aria-hidden="true">R3</span>${esc(shop.wordmark || shop.name)}</span><p class="muted">${S.slow ? `We can’t load the booking calendar right now. Call us at <b>${esc(shop.phone)}</b>.` : '<span class="spinner"></span>'}</p></div></div>`;
   const th = I.hours.find(h => h.d === today.dow);
   const inToday = (I.barbers || []).filter(b => (b.days || []).includes(today.dow));
-  const cut = svcs().find(s => /deluxe haircut$/i.test(s.name)) || svcs()[0];
+  const cuts = svcs().filter(s => (s.group || 'him') === 'him' && /haircut$/i.test(s.name)).sort((x, y) => x.price - y.price);
+  const cut = cuts[0] ? { name: cuts.length > 1 ? 'Haircuts from' : cuts[0].name, price: cuts[0].price } : svcs()[0];
   const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shop.name + ' ' + shop.address)}`;
   const anim = S.painted ? '' : ' hero-anim';
   const gal = gallery(), revs = (I.reviews || []).slice(0, 6);
@@ -165,11 +167,14 @@ function page() {
 }
 
 function policyCards() {
-  const p = policyOf(info());
+  const p = policyOf(info()), sh = info().shop, on = p.onlineBooking;
+  const pay = on ? 'Down payment to confirm your booking, paid online by GCash, Maya or card. It’s deducted from your bill.'
+    : `Down payment to confirm your booking${sh.gcashNumber ? `, sent by GCash to ${esc(sh.gcashNumber)}${sh.gcashName ? ` (${esc(sh.gcashName)})` : ''}` : ''}. Send the proof on our Facebook page. No down payment, no booking. It’s deducted from your bill.`;
   return `<div class="policy">
-    <div class="reveal">${ic('check', 'pic')}<b>${m(p.deposit)}</b><span>Deposit to confirm your booking, paid online by GCash, Maya or card. It’s deducted from your bill.</span></div>
-    <div class="reveal" style="--d:80ms">${ic('clock', 'pic')}<b>${p.lateMinutes} min</b><span>Arriving ${p.lateMinutes} minutes late or more cancels the booking, and the deposit isn’t refunded.</span></div>
-    <div class="reveal" style="--d:160ms">${ic('arrow', 'pic')}<b>${p.rescheduleHours} hrs</b><span>Reschedule online up to ${p.rescheduleHours} hours before your appointment, using the link in your confirmation email.</span></div>
+    <div class="reveal">${ic('check', 'pic')}<b>${m(p.deposit)}</b><span>${pay}</span></div>
+    <div class="reveal" style="--d:80ms">${ic('clock', 'pic')}<b>${p.lateMinutes} min</b><span>Arriving ${p.lateMinutes} minutes late or more cancels the booking, and the down payment isn’t refunded.</span></div>
+    <div class="reveal" style="--d:160ms">${ic('arrow', 'pic')}<b>${p.rescheduleHours} hrs</b><span>${on ? `Reschedule online up to ${p.rescheduleHours} hours before your appointment, using the link in your confirmation email.` : `Reschedule up to ${p.rescheduleHours} hours before your appointment by messaging us.`}</span></div>
+    <div class="reveal" style="--d:240ms">${ic('user', 'pic')}<b>1 person</b><span>Each booking is for one person only. Booking for a friend too? Book a separate slot for them.</span></div>
   </div>`;
 }
 
@@ -190,7 +195,11 @@ function stepState() {
 }
 function bookOffline() {
   const sh = info().shop;
-  return `<div class="offline-book reveal"><div><h3>Book by phone or Facebook</h3><p class="muted">Online booking is coming soon. For now, call or text us, or message our Facebook page, and we’ll save your slot. Walk-ins are welcome too.</p></div>
+  return `<div class="offline-book reveal"><div><h3>Book by phone or Facebook</h3><p class="muted">Online booking is coming soon. For now, book in three steps:</p>
+      <ol class="steps-ol"><li><span>Call, text or message us on Facebook with the service, barber and time you want.</span></li>
+      <li><span>Send the ${m(policyOf(info()).deposit)} down payment${sh.gcashNumber ? ` by GCash to <b>${esc(sh.gcashNumber)}</b>${sh.gcashName ? ` (${esc(sh.gcashName)})` : ''} <button class="btn btn-sm btn-ghost" data-act="copy" data-text="${esc(sh.gcashNumber)}">Copy</button>` : ''}</span></li>
+      <li><span>Send a screenshot of the payment on our Facebook page. Your slot is saved once we confirm.</span></li></ol>
+      <p class="muted small">Walk-ins are welcome too, when a chair is free.</p></div>
     <div class="offline-actions"><p class="row"><b class="big">${esc(sh.phone)}</b><button class="btn btn-sm" data-act="copy" data-text="${esc(sh.phone)}">Copy number</button></p>
     ${sh.facebook ? `<a class="btn btn-accent" href="${esc(sh.facebook)}" target="_blank" rel="noopener">Message us on Facebook ${ic('arrow')}</a>` : ''}</div></div>`;
 }

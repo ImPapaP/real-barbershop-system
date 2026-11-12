@@ -635,3 +635,10 @@ a.rating:hover{border-color:var(--star)}
 .offline-book h3{font:800 28px/1 var(--f-display);text-transform:uppercase;margin-bottom:8px}
 .offline-actions{display:grid;gap:12px;justify-items:start}
 @media (max-width:760px){.offline-book{grid-template-columns:1fr}}
+
+/* ---------- phone booking steps ---------- */
+.steps-ol{list-style:none;counter-reset:st;display:grid;gap:10px;margin:12px 0;padding:0}
+.steps-ol li{counter-increment:st;display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;align-items:start;line-height:1.5}
+.steps-ol li::before{content:counter(st);display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;font-weight:800;font-size:13px}
+.steps-ol .btn{margin-left:6px;vertical-align:middle}
+.steps-ol b{white-space:nowrap}

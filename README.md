@@ -79,7 +79,7 @@ This uploads the website and the database security rules. The site is now at `ht
 
 #### 5. Load the menu and team
 
-Open `https://<your-project-id>.web.app/admin/`, sign in, and click **Load starter menu**. It saves REAL Barbers' Setmore services and prices and a starter team (Reymart, Lyndon, Rod, Angelo, and Dave for women's services). Then:
+Open `https://<your-project-id>.web.app/admin/`, sign in, and click **Load starter menu**. It saves REAL Barbers' Setmore services and prices and a starter team (Reymart, Lyndon, Rod, Angelo, Mac, Ed, and Dave for women’s services), the real Setmore reviews, and the GCash number for down payments. Then:
 
 - **Barbers**: fix names, days in, commission rates, and who takes men's or women's bookings.
 - **Shop setup**: check the address, hours, prices and durations. Setmore listed every service as 1 hour, so set the real lengths (balayage, rebond and so on take longer).
@@ -205,5 +205,5 @@ public/
 - **Customer data**: the booking form asks customers to agree to how their name, number and email are used, as the Data Privacy Act expects. Give dashboard access only to staff who need it.
 - **Spam protection**: one unpaid booking per mobile number at a time. For more protection, turn on Firebase **App Check** with reCAPTCHA.
 - **Photos**: upload the homepage photo, gallery and team photos in the dashboard under **Website**. They're resized in the browser before upload. Reviews and the announcement bar are managed there too.
-- **Logo**: the site uses a text wordmark. To use the shop's logo, add the image to `public/assets/` and swap it into the header in `assets/site.js`.
+- **Logo**: the site uses a text wordmark. To use the shop’s logo, add the image as `public/assets/logo.png` and swap it into the header in `assets/site.js`.
 - **Firebase SDK version**: the pages load Firebase 10.14.1 from Google's CDN. To update, change the version in `public/assets/fb.js`.
