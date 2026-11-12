@@ -82,7 +82,7 @@ This uploads the website and the database security rules. The site is now at `ht
 Open `https://<your-project-id>.web.app/admin/`, sign in, and click **Load starter menu**. It saves REAL Barbers' Setmore services and prices and a starter team (Deluxe: Lyndon, Roderick, Reymart, Angelo; Regular: Joe Ed, Renz, Jay, Vince, Mac; Dave for women’s services), the real Setmore reviews, and the GCash number for down payments. Then:
 
 - **Barbers**: fix names, days in, commission rates, and who takes men's or women's bookings.
-- **Shop setup**: check the address, hours, prices and durations. Setmore listed every service as 1 hour, so set the real lengths (balayage, rebond and so on take longer).
+- **Shop setup**: check the address, hours, prices and durations. Setmore listed every service as 1 hour; the starter menu uses realistic times instead (Regular Haircut 30 min, Signature 45 min, Deluxe 1 hr, promos 1 hr 15 min to 2 hrs, rebond 4 hrs and so on). Adjust any that don’t match your shop. The length decides how long the chair is blocked online.
 
 **Online booking starts switched off.** The website's booking section asks customers to call or message the shop until you turn it on in Part 2. You can start using the dashboard for walk-ins, phone bookings, checkout and expenses right away.
 

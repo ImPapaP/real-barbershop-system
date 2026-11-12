@@ -798,3 +798,6 @@ html{font-synthesis-weight:none}
 .tier-card.on .tick{opacity:1;transform:none}
 .tier-card .tick .ic{width:14px;height:14px}
 .pick.one-col{grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr))}
+.mi-time{display:inline-flex;align-items:center;gap:4px;font-weight:600;color:var(--ink-2)}
+.mi-time .ic{width:13px;height:13px}
+.summary-top .chip .ic{width:13px;height:13px}
