@@ -3,7 +3,7 @@
 import { db, call, demo, demoBar, resetDemo } from './fb.js';
 import {
   $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, DAYS_LONG, MONTHS, sum, phNow, dowOf, policyOf, openStatus,
-  availableTimes, bookableDates, timeChips, initials, STARTER, STARTER_STAFF, publicBarber, revealOnScroll
+  availableTimes, bookableDates, timeChips, initials, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph
 } from './shared.js';
 
 const S = {
@@ -51,7 +51,7 @@ function renderAll() {
   revealOnScroll();
   syncHeader();
 }
-function renderBooker() { const el = $('#booker'); if (el) keepFocus(() => { el.innerHTML = booker(); }); syncStickyBar(); }
+function renderBooker() { const el = $('#booker'); if (el) morph(el, booker()); syncStickyBar(); }
 function renderMenu() { const el = $('#menu-board'); if (el) el.innerHTML = menuBoard(S.menuTab); document.querySelectorAll('[data-act=menuTab]').forEach(b => b.setAttribute('aria-selected', b.dataset.v === S.menuTab)); }
 
 function hoursSummary(hrs) {

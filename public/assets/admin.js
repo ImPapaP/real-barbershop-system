@@ -1,7 +1,7 @@
 // Shop dashboard: schedule, checkout, income & expenses, barbers, clients, inventory, setup.
 // Sign-in is Firebase Auth; only users listed in the admins/ collection get in (see firestore.rules).
 import { db, demo, demoBar, resetDemo, login, logout, resetPassword, onAuth, uploadImage, deleteImage, call } from './fb.js';
-import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, publicBarber, DEFAULT_POLICY, startMs, resizeImage, initials, phoneKey } from './shared.js';
+import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, publicBarber, DEFAULT_POLICY, startMs, resizeImage, initials, phoneKey, morph } from './shared.js';
 
 // ---------- constants ----------
 const METHODS = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer'];
@@ -114,9 +114,10 @@ function render() {
   try { s = a.selectionStart; e = a.selectionEnd; } catch (_) {}
   const tab = route(), all = COLS.every(c => S.loaded[c]);
   S.enter = S.canAdmin && (tab !== S.lastTab || (all && !S.wasLoaded)); S.lastTab = tab; if (all) S.wasLoaded = true;
-  $('#app').innerHTML = view();
+  if (S.enter || !$('#app').firstElementChild) $('#app').innerHTML = view(); else morph($('#app'), view());
   if (id && !$('#modal').contains(a)) { const n = document.getElementById(id); if (n && n !== document.activeElement) { n.focus({ preventScroll: true }); try { if (s != null) n.setSelectionRange(s, e); } catch (_) {} } }
-  $('#cust-list').innerHTML = S.customers.map(c => `<option value="${esc(c.name)}">${esc(c.phone || '')}</option>`).join('');
+  const cl = S.customers.map(c => `<option value="${esc(c.name)}">${esc(c.phone || '')}</option>`).join('');
+  if (cl !== S.custListHtml) { S.custListHtml = cl; $('#cust-list').innerHTML = cl; }
 }
 function view() { return demoBar() + inner(); }
 function inner() {
