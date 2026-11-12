@@ -631,3 +631,7 @@ a.rating:hover{border-color:var(--star)}
 .stamps span.on{border:0;background:var(--accent);color:#fff;animation:pop .4s var(--ease) both;animation-delay:calc(var(--i) * 60ms + .4s)}
 .stamps span.free{border-style:solid;border-color:var(--star);color:var(--star);font-size:10px}
 @media (max-width:620px){.loyalty{grid-template-columns:1fr}}
+.offline-book{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:24px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:24px}
+.offline-book h3{font:800 28px/1 var(--f-display);text-transform:uppercase;margin-bottom:8px}
+.offline-actions{display:grid;gap:12px;justify-items:start}
+@media (max-width:760px){.offline-book{grid-template-columns:1fr}}

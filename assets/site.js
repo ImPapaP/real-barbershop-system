@@ -99,7 +99,7 @@ function page() {
         <dl class="facts">
           ${cut ? `<div><dt>${esc(cut.name)}</dt><dd>${m(cut.price)}</dd></div>` : ''}
           <div><dt>Hours</dt><dd>${esc(hoursSummary(I.hours))}</dd></div>
-          <div><dt>Deposit to book</dt><dd>${m(policyOf(I).deposit)}</dd></div>
+          ${policyOf(I).onlineBooking ? `<div><dt>Deposit to book</dt><dd>${m(policyOf(I).deposit)}</dd></div>` : '<div><dt>Walk-ins</dt><dd>Welcome</dd></div>'}
         </dl>
       </div>
       <aside class="hero-card" aria-label="Today at the shop">
@@ -126,7 +126,7 @@ function page() {
   </div></section>` : ''}
 
   <section id="book" class="sec alt"><div class="wrap">
-    <div class="sec-head reveal"><div><p class="eyebrow">Book online</p><h2 class="sec-title">Book an appointment</h2></div><p class="muted small">Pay a ${m(policyOf(I).deposit)} deposit to lock in your slot. It goes toward your bill.</p></div>
+    <div class="sec-head reveal"><div><p class="eyebrow">Book online</p><h2 class="sec-title">Book an appointment</h2></div>${policyOf(I).onlineBooking ? `<p class="muted small">Pay a ${m(policyOf(I).deposit)} deposit to lock in your slot. It goes toward your bill.</p>` : ''}</div>
     <div id="booker">${booker()}</div>
   </div></section>
 
@@ -160,7 +160,7 @@ function page() {
     ${policyCards()}
   </div></section>
   <footer class="site-foot"><div class="wrap"><span class="wordmark" style="font-size:18px"><span class="mark" aria-hidden="true" style="width:24px;height:24px;font-size:10px">R3</span>${esc(shop.wordmark || shop.name)}</span><span>${esc(shop.address)} · ${esc(shop.phone)}</span><span>© ${today.date.slice(0, 4)} ${esc(shop.name)}</span></div></footer>
-  <div class="mbar" id="mbar" hidden><div><b id="mbar-t">Book a chair</b><small id="mbar-s">${m(policyOf(I).deposit)} deposit secures your slot</small></div><button class="btn btn-accent" data-act="mbar">Book now</button></div>
+  <div class="mbar" id="mbar" hidden><div><b id="mbar-t">Book a chair</b><small id="mbar-s">${policyOf(I).onlineBooking ? m(policyOf(I).deposit) + ' deposit secures your slot' : 'Call or message us to book'}</small></div><button class="btn btn-accent" data-act="mbar">Book now</button></div>
   <div id="lightbox" hidden></div>`;
 }
 
@@ -188,7 +188,14 @@ function stepState() {
   const details = when && b.name.trim() && b.phone.trim() && b.email.trim() && b.consent;
   return { picked, when, details, n: details ? 4 : when ? 3 : picked ? (b.date ? 2 : 1) : 0 };
 }
+function bookOffline() {
+  const sh = info().shop;
+  return `<div class="offline-book reveal"><div><h3>Book by phone or Facebook</h3><p class="muted">Online booking is coming soon. For now, call or text us, or message our Facebook page, and we’ll save your slot. Walk-ins are welcome too.</p></div>
+    <div class="offline-actions"><p class="row"><b class="big">${esc(sh.phone)}</b><button class="btn btn-sm" data-act="copy" data-text="${esc(sh.phone)}">Copy number</button></p>
+    ${sh.facebook ? `<a class="btn btn-accent" href="${esc(sh.facebook)}" target="_blank" rel="noopener">Message us on Facebook ${ic('arrow')}</a>` : ''}</div></div>`;
+}
 function booker() {
+  if (!policyOf(info()).onlineBooking) return bookOffline();
   const I = info(), b = S.bk, pol = policyOf(I), picked = chosen(), st = stepState();
   const bars = (I.barbers || []).filter(x => (x.groups || ['him']).includes(b.group));
   const dates = bookableDates(I).map(d => ({ ...d, off: !d.closed && b.barber && !(barber(b.barber)?.days || []).includes(dowOf(d.date)) }));
