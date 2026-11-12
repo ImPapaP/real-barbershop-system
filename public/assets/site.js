@@ -9,7 +9,7 @@ import {
 const S = {
   info: null, loaded: false, slow: false, menuTab: 'him', painted: false,
   slots: {}, slotsDate: '', slotsLoaded: false, unsub: null,
-  bk: { group: 'him', svc: {}, barber: '', date: '', time: '', name: '', phone: '', email: '', notes: '', consent: false },
+  bk: { group: 'him', tier: '', svc: {}, barber: '', date: '', time: '', name: '', phone: '', email: '', notes: '', consent: false },
   err: '', busy: false, last: null, lb: -1,
   wl: { open: false, window: 'any', consent: false, done: '', err: '', busy: false }
 };
@@ -272,18 +272,29 @@ function svcCard(s, act = 'bkSvc', extra = {}) {
   return `<button type="button" class="pickcard${extra.radio ? ' radio' : ''}" data-act="${act}" data-id="${esc(s.id)}" aria-pressed="${!!S.bk.svc[s.id]}" ${extra.disabled ? 'disabled' : ''}><span class="tick" aria-hidden="true">${ic('check')}</span><b>${esc(s.name)}</b><small>${extra.note ? esc(extra.note) : `${esc(s.mins)} min${s.desc && s.kind === 'base' && /^Save/.test(s.desc) ? ' · ' + esc(s.desc) : ''}`}</small><span class="p">${esc(priceLabel(s, cur()))}</span></button>`;
 }
 // Men's step 1: one haircut (Deluxe or Regular), then optional add-ons.
+// Men's step 1: A) Deluxe or Regular, B) one haircut from that level only, C) optional add-ons.
 function tierPicker() {
   const g = S.bk.group, all = svcs().filter(s => (s.group || 'him') === g);
   const bases = all.filter(s => s.kind === 'base'), extras = all.filter(s => s.kind !== 'base');
-  const base = bases.find(s => S.bk.svc[s.id]), err = chosen().length ? comboError(info(), chosen()) : '';
   const tiers = [...new Set(bases.map(s => s.tier || ''))];
-  return `<p class="substep"><span>A</span>Pick your haircut <small>Choose one</small></p>
-    <div class="tier-grid">${tiers.map(t => { const names = tierNames(t); return `<div class="tier-col${base && (base.tier || '') === t ? ' on' : ''}">
-      <div class="tier-h"><b>${esc(TIERS[t] || t || 'Haircuts')}</b>${names.length ? `<small>With ${esc(listNames(names))}</small>` : ''}</div>
-      <div class="pick one">${bases.filter(s => (s.tier || '') === t).map(s => svcCard(s, 'bkBase', { radio: true })).join('')}</div></div>`; }).join('')}</div>
-    ${extras.length ? `<p class="substep"><span>B</span>Add extras <small>Optional</small></p>
+  const tier = tiers.includes(S.bk.tier) ? S.bk.tier : (tiers.length === 1 ? tiers[0] : '');
+  const base = bases.find(s => S.bk.svc[s.id]), err = chosen().length ? comboError(info(), chosen()) : '';
+  const tierCard = t => {
+    const list = bases.filter(s => (s.tier || '') === t), from = Math.min(...list.map(s => s.price)), names = tierNames(t);
+    return `<button type="button" class="tier-card${tier === t ? ' on' : ''}" data-act="bkTier" data-v="${esc(t)}" aria-pressed="${tier === t}">
+      <span class="tick" aria-hidden="true">${ic('check')}</span>
+      <b>${esc(TIERS[t] || t || 'Haircuts')}</b>
+      <span class="tc-from">From ${m(from)}</span>
+      ${names.length ? `<small>${esc(listNames(names))}</small>` : ''}
+      <small class="tc-what">${t === 'deluxe' ? 'Senior barbers · shampoo, hot towel and massage included' : t === 'regular' ? 'Junior barbers · signature and regular cuts' : `${list.length} options`}</small></button>`;
+  };
+  return `<p class="substep"><span>A</span>Deluxe or Regular? <small>Choose one</small></p>
+    <div class="tier-cards">${tiers.map(tierCard).join('')}</div>
+    ${tier ? `<p class="substep"><span>B</span>Pick your ${esc((TIERS[tier] || '').toLowerCase())} haircut <small>Choose one</small></p>
+    <div class="pick one-col tab-in">${bases.filter(s => (s.tier || '') === tier).map(s => svcCard(s, 'bkBase', { radio: true })).join('')}</div>
+    ${extras.length ? `<p class="substep"><span>C</span>Add extras <small>Optional</small></p>
     <div class="pick">${extras.map(s => { const inPromo = base && (base.includes || []).includes(s.id); return svcCard(s, 'bkSvc', { disabled: !base || inPromo, note: inPromo ? `Included in ${base.name.split(' · ')[0]}` : '' }); }).join('')}</div>
-    ${base ? '' : '<p class="muted small">Pick a haircut first, then add extras.</p>'}` : ''}
+    ${base ? '' : '<p class="muted small">Pick a haircut first, then add extras.</p>'}` : ''}` : ''}
     ${err && base ? `<p class="err" role="alert">${esc(err)}</p>` : ''}`;
 }
 function fitBarber() { const b = barber(S.bk.barber); if (b && chosen().length && !canServe(b, chosen())) S.bk.barber = ''; }
@@ -329,6 +340,7 @@ function firstDate() {
 function pickService(id) {
   const s = svcs().find(x => x.id === id); if (!s) return;
   if (S.bk.group !== (s.group || 'him')) { S.bk.group = s.group || 'him'; S.bk.svc = {}; S.bk.barber = ''; }
+  if (s.tier) S.bk.tier = s.tier;
   if (s.kind === 'base') { svcs().forEach(x => { if (x.kind === 'base' || (s.includes || []).includes(x.id)) S.bk.svc[x.id] = false; }); }
   S.bk.svc[id] = true; S.bk.time = ''; S.err = ''; fitBarber();
   if (!S.bk.date) { S.bk.date = firstDate(); watchSlots(); }
@@ -365,7 +377,13 @@ const ACT = {
   lightbox(el) { S.lb = +el.dataset.i; lightbox(); },
   lbClose(el, e) { if (e && el.classList.contains('lb') && e.target !== el) return; S.lb = -1; lightbox(); },
   lbStep(el) { const n = gallery().length; S.lb = (S.lb + (+el.dataset.d) + n) % n; lightbox(); },
-  bkGroup(el) { if (S.bk.group === el.dataset.v) return; S.bk.group = el.dataset.v; S.bk.svc = {}; S.bk.barber = ''; S.bk.time = ''; renderBooker(); },
+  bkGroup(el) { if (S.bk.group === el.dataset.v) return; S.bk.group = el.dataset.v; S.bk.tier = ''; S.bk.svc = {}; S.bk.barber = ''; S.bk.time = ''; renderBooker(); },
+  bkTier(el) {
+    const t = el.dataset.v; if (S.bk.tier === t) return;
+    S.bk.tier = t; S.bk.svc = {}; S.bk.time = ''; S.err = ''; fitBarber(); // switching level starts the haircut over
+    const b = barber(S.bk.barber); if (b && (b.tiers || []).length && !b.tiers.includes(t)) S.bk.barber = '';
+    renderBooker();
+  },
   bkBase(el) { const id = el.dataset.id; if (S.bk.svc[id]) return; pickService(id); renderBooker(); },
   bkSvc(el) { const id = el.dataset.id; if (S.bk.svc[id]) { S.bk.svc[id] = false; S.bk.time = ''; } else pickService(id); renderBooker(); },
   bkBarber(el) { S.bk.barber = el.dataset.id; S.bk.time = ''; S.err = ''; const b = barber(S.bk.barber); if (b && S.bk.date && !(b.days || []).includes(dowOf(S.bk.date))) S.bk.date = firstDate(); watchSlots(); renderBooker(); goStep(3); },
@@ -387,6 +405,7 @@ const ACT = {
     const g = (b.groups || ['him'])[0];
     if (S.bk.group !== g) { S.bk.group = g; S.bk.svc = {}; }
     if (!canServe(b, chosen())) S.bk.svc = {};
+    if ((b.tiers || []).length === 1 && S.bk.tier !== b.tiers[0]) { S.bk.tier = b.tiers[0]; S.bk.svc = {}; }
     S.bk.barber = b.id; S.bk.time = ''; S.bk.date = firstDate(); watchSlots(); renderBooker();
     ACT.scroll({ dataset: { to: 'book' } });
   },

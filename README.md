@@ -173,7 +173,7 @@ Texts never contain links, because Philippine networks may block texts with URLs
 
 ## How men book: one haircut, then extras
 
-Men pick **one haircut**, either **Deluxe** (Deluxe Haircut or a BL1–BL4 promo) or **Regular** (Signature or Regular Haircut), then any **add-ons** (hair spa, color, beard and so on).
+Men first choose **Deluxe** or **Regular**. Only that level's haircuts are shown next: Deluxe Haircut and the BL1–BL4 promos, or Signature and Regular Haircut. They pick **one**, then any **add-ons** (hair spa, color, beard and so on). Switching level clears the haircut. "Book with" a barber or a menu "Book" button picks the level for them.
 
 - Deluxe haircuts can only be booked with the senior barbers (Lyndon, Roderick, Reymart, Angelo). Regular haircuts can only be booked with Joe Ed, Renz, Jay, Vince and Mac. Add-ons work with either.
 - An add-on that's already in the chosen promo (for example Hair Spa with BL2) can't be added twice.
