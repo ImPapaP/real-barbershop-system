@@ -284,7 +284,7 @@ function tierPicker() {
     return `<button type="button" class="tier-card${tier === t ? ' on' : ''}" data-act="bkTier" data-v="${esc(t)}" aria-pressed="${tier === t}">
       <span class="tick" aria-hidden="true">${ic('check')}</span>
       <b>${esc(TIERS[t] || t || 'Haircuts')}</b>
-      <span class="tc-from">From ${m(from)}</span>
+      <span class="tc-from">Price starts at ${m(from)}</span>
       ${names.length ? `<small>${esc(listNames(names))}</small>` : ''}
       <small class="tc-what">${t === 'deluxe' ? 'Senior barbers · shampoo, hot towel and massage included' : t === 'regular' ? 'Junior barbers · signature and regular cuts' : `${list.length} options`}</small></button>`;
   };
