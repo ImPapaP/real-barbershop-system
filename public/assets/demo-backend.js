@@ -5,7 +5,12 @@ import {
   startMs, phNow, addDays, sum
 } from './shared.js';
 
-const KEY = 'rb-demo-v6', USER_KEY = 'rb-demo-user';
+// The saved demo is keyed by a fingerprint of the starter data, so changing the menu or team
+// (or a browser briefly mixing old and new files) never leaves stale sample data behind.
+const SEED_REV = 7; // bump when seed() itself changes
+const fingerprint = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
+const KEY = `rb-demo-${SEED_REV}-${fingerprint(JSON.stringify([STARTER, STARTER_STAFF]))}`, USER_KEY = 'rb-demo-user';
+try { Object.keys(localStorage).filter(k => k.startsWith('rb-demo-') && k !== KEY && k !== USER_KEY).forEach(k => localStorage.removeItem(k)); } catch (_) {}
 const clone = o => o === undefined ? undefined : JSON.parse(JSON.stringify(o));
 const listeners = new Set();
 let store = new Map();
