@@ -174,3 +174,36 @@ export function icsFor({ title, date, time, mins, location, description }) {
 
 export const windowOfTime = t => toMin(t) < 720 ? 'morning' : toMin(t) < 1020 ? 'afternoon' : 'evening';
 export const phoneKey = p => String(p || '').replace(/\D/g, '').replace(/^63/, '0');
+
+// Updates `el` in place to match `html`, touching only what changed. The element being typed in is never replaced,
+// so the cursor, the phone keyboard and any half-typed word stay put. Event handling is delegated, so nothing is lost.
+export function morph(el, html) {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  morphChildren(el, tpl.content);
+}
+function morphChildren(from, to) {
+  const a = [...from.childNodes], b = [...to.childNodes];
+  for (let i = 0; i < b.length; i++) {
+    const f = a[i], t = b[i];
+    if (!f) { from.appendChild(t); continue; }
+    if (f.nodeType !== t.nodeType || f.nodeName !== t.nodeName || (f.nodeType === 1 && (f.id || t.id) && f.id !== t.id)) { from.replaceChild(t, f); continue; }
+    if (f.nodeType === 3 || f.nodeType === 8) { if (f.nodeValue !== t.nodeValue) f.nodeValue = t.nodeValue; continue; }
+    if (f.nodeType === 1) morphEl(f, t);
+  }
+  for (let i = a.length - 1; i >= b.length; i--) if (a[i].parentNode === from) from.removeChild(a[i]);
+}
+function morphEl(f, t) {
+  const active = f === document.activeElement;
+  for (const { name } of [...f.attributes]) if (!t.hasAttribute(name) && !(name === 'open' && f.tagName === 'DETAILS')) f.removeAttribute(name);
+  for (const { name, value } of [...t.attributes]) if (f.getAttribute(name) !== value) f.setAttribute(name, value);
+  const tag = f.tagName;
+  if (tag === 'INPUT') {
+    if (f.type === 'checkbox' || f.type === 'radio') { if (f.checked !== t.hasAttribute('checked')) f.checked = t.hasAttribute('checked'); }
+    else if (!active && f.type !== 'file' && f.value !== (t.getAttribute('value') || '')) f.value = t.getAttribute('value') || '';
+    return;
+  }
+  if (tag === 'TEXTAREA') { if (!active && f.value !== t.value) f.value = t.value; return; }
+  morphChildren(f, t);
+  if (tag === 'SELECT') { const sel = t.querySelector('option[selected]'); const v = sel ? sel.value : (f.options[0] && f.options[0].value); if (!active && v != null && f.value !== v) f.value = v; }
+}
