@@ -547,6 +547,7 @@ function vSetup() {
         ${field('Short description', `<textarea id="sh-about" name="about" rows="2">${esc(sh.about)}</textarea>`, 'sh-about')}
         ${field('Address', `<input id="sh-addr" name="address" value="${esc(sh.address)}">`, 'sh-addr')}
         <div class="fgrid">${field('Phone', `<input id="sh-phone" name="phone" value="${esc(sh.phone)}">`, 'sh-phone')}${field('Facebook page', `<input id="sh-fb" name="facebook" value="${esc(sh.facebook || '')}">`, 'sh-fb')}</div>
+        ${field('Instagram', `<input id="sh-ig" name="instagram" value="${esc(sh.instagram || '')}" placeholder="https://www.instagram.com/...">`, 'sh-ig')}
         <div class="fgrid">${field('GCash number for down payments', `<input id="sh-gcash" name="gcashNumber" value="${esc(sh.gcashNumber || '')}" inputmode="tel">`, 'sh-gcash')}${field('GCash account name', `<input id="sh-gname" name="gcashName" value="${esc(sh.gcashName || '')}">`, 'sh-gname')}</div>
         <div class="fgrid">${field('Currency symbol', `<input id="sh-cur" name="currency" value="${esc(sh.currency || '₱')}" maxlength="4">`, 'sh-cur')}${field('Free cut every N visits (0 = off)', `<input id="sh-loy" name="loyaltyEvery" type="number" min="0" max="50" value="${esc(sh.loyaltyEvery ?? 10)}">`, 'sh-loy')}</div>
         <div class="modal-f"><button class="btn btn-primary" type="submit">Save details</button></div>
@@ -1002,7 +1003,7 @@ const FORM = {
     const fd = new FormData(f), name = String(fd.get('name') || '').trim();
     if (!name) { toast('Enter the shop name.', 'bad'); return; }
     const g = k => String(fd.get(k) || '').trim();
-    const shop = { ...info().shop, name, wordmark: g('wordmark'), tagline: g('tagline'), about: g('about'), address: g('address'), phone: g('phone'), facebook: g('facebook'), gcashNumber: g('gcashNumber'), gcashName: g('gcashName'), currency: g('currency') || '₱', loyaltyEvery: Math.max(0, parseInt(fd.get('loyaltyEvery'), 10) || 0) };
+    const shop = { ...info().shop, name, wordmark: g('wordmark'), tagline: g('tagline'), about: g('about'), address: g('address'), phone: g('phone'), facebook: g('facebook'), instagram: g('instagram'), gcashNumber: g('gcashNumber'), gcashName: g('gcashName'), currency: g('currency') || '₱', loyaltyEvery: Math.max(0, parseInt(fd.get('loyaltyEvery'), 10) || 0) };
     if (shop.facebook && !/^https:\/\//.test(shop.facebook)) shop.facebook = 'https://' + shop.facebook.replace(/^http:\/\//, '');
     if (await saveInfo({ shop })) toast('Shop details saved');
   },
