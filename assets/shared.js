@@ -89,27 +89,38 @@ export const STARTER = {
   shop: {
     name: 'REAL Barbers', wordmark: 'R3AL BARBERS', tagline: 'Best looks realized.',
     about: 'Deluxe haircuts with shampoo, hot towel and massage, beard sculpting, hair spa and color. Plus a full salon menu for her.',
-    address: 'Cristimar Ave cor. L. Sumulong Memorial Circle, San Roque, Antipolo, Rizal',
+    address: 'C&B Circle Mall, cor. L. Sumulong Memorial Circle, Antipolo, Rizal 1870',
     phone: '0906 567 4507', email: 'r3albarbers@gmail.com', facebook: 'https://www.facebook.com/R3ALBarbers',
-    currency: '₱', loyaltyEvery: 10, heroPhoto: '', googleRating: 4.3, googleCount: 12
+    gcashNumber: '0966 368 7856', gcashName: 'Alexandra C.',
+    currency: '₱', loyaltyEvery: 10, heroPhoto: '', googleRating: 5.0, googleCount: 45, ratingSource: 'Setmore'
   },
   announcement: { active: false, text: '', link: '' },
   gallery: [],
-  reviews: [],
+  // Real reviews from REAL Barbers' two Setmore pages (5.0 from 30 + 15 reviews)
+  reviews: [
+    { id: 'rv1', name: 'Miguel A.', rating: 5, source: 'Setmore', text: 'Excellent service! Barber Lyndon is very professional and gives suggestions for better hairstyle. Will book again for future haircuts!' },
+    { id: 'rv2', name: 'Jerome Ramos', rating: 5, source: 'Setmore', text: 'Would like to commend Barber Mac for his excellent service.' },
+    { id: 'rv3', name: 'Vic Titong', rating: 5, source: 'Setmore', text: 'Good job sir Ed!' },
+    { id: 'rv4', name: 'Justin Bonso', rating: 5, source: 'Setmore', text: 'Best barbershop' },
+    { id: 'rv5', name: 'Joshua', rating: 5, source: 'Setmore', text: 'Good haircut & service' },
+    { id: 'rv6', name: 'Andrei', rating: 5, source: 'Setmore', text: 'Good service' }
+  ],
   policy: { ...DEFAULT_POLICY, onlineBooking: false }, // turned on in Shop setup once the paid backend is deployed
   hours: [0, 1, 2, 3, 4, 5, 6].map(d => ({ d, open: '09:00', close: '20:00', closed: false })),
   services: [
-    S60('h1', 'Deluxe Haircut', 399, 'him', 'For him', 'Shampoo, hot towel, massage and aloe vera treatment'),
+    S60('h1', 'Deluxe Haircut', 399, 'him', 'For him', 'Haircut of choice, shampoo and rinse, hot towel, arm and head massage, aloe vera moisturizing treatment and premiere grooming'),
+    S60('h8', 'Signature Haircut', 299, 'him', 'For him', 'Any style, shampoo and rinse, hot towel, and grooming with exclusive hair products'),
+    S60('h9', 'Regular Haircut', 249, 'him', 'For him', 'Any style, with grooming using exclusive hair products'),
     S60('h2', 'Hair Spa', 550, 'him', 'For him', 'No haircut'),
     S60('h3', 'Dandruff Control', 650, 'him', 'For him', 'No haircut'),
     S60('h4', 'Hair Color (L’Oréal)', 750, 'him', 'For him', 'No haircut'),
     S60('h5', 'Basic Hair Art', 549, 'him', 'For him', 'No haircut'),
     S60('h6', 'Beard Shave with Cream', 200, 'him', 'For him'),
     S60('h7', 'Beard Sculpting', 230, 'him', 'For him'),
-    S60('p1', 'Deluxe Haircut + Beard Sculpting', 600, 'him', 'Promos'),
-    S60('p2', 'Deluxe Haircut + Hair Spa', 900, 'him', 'Promos'),
-    S60('p3', 'Deluxe Haircut + Dandruff Control', 1000, 'him', 'Promos'),
-    S60('p4', 'Deluxe Haircut + L’Oréal Hair Color', 1100, 'him', 'Promos'),
+    S60('p1', 'BL1 · Deluxe Haircut + Beard Sculpting', 600, 'him', 'Promos', 'Save ₱29'),
+    S60('p2', 'BL2 · Deluxe Haircut + Hair Spa', 900, 'him', 'Promos', 'Save ₱49'),
+    S60('p3', 'BL3 · Deluxe Haircut + Dandruff Control', 1000, 'him', 'Promos', 'Save ₱49'),
+    S60('p4', 'BL4 · Deluxe Haircut + L’Oréal Hair Color', 1100, 'him', 'Promos', 'Save ₱49'),
     S60('f1', 'Hair and Makeup', 1500, 'her', 'For her'),
     S60('f2', 'Women’s Regular Haircut', 275, 'her', 'For her'),
     S60('f3', 'Blow Dry with Shampoo', 230, 'her', 'For her'),
@@ -134,7 +145,9 @@ export const STARTER_STAFF = [
   { id: 'lyndon', name: 'Lyndon', title: 'Senior barber', specialty: 'Classic cuts and beard sculpting', groups: ['him'], rate: 50, chair: 2 },
   { id: 'rod', name: 'Rod', title: 'Barber', specialty: 'Hair art and designs', groups: ['him'], rate: 50, chair: 3 },
   { id: 'angelo', name: 'Angelo', title: 'Barber', specialty: 'Haircuts and hair spa', groups: ['him'], rate: 50, chair: 4 },
-  { id: 'dave', name: 'Dave', title: 'Stylist', specialty: 'Color, rebond and styling', groups: ['her'], rate: 50, chair: 5 }
+  { id: 'mac', name: 'Mac', title: 'Barber', specialty: 'Signature and regular cuts', groups: ['him'], rate: 50, chair: 5 },
+  { id: 'ed', name: 'Ed', title: 'Barber', specialty: 'Signature and regular cuts', groups: ['him'], rate: 50, chair: 6 },
+  { id: 'dave', name: 'Dave', title: 'Stylist', specialty: 'Color, rebond and styling', groups: ['her'], rate: 50, chair: 7 }
 ].map(b => ({ ...b, phone: '', days: [0, 1, 2, 3, 4, 5, 6], active: true }));
 export const publicBarber = b => ({ id: b.id, name: b.name, title: b.title || '', specialty: b.specialty || '', groups: b.groups || ['him'], days: b.days || [], chair: b.chair || '', photo: b.photo || '' });
 

@@ -547,6 +547,7 @@ function vSetup() {
         ${field('Short description', `<textarea id="sh-about" name="about" rows="2">${esc(sh.about)}</textarea>`, 'sh-about')}
         ${field('Address', `<input id="sh-addr" name="address" value="${esc(sh.address)}">`, 'sh-addr')}
         <div class="fgrid">${field('Phone', `<input id="sh-phone" name="phone" value="${esc(sh.phone)}">`, 'sh-phone')}${field('Facebook page', `<input id="sh-fb" name="facebook" value="${esc(sh.facebook || '')}">`, 'sh-fb')}</div>
+        <div class="fgrid">${field('GCash number for down payments', `<input id="sh-gcash" name="gcashNumber" value="${esc(sh.gcashNumber || '')}" inputmode="tel">`, 'sh-gcash')}${field('GCash account name', `<input id="sh-gname" name="gcashName" value="${esc(sh.gcashName || '')}">`, 'sh-gname')}</div>
         <div class="fgrid">${field('Currency symbol', `<input id="sh-cur" name="currency" value="${esc(sh.currency || '₱')}" maxlength="4">`, 'sh-cur')}${field('Free cut every N visits (0 = off)', `<input id="sh-loy" name="loyaltyEvery" type="number" min="0" max="50" value="${esc(sh.loyaltyEvery ?? 10)}">`, 'sh-loy')}</div>
         <div class="modal-f"><button class="btn btn-primary" type="submit">Save details</button></div>
       </form></section>
@@ -604,12 +605,13 @@ function vWebsite() {
       : '<p class="empty">No photos yet. Add finished cuts, color work and the shop itself. They’re resized automatically.</p>'}</section>
   <div class="grid2e">
     <section class="panel"><div class="panel-h"><h2>Reviews</h2><button class="btn btn-sm btn-primary" data-act="newReview">+ Review</button></div>
-      <p class="muted small" style="margin-bottom:10px">Copy real reviews customers left on Google or Facebook, with their permission. Only add reviews people actually wrote.</p>
+      <p class="muted small" style="margin-bottom:10px">Copy real reviews customers left on Google, Facebook or Setmore, with their permission. Only add reviews people actually wrote.</p>
       ${revs.length ? `<ul class="list">${revs.map(r => `<li><div class="grow"><b>${esc(r.name)}</b> <span class="stars" aria-label="${r.rating} stars">${stars(r.rating)}</span><div class="sub">${esc(r.text)}</div></div><button class="btn btn-sm btn-ghost" data-act="editReview" data-id="${esc(r.id)}">Edit</button></li>`).join('')}</ul>` : '<p class="empty">No reviews yet. The section stays hidden on the website until you add one.</p>'}</section>
-    <section class="panel"><div class="panel-h"><h2>Google rating</h2></div>
+    <section class="panel"><div class="panel-h"><h2>Star rating</h2></div>
       <form class="stack" data-form="rating">
+        ${field('Where the rating is from', `<select id="gr-s" name="source">${['Google', 'Setmore', 'Facebook'].map(o => `<option ${(sh.ratingSource || 'Google') === o ? 'selected' : ''}>${o}</option>`).join('')}</select>`, 'gr-s')}
         <div class="fgrid">${field('Rating (out of 5)', `<input id="gr-r" name="rating" type="number" min="0" max="5" step="0.1" value="${esc(sh.googleRating ?? '')}">`, 'gr-r')}${field('Number of reviews', `<input id="gr-n" name="count" type="number" min="0" value="${esc(sh.googleCount ?? '')}">`, 'gr-n')}</div>
-        ${field('Link to your Google reviews', `<input id="gr-u" name="url" value="${esc(sh.googleUrl || '')}" placeholder="Paste the Share link from Google Maps">`, 'gr-u')}
+        ${field('Link to the reviews', `<input id="gr-u" name="url" value="${esc(sh.googleUrl || '')}" placeholder="For example the Google Maps share link">`, 'gr-u')}
         <p class="muted small">Shown in the homepage header. Update it now and then; leave the rating blank to hide it.</p>
         <div class="modal-f"><button class="btn btn-primary" type="submit">Save</button></div>
       </form></section>
@@ -998,7 +1000,7 @@ const FORM = {
     const fd = new FormData(f), name = String(fd.get('name') || '').trim();
     if (!name) { toast('Enter the shop name.', 'bad'); return; }
     const g = k => String(fd.get(k) || '').trim();
-    const shop = { ...info().shop, name, wordmark: g('wordmark'), tagline: g('tagline'), about: g('about'), address: g('address'), phone: g('phone'), facebook: g('facebook'), currency: g('currency') || '₱', loyaltyEvery: Math.max(0, parseInt(fd.get('loyaltyEvery'), 10) || 0) };
+    const shop = { ...info().shop, name, wordmark: g('wordmark'), tagline: g('tagline'), about: g('about'), address: g('address'), phone: g('phone'), facebook: g('facebook'), gcashNumber: g('gcashNumber'), gcashName: g('gcashName'), currency: g('currency') || '₱', loyaltyEvery: Math.max(0, parseInt(fd.get('loyaltyEvery'), 10) || 0) };
     if (shop.facebook && !/^https:\/\//.test(shop.facebook)) shop.facebook = 'https://' + shop.facebook.replace(/^http:\/\//, '');
     if (await saveInfo({ shop })) toast('Shop details saved');
   },
@@ -1015,7 +1017,7 @@ const FORM = {
   },
   async rating(f) {
     const fd = new FormData(f), r = String(fd.get('rating') || '').trim();
-    if (await saveInfo({ shop: { ...info().shop, googleRating: r === '' ? '' : Math.min(5, Math.max(0, num(r))), googleCount: parseInt(fd.get('count'), 10) || 0, googleUrl: String(fd.get('url') || '').trim() } })) toast('Google rating saved');
+    if (await saveInfo({ shop: { ...info().shop, googleRating: r === '' ? '' : Math.min(5, Math.max(0, num(r))), googleCount: parseInt(fd.get('count'), 10) || 0, googleUrl: String(fd.get('url') || '').trim(), ratingSource: String(fd.get('source') || 'Google') } })) toast('Rating saved');
   },
   async review(f) {
     const fd = new FormData(f), name = String(fd.get('name') || '').trim(), text = String(fd.get('text') || '').trim();
