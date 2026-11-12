@@ -2,12 +2,12 @@
 // Sign-in is Firebase Auth; only users listed in the admins/ collection get in (see firestore.rules).
 import { db, demo, demoBar, resetDemo, login, logout, resetPassword, onAuth, uploadImage, deleteImage, call } from './fb.js';
 import { buildXlsx, xlDate, xlTime, colName } from './xlsx.js';
-import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, publicBarber, DEFAULT_POLICY, startMs, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf } from './shared.js';
+import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, publicBarber, DEFAULT_POLICY, startMs, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE } from './shared.js';
 
 // ---------- constants ----------
 const METHODS = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer'];
 const EXP_CATS = ['Rent', 'Electricity', 'Water', 'Internet', 'Supplies', 'Stock purchase', 'Wages', 'Maintenance', 'Marketing', 'Permits & taxes', 'Payment fees', 'Other'];
-const TABS = [['overview', 'Overview'], ['schedule', 'Schedule'], ['checkout', 'Checkout'], ['money', 'Income & expenses'], ['team', 'Barbers'], ['clients', 'Clients'], ['stock', 'Inventory'], ['website', 'Website'], ['setup', 'Shop setup']];
+const TABS = [['overview', 'Overview'], ['schedule', 'Schedule'], ['checkout', 'Checkout'], ['money', 'Income & expenses'], ['team', 'Staff'], ['clients', 'Clients'], ['stock', 'Inventory'], ['website', 'Website'], ['setup', 'Shop setup']];
 const APPT = {
   pending_payment: { label: 'Awaiting deposit', kind: 'warn', icon: '◷' },
   booked: { label: 'Booked', kind: 'info', icon: '◷' },
@@ -62,6 +62,8 @@ const svcNames = ids => (ids || []).map(id => svcById(id)?.name || 'Removed serv
 const svcMins = ids => sum((ids || []).map(svcById).filter(Boolean), s => s.mins || pol().step) || pol().step;
 const staffAll = () => S.staff;
 const activeStaff = () => staffAll().filter(b => b.active !== false).sort((a, b) => (a.chair || 99) - (b.chair || 99) || a.name.localeCompare(b.name));
+const serviceStaff = () => activeStaff().filter(isServiceStaff); // takes bookings and sales
+const roleName = b => ROLES[b.role || 'barber'] || 'Staff';
 const staffById = id => staffAll().find(b => b.id === id);
 const staffName = id => id ? (staffById(id)?.name || 'Former barber') : 'Any barber';
 const av = b => b && b.photo ? `<img class="avatar" src="${esc(b.photo)}" alt="">` : `<span class="avatar" aria-hidden="true">${esc(initials(b ? b.name : '?'))}</span>`;
@@ -306,7 +308,7 @@ function vOverview() {
   const r14 = [addDays(t, -13), t], bk = buckets(r14);
   const vals = bk.map(b => sum(S.sales.filter(x => b.match(x.date)), netOf));
   const m = summary(periodRange('month')), wk = summary(periodRange('week'));
-  const byB = activeStaff().map(b => ({ label: b.name, value: sum(wk.sales.filter(x => x.barberId === b.id), netOf), tip: `${wk.sales.filter(x => x.barberId === b.id).length} clients this week` })).sort((a, b) => b.value - a.value);
+  const byB = serviceStaff().map(b => ({ label: b.name, value: sum(wk.sales.filter(x => x.barberId === b.id), netOf), tip: `${wk.sales.filter(x => x.barberId === b.id).length} clients this week` })).sort((a, b) => b.value - a.value);
   const low = S.inventory.filter(i => i.stock <= i.reorder).sort((a, b) => a.stock - b.stock);
   const issues = S.appointments.filter(a => a.status === 'needs_attention' || (a.conflict && ['booked', 'pending_payment'].includes(a.status)));
   const onlineToday = appts.filter(a => a.source === 'online' && a.status !== 'expired').length;
@@ -371,14 +373,14 @@ function vSchedule() {
   </tbody></table></div></section>` : ''}
   ${isToday ? `<section class="panel"><div class="panel-h"><h2>Walk-in queue</h2><span class="muted small">Served in order of arrival</span></div>
     ${queue.length ? `<ul class="list">${queue.map(a => `<li><span class="qno">#${esc(a.queueNo || '')}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b><div class="sub">${esc(svcNames(a.serviceIds))} · waiting ${Math.max(0, Math.round((Date.now() - (a.createdAt || Date.now())) / 60000))} min</div></div>
-      <select data-change="apptBarber" data-id="${esc(a.id)}" aria-label="Barber for #${esc(a.queueNo || '')}" style="width:auto">${opt('', 'Any barber', !a.barberId)}${activeStaff().map(b => opt(b.id, b.name, b.id === a.barberId)).join('')}</select>
+      <select data-change="apptBarber" data-id="${esc(a.id)}" aria-label="Barber for #${esc(a.queueNo || '')}" style="width:auto">${opt('', 'Any barber', !a.barberId)}${serviceStaff().map(b => opt(b.id, b.name, b.id === a.barberId)).join('')}</select>
       <button class="btn btn-sm btn-primary" data-act="startAppt" data-id="${esc(a.id)}">Start</button></li>`).join('')}</ul>` : '<p class="empty">Nobody waiting. Add a walk-in when someone arrives.</p>'}</section>` : ''}
   ${whosIn(d)}
   ${waitlistPanel(d)}
   <section class="panel">
     <div class="toolbar" style="margin-bottom:14px">
       <div class="datenav"><button class="btn btn-sm" data-act="dayShift" data-n="-1" aria-label="Previous day">‹</button><input type="date" id="sch-date" data-bind="schedDate" data-live value="${esc(d)}" aria-label="Date"><button class="btn btn-sm" data-act="dayShift" data-n="1" aria-label="Next day">›</button>${isToday ? '' : '<button class="btn btn-sm btn-ghost" data-act="dayToday">Today</button>'}</div>
-      <div class="row"><select id="sch-barber" data-bind="schedBarber" data-live style="width:auto" aria-label="Filter by barber">${opt('', 'All barbers', !S.schedBarber)}${activeStaff().map(b => opt(b.id, b.name, b.id === S.schedBarber)).join('')}${opt('__any', 'Unassigned', S.schedBarber === '__any')}</select>
+      <div class="row"><select id="sch-barber" data-bind="schedBarber" data-live style="width:auto" aria-label="Filter by barber">${opt('', 'All barbers', !S.schedBarber)}${serviceStaff().map(b => opt(b.id, b.name, b.id === S.schedBarber)).join('')}${opt('__any', 'Unassigned', S.schedBarber === '__any')}</select>
       ${expiredN ? `<label class="row small"><input type="checkbox" id="sch-exp" data-bind="showExpired" data-live ${S.showExpired ? 'checked' : ''}> Show ${expiredN} unpaid hold${expiredN > 1 ? 's' : ''}</label>` : ''}</div>
     </div>
     ${counts.length ? `<div class="row" style="margin-bottom:12px">${counts.map(([k, n]) => chip({ ...APPT[k], label: `${n} ${APPT[k].label.toLowerCase()}` })).join('')}</div>` : ''}
@@ -429,7 +431,7 @@ function vCheckout() {
           ${field('Phone', `<input id="pos-phone" data-bind="pos.phone" data-live value="${esc(p.phone)}" inputmode="tel" placeholder="Optional">`, 'pos-phone')}
         </div>
         ${loyal}
-        ${field('Barber', `<select id="pos-barber" data-bind="pos.barberId" data-live>${opt('', 'Choose barber', !p.barberId)}${activeStaff().map(b => opt(b.id, `${b.name} · ${b.rate || 0}%`, b.id === p.barberId)).join('')}</select>`, 'pos-barber')}
+        ${field('Barber', `<select id="pos-barber" data-bind="pos.barberId" data-live>${opt('', 'Choose barber', !p.barberId)}${serviceStaff().map(b => opt(b.id, `${b.name} · ${b.rate || 0}%`, b.id === p.barberId)).join('')}</select>`, 'pos-barber')}
         <div class="lines">${p.lines.length ? p.lines.map((l, i) => `<div class="line"><span class="nm">${esc(l.name)}</span><span class="qty"><button type="button" data-act="posQty" data-i="${i}" data-d="-1" aria-label="One less">−</button><span>${l.qty}</span><button type="button" data-act="posQty" data-i="${i}" data-d="1" aria-label="One more">+</button></span><span class="num">${money(l.price * l.qty)}</span><button type="button" class="icon-btn" data-act="posDel" data-i="${i}" aria-label="Remove ${esc(l.name)}">✕</button></div>`).join('') : '<p class="muted small" style="padding:10px 0">No items yet. Tap a service or product.</p>'}</div>
         <p class="muted small">For “from” prices, change the amount with the price field after adding.</p>
         ${p.lines.length ? `<div class="fgrid">${p.lines.map((l, i) => l.kind === 'service' ? field(`Price: ${l.name}`, `<input id="pos-price-${i}" data-bind="pos.lines.${i}.price" data-live inputmode="decimal" value="${esc(l.price)}">`, `pos-price-${i}`) : '').join('')}</div>` : ''}
@@ -609,7 +611,7 @@ function keepPanel(list, r) {
   const pctOf = P => P.svc ? Math.round(P.pay / P.svc * 100) : null;
   const verdict = P => P.svc - P.pay >= 0 ? `<span class="chip chip-good">+${money(P.svc - P.pay)} for the shop</span>` : `<span class="chip chip-bad">Shop pays ${money(P.pay - P.svc)} more</span>`;
   const bars = P => `<div class="vs"><span class="vs-row"><i class="in" style="width:${P.svc / top * 100}%"></i></span><span class="vs-row"><i class="out ${P.pay > P.svc ? 'bad' : ''}" style="width:${P.pay / top * 100}%"></i></span></div>`;
-  return `<section class="panel"><div class="panel-h"><h2>Pay vs what each barber brings in</h2><span class="muted small">All barbers: brought in ${money(T.svc)}, paid ${money(T.paid)}</span></div>
+  return `<section class="panel"><div class="panel-h"><h2>Pay vs what each person brings in</h2><span class="muted small">All barbers: brought in ${money(T.svc)}, paid ${money(T.paid)}</span></div>
     <p class="muted small" style="margin:-4px 0 14px"><span class="key in"></span>Brings in: his service sales after discounts. <span class="key out"></span>Shop pays him: daily pay + commission (tips come from clients, so they’re left out). Whatever is left pays for rent, bills and profit.</p>
     <div class="tbl-wrap keep-tbl"><table class="tbl"><thead><tr><th>Name</th><th class="r">Brings in</th><th class="r">Daily pay</th><th class="r">Commission</th><th class="r">Shop pays him</th><th style="width:160px"></th><th class="r">Pay is</th><th class="r">Result</th></tr></thead><tbody>
     ${rows.sort((x, y) => (x.P.svc - x.P.pay) - (y.P.svc - y.P.pay)).map(({ b, P }) => `<tr><td><div class="row" style="flex-wrap:nowrap">${av(b)}<div><b>${esc(b.name)}</b><div class="muted small nowrap">${P.days} days · ${P.x.length} clients · ${esc(b.rate || 0)}/${esc(100 - (Number(b.rate) || 0))}</div></div></div></td>
@@ -627,17 +629,17 @@ function vTeam() {
   const r = periodRange(S.period), s = summary(r);
   const list = staffAll().filter(b => S.showArchived || b.active !== false).sort((a, b) => (a.chair || 99) - (b.chair || 99));
   const pays = [...S.payouts].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20);
-  return `${pageHead(rangeLabel(r), 'Barbers', `<button class="btn btn-primary" data-act="newStaff">+ Barber or stylist</button>`)}
+  return `${pageHead(rangeLabel(r), 'Staff', `<button class="btn btn-primary" data-act="newStaff">+ Staff member</button>`)}
   ${periodBar()}
   <section class="panel"><div class="panel-h"><h2>Pay and commissions</h2><label class="row small"><input type="checkbox" id="t-arch" data-bind="showArchived" data-live ${S.showArchived ? 'checked' : ''}> Show former staff</label></div>
     ${list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th class="r">Days worked</th><th class="r">Daily pay</th><th class="r">Clients</th><th class="r">Service sales</th><th class="r">Commission</th><th class="r">Tips</th><th class="r">Earned</th><th class="r">Owed now</th><th></th></tr></thead><tbody>
     ${list.map(b => { const P = payFor(b, r), owed = owedFor(b.id);
-      return `<tr><td><div class="row" style="flex-wrap:nowrap">${av(b)}<div><b>${esc(b.name)}</b>${b.active === false ? ' <span class="muted small">(former)</span>' : ''}<div class="muted small nowrap">${esc(b.title || '')}${b.chair ? ' · Chair ' + esc(b.chair) : ''}</div><div class="muted small nowrap">${money(P.daily)}/day + ${esc(b.rate || 0)}%</div></div></div></td>
+      return `<tr><td><div class="row" style="flex-wrap:nowrap">${av(b)}<div><b>${esc(b.name)}</b>${b.active === false ? ' <span class="muted small">(former)</span>' : ''}<div class="muted small nowrap">${esc(b.title || roleName(b))}${b.chair ? ' · Chair ' + esc(b.chair) : ''}</div><div class="muted small nowrap">${money(P.daily)}/day${isServiceStaff(b) ? ` + ${esc(b.rate || 0)}%${b.productFee ? ' · product fee' : ''}` : ' · no commission'}</div></div></div></td>
       <td class="r">${P.days}</td><td class="r">${money(P.base)}</td><td class="r">${P.x.length}</td><td class="r">${money(P.svc)}</td><td class="r">${money(P.comm, 1)}</td><td class="r">${money(P.tips)}</td><td class="r"><b>${money(P.total, 1)}</b></td><td class="r"><b class="${owed > 0 ? '' : 'muted'}">${money(owed, 1)}</b></td>
       <td><div class="acts"><button class="btn btn-sm btn-primary" data-act="payStaff" data-id="${esc(b.id)}" ${owed <= 0 ? 'disabled' : ''}>Pay</button><button class="btn btn-sm btn-ghost" data-act="editStaff" data-id="${esc(b.id)}">Edit</button></div></td></tr>`; }).join('')}
-    </tbody></table></div>` : '<p class="empty">No staff yet. Use “+ Barber or stylist”, or load the starter team in Shop setup.</p>'}
+    </tbody></table></div>` : '<p class="empty">No staff yet. Use “+ Staff member”, or load the starter team in Shop setup.</p>'}
     <p class="muted small" style="margin-top:12px">Earned = guaranteed daily pay for each day worked + commission (their rate × service sales after discounts) + tips. A day counts as worked when they had a sale, or it’s one of their days in and they weren’t marked absent in Schedule → Who’s in. “Owed now” is everything earned minus payouts.</p></section>
-  ${keepPanel(list.filter(b => b.active !== false), r)}
+  ${keepPanel(list.filter(b => b.active !== false && isServiceStaff(b)), r)}
   <section class="panel"><div class="panel-h"><h2>Payout history</h2></div>
     ${pays.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Paid on</th><th>Name</th><th>Note</th><th class="r">Amount</th><th></th></tr></thead><tbody>${pays.map(p => `<tr><td class="num">${fmtDate(p.date)}</td><td>${esc(staffName(p.barberId))}</td><td>${esc(p.note || '')}</td><td class="r"><b>${money(p.amount, 1)}</b></td><td><div class="acts"><button class="btn btn-sm btn-danger" data-act="delPayout" data-id="${esc(p.id)}">Delete</button></div></td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">No payouts recorded yet.</p>'}</section>`;
 }
@@ -784,7 +786,7 @@ function vWebsite() {
       </form></section>
   </div>
   <section class="panel"><div class="panel-h"><h2>Team photos</h2><a class="btn btn-sm btn-ghost" href="#team">Edit team</a></div>
-    <div class="team-admin">${activeStaff().map(b => `<div class="tm">${b.photo ? `<img src="${esc(b.photo)}" alt="${esc(b.name)}">` : `<span class="mono">${esc(initials(b.name))}</span>`}<b>${esc(b.name)}</b><label class="btn btn-sm upload">${S.uploading === 'staff-' + b.id ? '<span class="spinner"></span>' : b.photo ? 'Replace' : 'Upload'}<input type="file" accept="image/*" data-upload="staff-${esc(b.id)}" hidden></label></div>`).join('') || '<p class="empty">Add your team first in Barbers.</p>'}</div></section>`;
+    <div class="team-admin">${serviceStaff().map(b => `<div class="tm">${b.photo ? `<img src="${esc(b.photo)}" alt="${esc(b.name)}">` : `<span class="mono">${esc(initials(b.name))}</span>`}<b>${esc(b.name)}</b><label class="btn btn-sm upload">${S.uploading === 'staff-' + b.id ? '<span class="spinner"></span>' : b.photo ? 'Replace' : 'Upload'}<input type="file" accept="image/*" data-upload="staff-${esc(b.id)}" hidden></label></div>`).join('') || '<p class="empty">Add your team first in Barbers.</p>'}</div></section>`;
 }
 function reviewModal(r) {
   const c = r || { rating: 5, source: 'Google' };
@@ -818,7 +820,7 @@ function openModal(title, body, wide) {
 }
 function closeModal() { const m = $('#modal'); m.hidden = true; m.innerHTML = ''; }
 const svcChecks = sel => { const groups = [...new Set(activeServices().map(s => s.cat || 'Services'))]; return groups.map(g => `<p class="eyebrow" style="margin:4px 0">${esc(g)}</p><div class="checks">${activeServices().filter(s => (s.cat || 'Services') === g).map(s => `<label class="check"><input type="checkbox" name="svc" value="${esc(s.id)}" ${(sel || []).includes(s.id) ? 'checked' : ''}>${esc(s.name)}<span class="p">${esc(priceLabel(s, cur()))}</span></label>`).join('')}</div>`).join(''); };
-const barberSelect = (name, sel, anyLabel) => `<select name="${name}" id="m-${name}">${anyLabel ? opt('', anyLabel, !sel) : ''}${activeStaff().map(b => opt(b.id, b.name, b.id === sel)).join('')}</select>`;
+const barberSelect = (name, sel, anyLabel) => `<select name="${name}" id="m-${name}">${anyLabel ? opt('', anyLabel, !sel) : ''}${serviceStaff().map(b => opt(b.id, b.name, b.id === sel)).join('')}</select>`;
 const mFoot = (label, extra) => `<div class="modal-f">${extra || ''}<button type="button" class="btn" data-act="closeModal">Cancel</button><button class="btn btn-primary" type="submit">${esc(label)}</button></div>`;
 
 function apptModal(a, mode) {
@@ -846,14 +848,21 @@ function expenseModal(e) {
     <p class="err" id="m-err" hidden></p>${mFoot(e ? 'Save changes' : 'Add expense')}</form>`);
 }
 function staffModal(b) {
-  const c = b || { rate: 60, dailyPay: 500, days: [0, 1, 2, 3, 4, 5, 6], groups: ['him'], tiers: ['regular'], active: true };
-  openModal(b ? `Edit ${b.name}` : 'Add barber or stylist', `<form class="stack" data-form="staff" data-id="${esc(c.id || '')}">
-    <div class="fgrid">${field('Name', `<input id="m-sname" name="name" value="${esc(c.name || '')}" required>`, 'm-sname')}${field('Title', `<input id="m-stitle" name="title" value="${esc(c.title || '')}" placeholder="Senior barber, Stylist">`, 'm-stitle')}</div>
-    <div class="fgrid">${field('Specialty (shown on website)', `<input id="m-sspec" name="specialty" value="${esc(c.specialty || '')}">`, 'm-sspec')}${field('Phone', `<input id="m-sphone" name="phone" value="${esc(c.phone || '')}">`, 'm-sphone')}</div>
-    <div class="fgrid">${field('Guaranteed daily pay (₱)', `<input id="m-sdaily" name="dailyPay" type="number" min="0" step="any" value="${esc(c.dailyPay ?? 0)}" required>`, 'm-sdaily', 'Paid for every day worked, even with no clients')}${field('Commission on services (%)', `<input id="m-srate" name="rate" type="number" min="0" max="100" value="${esc(c.rate ?? 60)}" required>`, 'm-srate', 'On top of the daily pay, rounded down to the peso. The shop keeps the rest. Seniors 50, juniors 60.')}${field('Chair number', `<input id="m-schair" name="chair" type="number" min="1" max="20" value="${esc(c.chair || '')}">`, 'm-schair')}</div>
-    <fieldset class="field"><legend>Takes bookings for</legend><div class="row">${[['him', 'Men’s services'], ['her', 'Women’s services']].map(([k, l]) => `<label class="check"><input type="checkbox" name="groups" value="${k}" ${(c.groups || ['him']).includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</div></fieldset>
-    <fieldset class="field"><legend>Men’s haircuts they do</legend><div class="row">${[['deluxe', 'Deluxe (senior barber)'], ['regular', 'Regular']].map(([k, l]) => `<label class="check"><input type="checkbox" name="tiers" value="${k}" ${(c.tiers || []).includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</div><p class="muted small">Online, clients can only book this barber for these haircuts. Add-ons work with either.</p></fieldset>
+  const c = b || { role: 'barber', rate: 60, dailyPay: 500, days: [0, 1, 2, 3, 4, 5, 6], groups: ['him'], tiers: ['regular'], active: true };
+  const f = c.productFee || PRODUCT_FEE;
+  openModal(b ? `Edit ${b.name}` : 'Add staff member', `<form class="stack staff-form" data-form="staff" data-id="${esc(c.id || '')}">
+    <div class="fgrid">${field('Name', `<input id="m-sname" name="name" value="${esc(c.name || '')}" required>`, 'm-sname')}${field('Role', `<select id="m-srole" name="role">${Object.entries(ROLES).map(([k, l]) => opt(k, l, (c.role || 'barber') === k)).join('')}</select>`, 'm-srole')}</div>
+    <div class="fgrid">${field('Title', `<input id="m-stitle" name="title" value="${esc(c.title || '')}" placeholder="Senior barber, Stylist">`, 'm-stitle')}${field('Phone', `<input id="m-sphone" name="phone" value="${esc(c.phone || '')}">`, 'm-sphone')}</div>
+    <div class="svc-only">${field('Specialty (shown on website)', `<input id="m-sspec" name="specialty" value="${esc(c.specialty || '')}">`, 'm-sspec')}</div>
+    <div class="fgrid">${field('Guaranteed daily pay (₱)', `<input id="m-sdaily" name="dailyPay" type="number" min="0" step="any" value="${esc(c.dailyPay ?? 0)}" required>`, 'm-sdaily', 'Paid for every day worked, even with no clients')}<div class="svc-only">${field('Commission on services (%)', `<input id="m-srate" name="rate" type="number" min="0" max="100" value="${esc(c.rate ?? 60)}">`, 'm-srate', 'Their share, rounded down to the peso. Seniors 50, juniors 60, Dave 55.')}</div></div>
+    <fieldset class="field svc-only"><legend>Product fee</legend>
+      <label class="row small"><input type="checkbox" name="pf" ${c.productFee ? 'checked' : ''}> On services that use salon products, the shop takes a fixed amount first, then the rest is split</label>
+      <div class="fgrid three">${field('Service price from (₱)', `<input id="m-pft" name="pfThreshold" type="number" min="0" value="${esc(f.threshold)}">`, 'm-pft')}${field('Shop gets below that (₱)', `<input id="m-pfl" name="pfLow" type="number" min="0" value="${esc(f.low)}">`, 'm-pfl')}${field('Shop gets from that up (₱)', `<input id="m-pfh" name="pfHigh" type="number" min="0" value="${esc(f.high)}">`, 'm-pfh')}</div>
+      <p class="muted small">Example with ₱50 / ₱100 at ₱1,500 and 55%: a ₱1,200 color → shop ₱50 first, then 55% of ₱1,150 = ₱632 for the stylist. Services without products are a straight split. Mark which services use products in Shop setup → Services.</p></fieldset>
+    <fieldset class="field svc-only"><legend>Takes bookings for</legend><div class="row">${[['him', 'Men’s services'], ['her', 'Women’s services'], ['nails', 'Nails']].map(([k, l]) => `<label class="check"><input type="checkbox" name="groups" value="${k}" ${(c.groups || ['him']).includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</div></fieldset>
+    <fieldset class="field svc-only barber-only"><legend>Men’s haircuts they do</legend><div class="row">${[['deluxe', 'Deluxe (senior barber)'], ['regular', 'Regular']].map(([k, l]) => `<label class="check"><input type="checkbox" name="tiers" value="${k}" ${(c.tiers || []).includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</div><p class="muted small">Online, clients can only book this barber for these haircuts. Add-ons work with either.</p></fieldset>
     <fieldset class="field"><legend>Days in</legend><div class="row">${[1, 2, 3, 4, 5, 6, 0].map(d => `<label class="check"><input type="checkbox" name="days" value="${d}" ${(c.days || []).includes(d) ? 'checked' : ''}>${DAYS[d]}</label>`).join('')}</div></fieldset>
+    <p class="muted small support-only">Receptionists and maintenance staff don’t take bookings or earn commission. They get their daily pay for each day in (Schedule → Who’s in).</p>
     ${b ? `<label class="row small"><input type="checkbox" name="active" ${c.active !== false ? 'checked' : ''}> Currently working here (unticked: hidden from the website and booking)</label>` : ''}
     <p class="err" id="m-err" hidden></p>${mFoot(b ? 'Save changes' : 'Add')}</form>`);
 }
@@ -878,9 +887,10 @@ function serviceModal(s) {
   const cats = [...new Set(services().map(x => x.cat).filter(Boolean))];
   openModal(s ? 'Edit service' : 'Add service', `<form class="stack" data-form="service" data-id="${esc(c.id || '')}">
     <div class="fgrid">${field('Service name', `<input id="m-vname" name="name" value="${esc(c.name || '')}" required>`, 'm-vname')}${field('Menu section', `<input id="m-vcat" name="cat" list="svc-cats" value="${esc(c.cat || '')}"><datalist id="svc-cats">${cats.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`, 'm-vcat')}</div>
-    <div class="fgrid three">${field('For', `<select id="m-vgroup" name="group">${opt('him', 'Him', c.group !== 'her')}${opt('her', 'Her', c.group === 'her')}</select>`, 'm-vgroup')}${field('Price (' + cur() + ')', `<input id="m-vprice" name="price" inputmode="decimal" value="${esc(c.price ?? '')}" required>`, 'm-vprice')}${field('Minutes', `<input id="m-vmins" name="mins" type="number" min="30" step="30" value="${esc(c.mins)}">`, 'm-vmins')}</div>
+    <div class="fgrid three">${field('For', `<select id="m-vgroup" name="group">${opt('him', 'Him', !c.group || c.group === 'him')}${opt('her', 'Her', c.group === 'her')}${opt('nails', 'Nails', c.group === 'nails')}</select>`, 'm-vgroup')}${field('Price (' + cur() + ')', `<input id="m-vprice" name="price" inputmode="decimal" value="${esc(c.price ?? '')}" required>`, 'm-vprice')}${field('Minutes', `<input id="m-vmins" name="mins" type="number" min="30" step="30" value="${esc(c.mins)}">`, 'm-vmins')}</div>
     <div class="fgrid">${field('Booking type (men)', `<select id="m-vkind" name="kind">${opt('', 'Regular service', !c.kind)}${opt('base', 'Haircut (client picks one)', c.kind === 'base')}${opt('extra', 'Add-on to a haircut', c.kind === 'extra')}</select>`, 'm-vkind')}${field('Haircut level', `<select id="m-vtier" name="tier">${opt('', 'Any barber', !c.tier)}${opt('deluxe', 'Deluxe (senior barbers)', c.tier === 'deluxe')}${opt('regular', 'Regular barbers', c.tier === 'regular')}</select>`, 'm-vtier')}</div>
     ${field('Description', `<input id="m-vdesc" name="desc" value="${esc(c.desc || '')}">`, 'm-vdesc')}
+    <label class="row small"><input type="checkbox" name="usesProduct" ${c.usesProduct ? 'checked' : ''}> Uses salon products (color, rebond, treatments): staff with a product fee give the shop that amount first</label>
     <label class="row small"><input type="checkbox" name="priceFrom" ${c.priceFrom ? 'checked' : ''}> Show as “from” price (final price depends on hair length)</label>
     <label class="row small"><input type="checkbox" name="active" ${c.active !== false ? 'checked' : ''}> Show on website and at checkout</label>
     <p class="err" id="m-err" hidden></p>${mFoot(s ? 'Save changes' : 'Add service')}</form>`);
@@ -988,12 +998,12 @@ const ACT = {
       const appt = p.apptId ? S.appointments.find(a => a.id === p.apptId) : null;
       const customerId = (appt && appt.customerId) || await ensureCustomer(p.name, p.phone, appt && appt.email, p.save);
       const b = staffById(p.barberId), rate = Number(b && b.rate) || 0;
-      const commission = commissionOf(T.svc - T.disc, rate); // rounded down: the shop gets the extra centavos
+      const { commission, fees: productFees } = commissionFor(b, p.lines, T.disc, svcById); // product fee first, then the split, rounded down
       const id = newId();
       const sale = {
         date: today(), time: nowHM(), at: Date.now(), customerId, name: p.name.trim() || 'Walk-in', phone: p.phone.trim(), barberId: p.barberId,
         lines: p.lines.map(l => ({ ...l, price: Number(l.price) || 0 })), svcTotal: T.svc, prodTotal: T.prod, discount: T.disc, discountNote: T.disc ? (p.discountNote || '') : '',
-        tip: T.tip, total: T.total, depositCredit: T.deposit, method: p.method, cash: p.method === 'Cash' ? num(p.cash) : 0, apptId: p.apptId || '', rate, commission
+        tip: T.tip, total: T.total, depositCredit: T.deposit, method: p.method, cash: p.method === 'Cash' ? num(p.cash) : 0, apptId: p.apptId || '', rate, commission, productFees
       };
       if (!await put('sales', id, sale)) return;
       for (const l of p.lines.filter(x => x.kind === 'product')) {
@@ -1061,7 +1071,7 @@ const ACT = {
     el.disabled = true;
     const staff = S.staff.length ? S.staff : STARTER_STAFF;
     if (!S.staff.length) for (const b of STARTER_STAFF) { const { id, ...rest } = b; await put('staff', id, { ...rest, since: today() }); }
-    if (await put('public', 'info', { ...JSON.parse(JSON.stringify(STARTER)), barbers: staff.filter(b => b.active !== false).map(publicBarber) })) toast('Starter menu and team saved. Edit them in Shop setup and Barbers.');
+    if (await put('public', 'info', { ...JSON.parse(JSON.stringify(STARTER)), barbers: staff.filter(b => b.active !== false && isServiceStaff(b)).map(publicBarber) })) toast('Starter menu and team saved. Edit them in Shop setup and Barbers.');
   }
 };
 const CHG = {
@@ -1079,7 +1089,7 @@ async function saveInfo(partial) {
   if (S.infoMissing) return put('public', 'info', { ...JSON.parse(JSON.stringify(STARTER)), ...partial });
   return patch('public', 'info', partial);
 }
-async function syncPublicBarbers() { await saveInfo({ barbers: S.staff.filter(b => b.active !== false).sort((a, b) => (a.chair || 99) - (b.chair || 99)).map(publicBarber) }); }
+async function syncPublicBarbers() { await saveInfo({ barbers: S.staff.filter(b => b.active !== false && isServiceStaff(b)).sort((a, b) => (a.chair || 99) - (b.chair || 99)).map(publicBarber) }); }
 const FORM = {
   async login(f) {
     const fd = new FormData(f); S.loginBusy = true; S.loginErr = ''; S.loginMsg = ''; render();
@@ -1123,11 +1133,13 @@ const FORM = {
     if (ok) { closeModal(); toast(f.dataset.id ? 'Expense updated' : `Expense added · ${money(data.amount, 1)}`); }
   },
   async staff(f) {
-    const fd = new FormData(f), name = String(fd.get('name') || '').trim(), rate = num(fd.get('rate'));
+    const fd = new FormData(f), name = String(fd.get('name') || '').trim(), role = String(fd.get('role') || 'barber'), svcRole = isServiceStaff({ role });
+    const rate = svcRole ? num(fd.get('rate')) : 0;
     if (!name) return modalErr(f, 'Enter a name.');
     if (rate < 0 || rate > 100) return modalErr(f, 'Commission must be between 0 and 100%.');
-    const groups = fd.getAll('groups'); if (!groups.length) return modalErr(f, 'Pick men’s or women’s services (or both).');
-    const data = { name, title: String(fd.get('title') || '').trim(), phone: String(fd.get('phone') || '').trim(), specialty: String(fd.get('specialty') || '').trim(), rate, dailyPay: Math.max(0, Number(fd.get('dailyPay')) || 0), groups, tiers: fd.getAll('tiers'), chair: fd.get('chair') ? +fd.get('chair') : '', days: fd.getAll('days').map(Number).sort() };
+    const groups = svcRole ? fd.getAll('groups') : []; if (svcRole && !groups.length) return modalErr(f, 'Pick which services they take bookings for.');
+    const productFee = svcRole && fd.has('pf') ? { threshold: Math.max(0, num(fd.get('pfThreshold'))), low: Math.max(0, num(fd.get('pfLow'))), high: Math.max(0, num(fd.get('pfHigh'))) } : null;
+    const data = { name, title: String(fd.get('title') || '').trim(), phone: String(fd.get('phone') || '').trim(), specialty: String(fd.get('specialty') || '').trim(), role, rate, productFee, dailyPay: Math.max(0, Number(fd.get('dailyPay')) || 0), groups, tiers: svcRole ? fd.getAll('tiers') : [], chair: fd.get('chair') ? +fd.get('chair') : '', days: fd.getAll('days').map(Number).sort() };
     const id = f.dataset.id;
     const ok = id ? await patch('staff', id, { ...data, active: fd.has('active') }) : await put('staff', newId(), { ...data, active: true, since: today() });
     if (ok) { closeModal(); toast(id ? `${name} updated` : `${name} added`); setTimeout(syncPublicBarbers, 400); }
@@ -1165,7 +1177,7 @@ const FORM = {
     if (!name) return modalErr(f, 'Enter the service name.');
     if (price < 0) return modalErr(f, 'Enter a price.');
     const mins = Math.max(pol().step, Math.round((parseInt(fd.get('mins'), 10) || 60) / pol().step) * pol().step);
-    const data = { name, cat: String(fd.get('cat') || '').trim() || 'Services', group: String(fd.get('group')), price: round2(price), mins, desc: String(fd.get('desc') || '').trim(), kind: String(fd.get('kind') || ''), tier: String(fd.get('tier') || ''), priceFrom: fd.has('priceFrom'), active: fd.has('active') };
+    const data = { name, cat: String(fd.get('cat') || '').trim() || 'Services', group: String(fd.get('group')), price: round2(price), mins, desc: String(fd.get('desc') || '').trim(), usesProduct: fd.has('usesProduct'), kind: String(fd.get('kind') || ''), tier: String(fd.get('tier') || ''), priceFrom: fd.has('priceFrom'), active: fd.has('active') };
     const list = services().map(s => ({ ...s }));
     if (f.dataset.id) { const k = list.findIndex(s => s.id === f.dataset.id); if (k >= 0) list[k] = { ...list[k], ...data }; } else list.push({ id: newId(), ...data });
     if (await saveInfo({ services: list })) { closeModal(); toast(f.dataset.id ? 'Service updated' : `${name} added`); }

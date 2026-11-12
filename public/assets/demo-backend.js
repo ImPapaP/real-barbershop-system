@@ -1,13 +1,13 @@
 // Demo backend: same interface as firebase-backend.js, but everything lives in this browser's localStorage.
 // Used for the live preview before Firebase is connected. Payments are skipped; bookings confirm instantly.
 import {
-  windowOfTime, STARTER, STARTER_STAFF, publicBarber, comboError, slotId, blockTimes, isActiveSlot, availableTimes, policyOf,
+  windowOfTime, STARTER, STARTER_STAFF, publicBarber, comboError, commissionFor, isServiceStaff, slotId, blockTimes, isActiveSlot, availableTimes, policyOf,
   startMs, phNow, addDays, sum
 } from './shared.js';
 
 // The saved demo is keyed by a fingerprint of the starter data, so changing the menu or team
 // (or a browser briefly mixing old and new files) never leaves stale sample data behind.
-const SEED_REV = 11; // bump when seed() itself changes
+const SEED_REV = 12; // bump when seed() itself changes
 const fingerprint = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const KEY = `rb-demo-${SEED_REV}-${fingerprint(JSON.stringify([STARTER, STARTER_STAFF]))}`, USER_KEY = 'rb-demo-user';
 try { Object.keys(localStorage).filter(k => k.startsWith('rb-demo-') && k !== KEY && k !== USER_KEY).forEach(k => localStorage.removeItem(k)); } catch (_) {}
@@ -28,19 +28,20 @@ function seed() {
   const m = new Map(), T = phNow().date, day = n => addDays(T, n);
   let r = 11; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
   const pick = a => a[Math.floor(rnd() * a.length)];
-  m.set('public/info', { ...clone(STARTER), policy: { ...STARTER.policy, onlineBooking: true }, barbers: STARTER_STAFF.map(publicBarber) });
+  m.set('public/info', { ...clone(STARTER), policy: { ...STARTER.policy, onlineBooking: true }, barbers: STARTER_STAFF.filter(isServiceStaff).map(publicBarber) });
   STARTER_STAFF.forEach(({ id, ...b }) => m.set('staff/' + id, { ...b, since: day(-40) }));
   m.set('admins/demo', { role: 'owner' });
-  const svc = STARTER.services, him = svc.filter(s => s.group === 'him'), her = svc.filter(s => s.group === 'her' && !s.priceFrom);
+  const svc = STARTER.services, him = svc.filter(s => s.group === 'him'), her = svc.filter(s => s.group === 'her');
   const names = ['Marco Reyes', 'Jericho Santos', 'Carlo Mendoza', 'Rafael Cruz', 'Joshua Villanueva', 'Kevin Ramos', 'Miguel Torres', 'Andrea Cruz', 'Bea Lim', 'Dennis Aquino'];
   names.forEach((n, i) => m.set(`customers/c${i}`, { name: n, phone: `09170000${String(100 + i)}`, phoneKey: `09170000${String(100 + i)}`, email: '', notes: i === 0 ? '#2 sides, scissor top' : '', createdAt: Date.now() - (90 - i * 7) * 864e5 }));
-  const RATE = Object.fromEntries(STARTER_STAFF.map(b => [b.id, b.rate]));
+  const RATE = Object.fromEntries(STARTER_STAFF.map(b => [b.id, b.rate])), SB = Object.fromEntries(STARTER_STAFF.map(b => [b.id, b]));
+  const COMM = (b, s) => commissionFor(SB[b], [{ kind: 'service', ref: s.id, price: s.price, qty: 1 }], 0, id => svc.find(x => x.id === id)).commission;
   let n = 0; const earned = {}; // barber -> day -> commission + tips, for the seeded weekly payouts
   for (let i = -40; i <= -1; i++) {
     const d = day(i), cnt = 26 + Math.floor(rnd() * 12); // a busy 10-chair day
     for (let k = 0; k < cnt; k++) {
-      const forHer = rnd() < 0.1, regular = rnd() < 0.5, s = forHer ? pick(her) : regular ? pick(him.filter(x => x.tier === 'regular')) : (rnd() < 0.6 ? svc[0] : pick(him.filter(x => x.tier === 'deluxe')));
-      const b = forHer ? 'dave' : s.tier === 'regular' ? pick(['ed', 'renz', 'jay', 'vince', 'mac']) : pick(['reymart', 'lyndon', 'rod', 'angelo']);
+      const forHer = rnd() < 0.18, regular = rnd() < 0.5, s = forHer ? pick(her) : regular ? pick(him.filter(x => x.tier === 'regular')) : (rnd() < 0.6 ? svc[0] : pick(him.filter(x => x.tier === 'deluxe')));
+      const b = forHer ? pick(['dave', 'dave', 'luz', 'liza']) : s.tier === 'regular' ? pick(['ed', 'renz', 'jay', 'vince', 'mac']) : pick(['reymart', 'lyndon', 'rod', 'angelo']);
       const ci = rnd() < 0.35 && i > -26 ? Math.floor(rnd() * 6) : -1; // clients 6-9 last came 4-5 weeks ago (see below)
       const tip = rnd() < 0.2 ? pick([20, 50, 100]) : 0, dep = rnd() < 0.45 ? 200 : 0;
       const prod = rnd() < 0.08 ? { kind: 'product', ref: 'i1', name: 'Clay pomade', price: 450, qty: 1 } : null;
@@ -48,8 +49,8 @@ function seed() {
       const pt = prod ? prod.price : 0;
       m.set(`sales/x${n++}`, { date: d, time: `${String(9 + Math.floor(rnd() * 10)).padStart(2, '0')}:${rnd() < 0.5 ? '00' : '30'}`, at: Date.now() + i * 864e5,
         customerId: ci >= 0 ? `c${ci}` : '', name: ci >= 0 ? names[ci] : 'Walk-in', barberId: b, lines, svcTotal: s.price, prodTotal: pt, discount: 0, tip,
-        total: s.price + pt + tip, depositCredit: dep, method: pick(['Cash', 'Cash', 'GCash', 'Maya']), rate: RATE[b], commission: Math.floor(s.price * RATE[b] / 100) });
-      ((earned[b] = earned[b] || {})[i] = (earned[b][i] || 0) + Math.floor(s.price * RATE[b] / 100) + tip);
+        total: s.price + pt + tip, depositCredit: dep, method: pick(['Cash', 'Cash', 'GCash', 'Maya']), rate: RATE[b], commission: COMM(b, s) });
+      ((earned[b] = earned[b] || {})[i] = (earned[b][i] || 0) + COMM(b, s) + tip);
     }
   }
   // weekly payouts: daily pay for every day in + commission + tips, paid up to the day before each payday

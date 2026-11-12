@@ -186,7 +186,9 @@ Men first choose **Deluxe** or **Regular**. Only that level's haircuts are shown
 
 Each barber earns a **guaranteed daily pay** for every day they work, plus a **commission** on every service they do (after discounts). Senior (Deluxe) barbers split 50/50 with the shop, junior (Regular) barbers get 60% and the shop 40%. The barber's share is rounded down to the whole peso, so on a ₱399 Deluxe Haircut the barber gets ₱199 and the shop ₱200. Tips go fully to the barber.
 
-- Starting rates: senior barbers ₱700 a day + 50%, junior barbers ₱500 a day + 60%. Dave (women's services) starts at ₱0 a day + 60%. Change any of it in **Barbers → Edit**.
+- Starting rates: senior barbers ₱700 a day + 50%, junior barbers ₱500 a day + 60%. Dave ₱1,000 a day + 55%; Luz and Liza 60%.
+- **Product fee (stylists):** on services that use salon products (color, rebond, keratin, treatments; tick "Uses salon products" on the service), the shop takes ₱50 first if the service is under ₱1,500, or ₱100 from ₱1,500 up, then the rest is split. Services without products are a straight split. Example: a ₱1,200 color by Dave → shop ₱50, then 55% of ₱1,150 = ₱632 for Dave, ₱568 for the shop. Set it per person in **Staff → Edit → Product fee**.
+- **Roles:** barber, hair stylist and nail technician take bookings and earn commission. Receptionist and maintenance only get daily pay: they're in Who's in and the pay table, but not on the website, in bookings or at checkout. Dave (women's services) starts at ₱0 a day + 60%. Change any of it in **Staff → Edit**.
 - A day counts as worked when the barber rang up a sale that day, or when it's one of their scheduled days and they weren't marked absent. Mark absences, or someone coming in on a day off, in **Schedule → Who's in**.
 - Days only count from the barber's start date and from the first sale recorded in the system, so old dates don't build up pay.
 - **Barbers** shows days worked, daily pay, commission, tips, total earned, and what's owed since the last payout.

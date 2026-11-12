@@ -801,3 +801,12 @@ html{font-synthesis-weight:none}
 .mi-time{display:inline-flex;align-items:center;gap:4px;font-weight:600;color:var(--ink-2)}
 .mi-time .ic{width:13px;height:13px}
 .summary-top .chip .ic{width:13px;height:13px}
+
+/* staff form: hide service-only fields for receptionist and maintenance */
+.staff-form .support-only{display:none}
+.staff-form:has(select[name=role] option[value=reception]:checked) .svc-only,
+.staff-form:has(select[name=role] option[value=maintenance]:checked) .svc-only{display:none}
+.staff-form:has(select[name=role] option[value=reception]:checked) .support-only,
+.staff-form:has(select[name=role] option[value=maintenance]:checked) .support-only{display:block}
+.staff-form:has(select[name=role] option[value=stylist]:checked) .barber-only,
+.staff-form:has(select[name=role] option[value=nails]:checked) .barber-only{display:none}

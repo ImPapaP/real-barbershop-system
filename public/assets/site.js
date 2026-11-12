@@ -19,6 +19,8 @@ const cur = () => info().shop.currency || '₱';
 const m = n => money(n, cur());
 const svcs = () => (info().services || []).filter(s => s.active !== false);
 const chosen = () => svcs().filter(s => S.bk.svc[s.id]);
+// Menu and booking tabs: For him, For her, and Nails once nail services are on the menu
+const groupTabs = () => [['him', 'For him'], ['her', 'For her'], ['nails', 'Nails']].filter(([k]) => k !== 'nails' || svcs().some(x => x.group === 'nails'));
 const hasTiers = g => svcs().some(s => (s.group || 'him') === g && s.kind === 'base');
 const tierNames = t => (info().barbers || []).filter(b => (b.tiers || []).includes(t)).map(b => b.name);
 const listNames = a => a.length > 1 ? a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1] : (a[0] || '');
@@ -125,7 +127,7 @@ function page() {
 
   <section id="services" class="sec"><div class="wrap">
     <div class="sec-head reveal"><div><p class="eyebrow">Menu</p><h2 class="sec-title">Services & prices</h2></div>
-      <div class="tabs" role="tablist">${[['him', 'For him'], ['her', 'For her']].map(([k, l]) => `<button role="tab" aria-selected="${S.menuTab === k}" data-act="menuTab" data-v="${k}">${l}</button>`).join('')}</div></div>
+      <div class="tabs" role="tablist">${groupTabs().map(([k, l]) => `<button role="tab" aria-selected="${S.menuTab === k}" data-act="menuTab" data-v="${k}">${l}</button>`).join('')}</div></div>
     <div id="menu-board" class="reveal">${menuBoard(S.menuTab)}</div>
   </div></section>
 
@@ -230,7 +232,7 @@ function booker() {
   return `<div class="progress" aria-label="Booking progress"><div class="bar-track"><i style="width:${st.n * 25}%"></i></div><ol>${labels.map((l, i) => `<li class="${done[i] ? 'done' : ''}"><span>${done[i] ? ic('check') : i + 1}</span>${l}</li>`).join('')}</ol></div>
   <div class="booker"><div class="steps">
     <section class="step" id="st-1"><div class="step-h"><span class="n ${st.picked ? 'ok' : ''}">${st.picked ? ic('check') : 1}</span><h3>Choose services</h3>${picked.length ? `<span class="done">${picked.length} selected · ${dur(mins)}</span>` : ''}</div>
-      <div class="tabs" role="tablist">${[['him', 'For him'], ['her', 'For her']].map(([k, l]) => `<button role="tab" type="button" aria-selected="${b.group === k}" data-act="bkGroup" data-v="${k}">${l}</button>`).join('')}</div>
+      <div class="tabs" role="tablist">${groupTabs().map(([k, l]) => `<button role="tab" type="button" aria-selected="${b.group === k}" data-act="bkGroup" data-v="${k}">${l}</button>`).join('')}</div>
       ${hasTiers(b.group) ? tierPicker() : `<div class="pick">${svcs().filter(s => (s.group || 'him') === b.group).map(s => svcCard(s)).join('')}</div>`}
     </section>
     <section class="step" id="st-2" ${st.picked ? '' : 'aria-disabled="true"'}><div class="step-h"><span class="n ${st.picked ? 'ok' : ''}">${st.picked ? ic('check') : 2}</span><h3>Choose your ${b.group === 'her' ? 'stylist' : 'barber'}</h3></div>
