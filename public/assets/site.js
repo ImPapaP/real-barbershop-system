@@ -126,7 +126,7 @@ function page() {
   </div></section>` : ''}
 
   <section id="book" class="sec alt"><div class="wrap">
-    <div class="sec-head reveal"><div><p class="eyebrow">Book online</p><h2 class="sec-title">Book an appointment</h2></div>${policyOf(I).onlineBooking ? `<p class="muted small">Pay a ${m(policyOf(I).deposit)} deposit to lock in your slot. It goes toward your bill.</p>` : ''}</div>
+    <div class="sec-head reveal"><div><p class="eyebrow">${policyOf(I).onlineBooking ? 'Book online' : 'Bookings'}</p><h2 class="sec-title">Book an appointment</h2></div>${policyOf(I).onlineBooking ? `<p class="muted small">Pay a ${m(policyOf(I).deposit)} deposit to lock in your slot. It goes toward your bill.</p>` : ''}</div>
     <div id="booker">${booker()}</div>
   </div></section>
 
