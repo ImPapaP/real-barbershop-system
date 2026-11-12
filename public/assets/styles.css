@@ -768,3 +768,17 @@ html{font-synthesis-weight:none}
 .barber h3,.summary h3,.modal-h h2{font-size:21px}
 .status-hero h1{font-size:clamp(30px,5vw,46px);line-height:1.05}
 .marquee span{font-family:var(--f-slab);font-weight:400;font-size:19px;letter-spacing:.04em}
+
+/* logo as a big see-through mark filling the right half of the hero */
+.hero-mark{position:absolute;z-index:1;pointer-events:none;top:50%;right:-4%;width:min(58vw,820px);height:auto;max-width:none;aspect-ratio:1;
+  transform:translateY(-50%) rotate(-6deg);opacity:.2;filter:drop-shadow(0 0 40px rgba(255,255,255,.35));mix-blend-mode:screen}
+.hero-anim .hero-mark{animation:markIn 1.4s var(--ease) both .1s}
+@keyframes markIn{from{opacity:0;transform:translateY(-50%) rotate(-12deg) scale(1.08)}to{opacity:.2;transform:translateY(-50%) rotate(-6deg) scale(1)}}
+.hero-x.has-photo .hero-mark{opacity:.16}
+.hero-side{align-self:end}
+@media (max-width:860px){
+  .hero-mark{width:118vw;right:-42vw;top:40px;opacity:.14;transform:rotate(-6deg)}
+  .hero-anim .hero-mark{animation:markInSm 1.2s var(--ease) both .1s}
+  @keyframes markInSm{from{opacity:0;transform:rotate(-12deg) scale(1.06)}to{opacity:.14;transform:rotate(-6deg)}}
+}
+@media (prefers-reduced-motion:reduce){.hero-anim .hero-mark{animation:none}}

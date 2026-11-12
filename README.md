@@ -182,13 +182,13 @@ Men pick **one haircut**, either **Deluxe** (Deluxe Haircut or a BL1–BL4 promo
 
 ## Barber pay
 
-Each barber earns a **guaranteed daily pay** for every day they work, plus **60% commission** on every service they do (after discounts). The shop keeps the other 40%, minus the daily pay. Tips go fully to the barber.
+Each barber earns a **guaranteed daily pay** for every day they work, plus a **commission** on every service they do (after discounts). Senior (Deluxe) barbers split 50/50 with the shop, junior (Regular) barbers get 60% and the shop 40%. The barber's share is rounded down to the whole peso, so on a ₱399 Deluxe Haircut the barber gets ₱199 and the shop ₱200. Tips go fully to the barber.
 
-- Starting rates: Deluxe barbers ₱700 a day, Regular barbers ₱500 a day, both + 60%. Dave (women's services) starts at ₱0 a day + 60%. Change any of it in **Barbers → Edit**.
+- Starting rates: senior barbers ₱700 a day + 50%, junior barbers ₱500 a day + 60%. Dave (women's services) starts at ₱0 a day + 60%. Change any of it in **Barbers → Edit**.
 - A day counts as worked when the barber rang up a sale that day, or when it's one of their scheduled days and they weren't marked absent. Mark absences, or someone coming in on a day off, in **Schedule → Who's in**.
 - Days only count from the barber's start date and from the first sale recorded in the system, so old dates don't build up pay.
 - **Barbers** shows days worked, daily pay, commission, tips, total earned, and what's owed since the last payout.
-- **Pay vs what each barber brings in** (Barbers tab): his service sales next to what the shop pays him (daily pay + commission), pay as a % of his sales, and how much is left for the shop or how much more the shop pays than he brings in. A barber pays for himself once his services pass his daily pay ÷ 40% a day (₱1,250 for ₱500/day, ₱1,750 for ₱700/day). The Excel Summary has the same columns.
+- **Pay vs what each barber brings in** (Barbers tab): his service sales next to what the shop pays him (daily pay + commission), pay as a % of his sales, and how much is left for the shop or how much more the shop pays than he brings in. A barber pays for himself once his services pass his daily pay ÷ 40% a day (₱1,250 for ₱500/day + 60%, ₱1,400 for ₱700/day + 50%). The Excel Summary has the same columns.
 
 ## Repeat business
 

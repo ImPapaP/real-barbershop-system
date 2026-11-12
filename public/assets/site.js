@@ -97,6 +97,7 @@ function page() {
   <section class="hero-x${shop.heroPhoto ? ' has-photo' : ''}" id="top">
     ${shop.heroPhoto ? `<div class="hero-photo" style="background-image:url('${esc(shop.heroPhoto)}')" role="img" aria-label="Inside ${esc(shop.name)}"></div>` : ''}
     <div class="brick" aria-hidden="true"></div>
+    <img class="hero-mark" src="${LOGO_LG}" alt="" aria-hidden="true" width="640" height="640">
     <div class="wrap hero-grid${anim}">
       <div class="hero-copy">
         <div class="row hero-chips"><span class="chip open-chip"><b aria-hidden="true" class="${st.open ? 'pulse' : ''}" style="color:${st.open ? 'var(--good)' : 'var(--hero-muted)'}">●</b>${esc(st.text)}</span>${ratingChip(shop, true)}</div>
@@ -110,7 +111,6 @@ function page() {
         </dl>
       </div>
       <div class="hero-side">
-      <img class="hero-logo" src="${LOGO_LG}" alt="${esc(shop.name)} logo: Best looks realized" width="400" height="400">
       <aside class="hero-card" aria-label="Today at the shop">
         <p class="eyebrow">Today, ${DAYS_LONG[today.dow]}</p>
         <p class="today-hours">${th && !th.closed ? `${fmtTime(th.open)} – ${fmtTime(th.close)}` : 'Closed today'}</p>
