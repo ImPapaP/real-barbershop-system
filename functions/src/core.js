@@ -49,12 +49,21 @@ export function normalizePhone(p) {
 export const validEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(e || '').trim());
 
 // Barbers who can do every selected service, work that day and (if asked) match the chosen barber.
+export const canServe = (b, services) => services.every(s => (b.groups || ['him']).includes(s.group || 'him') && (!s.tier || !(b.tiers || []).length || b.tiers.includes(s.tier)));
+// Men's bookings: exactly one haircut (Deluxe or Regular), plus add-ons not already inside a promo.
+export function comboError(info, services) {
+  const g = (services[0] || {}).group || 'him';
+  if (!(info.services || []).some(s => (s.group || 'him') === g && s.kind === 'base' && s.active !== false)) return '';
+  const bases = services.filter(s => s.kind === 'base');
+  if (bases.length !== 1) return bases.length ? 'Pick only one haircut: Deluxe or Regular.' : 'Pick a haircut first: Deluxe or Regular.';
+  const dup = services.find(s => (bases[0].includes || []).includes(s.id));
+  return dup ? `${dup.name} is already part of ${bases[0].name.split(' · ')[0]}.` : '';
+}
 export function eligibleBarbers(info, services, date, barberId) {
-  const groups = [...new Set(services.map(s => s.group || 'him'))];
   const d = dowOf(date);
   return (info.barbers || [])
     .filter(b => b.active !== false && (b.days || []).includes(d))
-    .filter(b => groups.every(g => (b.groups || ['him']).includes(g)))
+    .filter(b => canServe(b, services))
     .filter(b => !barberId || b.id === barberId)
     .sort((a, b) => (a.chair || 99) - (b.chair || 99))
     .map(b => b.id);
@@ -80,6 +89,7 @@ export function validateRequest(info, data, now = Date.now()) {
   const services = servicesById(info, ids);
   if (services.some(s => !s || s.active === false)) return { ok: false, error: 'One of the services is no longer offered. Refresh the page.' };
   if (new Set(services.map(s => s.group || 'him')).size > 1) return { ok: false, error: 'Book men’s and women’s services separately.' };
+  const combo = comboError(info, services); if (combo) return { ok: false, error: combo };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return { ok: false, error: 'Pick a date and time.' };
   if (toMin(time) % pol.step !== 0) return { ok: false, error: 'Pick one of the listed times.' };
   const today = phNow(now).date;
@@ -93,7 +103,11 @@ export function validateRequest(info, data, now = Date.now()) {
   if (at < now + pol.leadMinutes * 60e3) return { ok: false, error: `Book at least ${pol.leadMinutes} minutes ahead.` };
   const barberId = String(r.barberId || '');
   const barbers = eligibleBarbers(info, services, date, barberId);
-  if (!barbers.length) return { ok: false, error: barberId ? 'That barber isn’t in on that day.' : 'No barber offers that on that day.' };
+  if (!barbers.length) {
+    const who = (info.barbers || []).find(b => b.id === barberId);
+    if (who && !canServe(who, services)) return { ok: false, error: `${who.name || 'That barber'} doesn’t do that haircut. Pick another barber or haircut.` };
+    return { ok: false, error: barberId ? 'That barber isn’t in on that day.' : 'No barber offers that on that day.' };
+  }
   return { ok: true, name, phone, email, notes, date, time, mins, at, services, serviceIds: ids, barbers, times: blockTimes(time, mins, pol.step), policy: pol };
 }
 

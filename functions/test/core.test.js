@@ -125,3 +125,29 @@ test('trim reminder and slot-opened messages', () => {
   assert.match(smsText('rebook', p, info), /Hi Juan, it's been 4 weeks/);
   assert.match(smsText('slot_open', p, info), /Fri 6 Nov at 2:30 PM with Reymart/);
 });
+
+test('men pick one Deluxe or Regular haircut, plus add-ons, with the right barbers', () => {
+  const t = {
+    ...info,
+    services: [
+      { id: 'dlx', name: 'Deluxe Haircut', price: 399, mins: 60, group: 'him', kind: 'base', tier: 'deluxe', active: true },
+      { id: 'bl1', name: 'BL1 · Deluxe + Beard', price: 600, mins: 60, group: 'him', kind: 'base', tier: 'deluxe', includes: ['beard'], active: true },
+      { id: 'reg', name: 'Regular Haircut', price: 249, mins: 60, group: 'him', kind: 'base', tier: 'regular', active: true },
+      { id: 'beard', name: 'Beard Sculpting', price: 230, mins: 30, group: 'him', kind: 'extra', active: true },
+      { id: 'blow', name: 'Blow Dry', price: 230, mins: 60, group: 'her', active: true }
+    ],
+    barbers: [
+      { id: 'lyndon', groups: ['him'], tiers: ['deluxe'], days: [0, 1, 2, 3, 4, 5, 6] },
+      { id: 'mac', groups: ['him'], tiers: ['regular'], days: [0, 1, 2, 3, 4, 5, 6] },
+      { id: 'dave', groups: ['her'], days: [0, 1, 2, 3, 4, 5, 6] }
+    ]
+  };
+  const go = ids => validateRequest(t, { ...base, serviceIds: ids }, NOW);
+  assert.deepEqual(go(['dlx', 'beard']).barbers, ['lyndon']);
+  assert.deepEqual(go(['reg', 'beard']).barbers, ['mac']);
+  assert.match(go(['beard']).error, /haircut first/);
+  assert.match(go(['dlx', 'reg']).error, /only one haircut/);
+  assert.match(go(['bl1', 'beard']).error, /already part of BL1/);
+  assert.match(validateRequest(t, { ...base, serviceIds: ['reg'], barberId: 'lyndon' }, NOW).error, /doesn’t do that haircut/);
+  assert.equal(go(['blow']).ok, true); // women's services have no haircut rule
+});

@@ -1,11 +1,11 @@
 // Demo backend: same interface as firebase-backend.js, but everything lives in this browser's localStorage.
 // Used for the live preview before Firebase is connected. Payments are skipped; bookings confirm instantly.
 import {
-  windowOfTime, STARTER, STARTER_STAFF, publicBarber, slotId, blockTimes, isActiveSlot, availableTimes, policyOf,
+  windowOfTime, STARTER, STARTER_STAFF, publicBarber, comboError, slotId, blockTimes, isActiveSlot, availableTimes, policyOf,
   startMs, phNow, addDays, sum
 } from './shared.js';
 
-const KEY = 'rb-demo-v4', USER_KEY = 'rb-demo-user';
+const KEY = 'rb-demo-v5', USER_KEY = 'rb-demo-user';
 const clone = o => o === undefined ? undefined : JSON.parse(JSON.stringify(o));
 const listeners = new Set();
 let store = new Map();
@@ -33,8 +33,8 @@ function seed() {
   for (let i = -40; i <= -1; i++) {
     const d = day(i), cnt = 9 + Math.floor(rnd() * 8);
     for (let k = 0; k < cnt; k++) {
-      const forHer = rnd() < 0.15, s = forHer ? pick(her) : (rnd() < 0.45 ? svc[0] : pick(him));
-      const b = forHer ? 'dave' : pick(['reymart', 'lyndon', 'rod', 'angelo']);
+      const forHer = rnd() < 0.15, s = forHer ? pick(her) : (rnd() < 0.45 ? svc[0] : pick(him.filter(x => x.kind === 'base')));
+      const b = forHer ? 'dave' : s.tier === 'regular' ? pick(['mac', 'ed']) : pick(['reymart', 'lyndon', 'rod', 'angelo']);
       const ci = rnd() < 0.35 && i > -26 ? Math.floor(rnd() * 6) : -1; // clients 6-9 last came 4-5 weeks ago (see below)
       const tip = rnd() < 0.2 ? pick([20, 50, 100]) : 0, dep = rnd() < 0.45 ? 200 : 0;
       const prod = rnd() < 0.08 ? { kind: 'product', ref: 'i1', name: 'Clay pomade', price: 450, qty: 1 } : null;
@@ -56,8 +56,8 @@ function seed() {
     .forEach(([id, name, cat, stock, reorder, cost, price, unit]) => m.set('inventory/' + id, { name, cat, stock, reorder, cost, price, unit, log: [] }));
   const appts = [
     [day(0), '10:00', 'reymart', ['h1'], 'online', 'booked', 0], [day(0), '11:00', 'lyndon', ['p1'], 'online', 'booked', 1],
-    [day(0), '13:00', 'dave', ['f2', 'f3'], 'online', 'booked', 7], [day(0), '15:00', 'rod', ['h5'], 'phone', 'booked', 5],
-    [day(0), '17:00', 'angelo', ['h2'], 'online', 'booked', 3], [day(1), '10:00', 'reymart', ['h1'], 'online', 'booked', 2],
+    [day(0), '13:00', 'dave', ['f2', 'f3'], 'online', 'booked', 7], [day(0), '15:00', 'rod', ['h1', 'h5'], 'phone', 'booked', 5],
+    [day(0), '17:00', 'angelo', ['h1', 'h2'], 'online', 'booked', 3], [day(0), '12:00', 'mac', ['h9'], 'online', 'booked', 9], [day(1), '16:00', 'ed', ['h8', 'h6'], 'phone', 'booked', 0], [day(1), '10:00', 'reymart', ['h1'], 'online', 'booked', 2],
     [day(1), '11:00', 'reymart', ['p2'], 'online', 'booked', 6], [day(1), '14:00', 'lyndon', ['h1'], 'phone', 'booked', 4],
     [day(2), '16:00', 'dave', ['f9'], 'online', 'booked', 8]
   ];
@@ -163,6 +163,7 @@ const FUNCS = {
     if (!d.consent) fail('invalid-argument', 'Please agree to the booking policy.');
     const services = (d.serviceIds || []).map(s => I.services.find(x => x.id === s)).filter(Boolean);
     if (!services.length) fail('invalid-argument', 'Pick at least one service.');
+    const combo = comboError(I, services); if (combo) fail('invalid-argument', combo);
     const t = availableTimes(I, { services, date: d.date, barberId: d.barberId }, slotsOn(d.date)).find(x => x.time === d.time);
     if (!t || !t.barbers.length) fail('already-exists', 'Sorry, that time was just taken. Please pick another time.');
     const id = 'b' + Date.now().toString(36), token = Math.random().toString(36).slice(2, 14);

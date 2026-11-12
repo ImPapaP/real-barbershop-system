@@ -43,10 +43,23 @@ export function openStatus(info, ms = Date.now()) {
 export const slotId = (barberId, date, time) => `${barberId}_${date.replace(/-/g, '')}_${time.replace(':', '')}`;
 export const blockTimes = (time, mins, step) => Array.from({ length: Math.max(1, Math.ceil(mins / step)) }, (_, i) => fromMin(toMin(time) + i * step));
 export const isActiveSlot = (s, now) => !!s && (s.state === 'booked' || (s.state === 'held' && (s.holdUntil || 0) > now));
+// ---------- haircut tiers (mirrors functions/src/core.js) ----------
+export const TIERS = { deluxe: 'Deluxe', regular: 'Regular' };
+// A barber with no tiers set can take every tier (older data). Add-ons have no tier.
+export const canServe = (b, services) => services.every(s => (b.groups || ['him']).includes(s.group || 'him') && (!s.tier || !(b.tiers || []).length || b.tiers.includes(s.tier)));
+// Men's bookings: exactly one haircut (Deluxe or Regular), plus add-ons that aren't already in a promo.
+export function comboError(info, services) {
+  const g = (services[0] || {}).group || 'him';
+  if (!(info.services || []).some(s => (s.group || 'him') === g && s.kind === 'base' && s.active !== false)) return '';
+  const bases = services.filter(s => s.kind === 'base');
+  if (bases.length !== 1) return bases.length ? 'Pick only one haircut: Deluxe or Regular.' : 'Pick a haircut first: Deluxe or Regular.';
+  const dup = services.find(s => (bases[0].includes || []).includes(s.id));
+  return dup ? `${dup.name} is already part of ${bases[0].name.split(' · ')[0]}.` : '';
+}
 export function eligibleBarbers(info, services, date, barberId) {
-  const groups = [...new Set(services.map(s => s.group || 'him'))], d = dowOf(date);
+  const d = dowOf(date);
   return (info.barbers || []).filter(b => b.active !== false && (b.days || []).includes(d))
-    .filter(b => groups.every(g => (b.groups || ['him']).includes(g)))
+    .filter(b => canServe(b, services))
     .filter(b => !barberId || b.id === barberId)
     .sort((a, b) => (a.chair || 99) - (b.chair || 99));
 }
@@ -108,19 +121,21 @@ export const STARTER = {
   policy: { ...DEFAULT_POLICY, onlineBooking: false }, // turned on in Shop setup once the paid backend is deployed
   hours: [0, 1, 2, 3, 4, 5, 6].map(d => ({ d, open: '09:00', close: '20:00', closed: false })),
   services: [
-    S60('h1', 'Deluxe Haircut', 399, 'him', 'For him', 'Haircut of choice, shampoo and rinse, hot towel, arm and head massage, aloe vera moisturizing treatment and premiere grooming'),
-    S60('h8', 'Signature Haircut', 299, 'him', 'For him', 'Any style, shampoo and rinse, hot towel, and grooming with exclusive hair products'),
-    S60('h9', 'Regular Haircut', 249, 'him', 'For him', 'Any style, with grooming using exclusive hair products'),
-    S60('h2', 'Hair Spa', 550, 'him', 'For him', 'No haircut'),
-    S60('h3', 'Dandruff Control', 650, 'him', 'For him', 'No haircut'),
-    S60('h4', 'Hair Color (L’Oréal)', 750, 'him', 'For him', 'No haircut'),
-    S60('h5', 'Basic Hair Art', 549, 'him', 'For him', 'No haircut'),
-    S60('h6', 'Beard Shave with Cream', 200, 'him', 'For him'),
-    S60('h7', 'Beard Sculpting', 230, 'him', 'For him'),
-    S60('p1', 'BL1 · Deluxe Haircut + Beard Sculpting', 600, 'him', 'Promos', 'Save ₱29'),
-    S60('p2', 'BL2 · Deluxe Haircut + Hair Spa', 900, 'him', 'Promos', 'Save ₱49'),
-    S60('p3', 'BL3 · Deluxe Haircut + Dandruff Control', 1000, 'him', 'Promos', 'Save ₱49'),
-    S60('p4', 'BL4 · Deluxe Haircut + L’Oréal Hair Color', 1100, 'him', 'Promos', 'Save ₱49'),
+    // Men: pick ONE haircut (kind 'base'), Deluxe or Regular, then any add-ons (kind 'extra').
+    // tier decides which barbers can take it: deluxe = senior barbers, regular = regular barbers.
+    S60('h1', 'Deluxe Haircut', 399, 'him', 'Deluxe', 'Haircut of choice, shampoo and rinse, hot towel, arm and head massage, aloe vera moisturizing treatment and premiere grooming', { kind: 'base', tier: 'deluxe' }),
+    S60('p1', 'BL1 · Deluxe Haircut + Beard Sculpting', 600, 'him', 'Deluxe promos', 'Save ₱29', { kind: 'base', tier: 'deluxe', includes: ['h7'] }),
+    S60('p2', 'BL2 · Deluxe Haircut + Hair Spa', 900, 'him', 'Deluxe promos', 'Save ₱49', { kind: 'base', tier: 'deluxe', includes: ['h2'] }),
+    S60('p3', 'BL3 · Deluxe Haircut + Dandruff Control', 1000, 'him', 'Deluxe promos', 'Save ₱49', { kind: 'base', tier: 'deluxe', includes: ['h3'] }),
+    S60('p4', 'BL4 · Deluxe Haircut + L’Oréal Hair Color', 1100, 'him', 'Deluxe promos', 'Save ₱49', { kind: 'base', tier: 'deluxe', includes: ['h4'] }),
+    S60('h8', 'Signature Haircut', 299, 'him', 'Regular', 'Any style, shampoo and rinse, hot towel, and grooming with exclusive hair products', { kind: 'base', tier: 'regular' }),
+    S60('h9', 'Regular Haircut', 249, 'him', 'Regular', 'Any style, with grooming using exclusive hair products', { kind: 'base', tier: 'regular' }),
+    S60('h2', 'Hair Spa', 550, 'him', 'Add-ons', '', { kind: 'extra' }),
+    S60('h3', 'Dandruff Control', 650, 'him', 'Add-ons', '', { kind: 'extra' }),
+    S60('h4', 'Hair Color (L’Oréal)', 750, 'him', 'Add-ons', '', { kind: 'extra' }),
+    S60('h5', 'Basic Hair Art', 549, 'him', 'Add-ons', '', { kind: 'extra' }),
+    S60('h6', 'Beard Shave with Cream', 200, 'him', 'Add-ons', '', { kind: 'extra' }),
+    S60('h7', 'Beard Sculpting', 230, 'him', 'Add-ons', '', { kind: 'extra' }),
     S60('f1', 'Hair and Makeup', 1500, 'her', 'For her'),
     S60('f2', 'Women’s Regular Haircut', 275, 'her', 'For her'),
     S60('f3', 'Blow Dry with Shampoo', 230, 'her', 'For her'),
@@ -141,15 +156,15 @@ export const STARTER = {
   barbers: []
 };
 export const STARTER_STAFF = [
-  { id: 'reymart', name: 'Reymart', title: 'Senior barber', specialty: 'Fades and deluxe cuts', groups: ['him'], rate: 50, chair: 1 },
-  { id: 'lyndon', name: 'Lyndon', title: 'Senior barber', specialty: 'Classic cuts and beard sculpting', groups: ['him'], rate: 50, chair: 2 },
-  { id: 'rod', name: 'Rod', title: 'Barber', specialty: 'Hair art and designs', groups: ['him'], rate: 50, chair: 3 },
-  { id: 'angelo', name: 'Angelo', title: 'Barber', specialty: 'Haircuts and hair spa', groups: ['him'], rate: 50, chair: 4 },
-  { id: 'mac', name: 'Mac', title: 'Barber', specialty: 'Signature and regular cuts', groups: ['him'], rate: 50, chair: 5 },
-  { id: 'ed', name: 'Ed', title: 'Barber', specialty: 'Signature and regular cuts', groups: ['him'], rate: 50, chair: 6 },
+  { id: 'lyndon', name: 'Lyndon', title: 'Senior barber', specialty: 'Classic cuts and beard sculpting', groups: ['him'], tiers: ['deluxe'], rate: 50, chair: 1 },
+  { id: 'rod', name: 'Roderick', title: 'Senior barber', specialty: 'Hair art and designs', groups: ['him'], tiers: ['deluxe'], rate: 50, chair: 2 },
+  { id: 'reymart', name: 'Reymart', title: 'Senior barber', specialty: 'Fades and deluxe cuts', groups: ['him'], tiers: ['deluxe'], rate: 50, chair: 3 },
+  { id: 'angelo', name: 'Angelo', title: 'Senior barber', specialty: 'Haircuts and hair spa', groups: ['him'], tiers: ['deluxe'], rate: 50, chair: 4 },
+  { id: 'mac', name: 'Mac', title: 'Barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 50, chair: 5 },
+  { id: 'ed', name: 'Ed', title: 'Barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 50, chair: 6 },
   { id: 'dave', name: 'Dave', title: 'Stylist', specialty: 'Color, rebond and styling', groups: ['her'], rate: 50, chair: 7 }
 ].map(b => ({ ...b, phone: '', days: [0, 1, 2, 3, 4, 5, 6], active: true }));
-export const publicBarber = b => ({ id: b.id, name: b.name, title: b.title || '', specialty: b.specialty || '', groups: b.groups || ['him'], days: b.days || [], chair: b.chair || '', photo: b.photo || '' });
+export const publicBarber = b => ({ id: b.id, name: b.name, title: b.title || '', specialty: b.specialty || '', groups: b.groups || ['him'], tiers: b.tiers || [], days: b.days || [], chair: b.chair || '', photo: b.photo || '' });
 
 // Shrinks a photo in the browser before upload: longest side `max` px, JPEG. Returns a Blob.
 export async function resizeImage(file, max = 1600, quality = 0.82) {
