@@ -659,3 +659,14 @@ a.rating:hover{border-color:var(--star)}
 .pickcard:disabled{opacity:.5;cursor:not-allowed}
 .tier-note{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;margin:-2px 0 8px}
 .tier-note .ic{width:15px;height:15px;color:var(--accent)}
+
+/* ---------- who's in (daily pay attendance) ---------- */
+.whos{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,170px),1fr));gap:8px}
+.who{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--muted);text-align:left;cursor:pointer;font:inherit;min-width:0;transition:border-color .15s,background .15s}
+.who b{display:block;color:var(--ink);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who small{display:block;font-size:12px}
+.who span{min-width:0}
+.who:not(.on) .avatar{opacity:.45}
+.who.on{border-color:var(--accent);background:var(--accent-soft)}
+.who.on small{color:var(--ink)}
+.who:disabled{cursor:default}

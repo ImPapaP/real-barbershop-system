@@ -156,16 +156,16 @@ export const STARTER = {
   barbers: []
 };
 export const STARTER_STAFF = [
-  { id: 'lyndon', name: 'Lyndon', title: 'Senior barber', specialty: 'Classic cuts and beard sculpting', groups: ['him'], tiers: ['deluxe'], rate: 50, chair: 1 },
-  { id: 'rod', name: 'Roderick', title: 'Senior barber', specialty: 'Hair art and designs', groups: ['him'], tiers: ['deluxe'], rate: 50, chair: 2 },
-  { id: 'reymart', name: 'Reymart', title: 'Senior barber', specialty: 'Fades and deluxe cuts', groups: ['him'], tiers: ['deluxe'], rate: 50, chair: 3 },
-  { id: 'angelo', name: 'Angelo', title: 'Senior barber', specialty: 'Haircuts and hair spa', groups: ['him'], tiers: ['deluxe'], rate: 50, chair: 4 },
-  { id: 'ed', name: 'Joe Ed', title: 'Barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 50, chair: 5 },
-  { id: 'renz', name: 'Renz', title: 'Barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 50, chair: 6 },
-  { id: 'jay', name: 'Jay', title: 'Barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 50, chair: 7 },
-  { id: 'vince', name: 'Vince', title: 'Barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 50, chair: 8 },
-  { id: 'mac', name: 'Mac', title: 'Barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 50, chair: 9 },
-  { id: 'dave', name: 'Dave', title: 'Stylist', specialty: 'Color, rebond and styling', groups: ['her'], rate: 50, chair: 10 }
+  { id: 'lyndon', name: 'Lyndon', title: 'Senior barber', specialty: 'Classic cuts and beard sculpting', groups: ['him'], tiers: ['deluxe'], rate: 60, dailyPay: 700, chair: 1 },
+  { id: 'rod', name: 'Roderick', title: 'Senior barber', specialty: 'Hair art and designs', groups: ['him'], tiers: ['deluxe'], rate: 60, dailyPay: 700, chair: 2 },
+  { id: 'reymart', name: 'Reymart', title: 'Senior barber', specialty: 'Fades and deluxe cuts', groups: ['him'], tiers: ['deluxe'], rate: 60, dailyPay: 700, chair: 3 },
+  { id: 'angelo', name: 'Angelo', title: 'Senior barber', specialty: 'Haircuts and hair spa', groups: ['him'], tiers: ['deluxe'], rate: 60, dailyPay: 700, chair: 4 },
+  { id: 'ed', name: 'Joe Ed', title: 'Barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 5 },
+  { id: 'renz', name: 'Renz', title: 'Barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 6 },
+  { id: 'jay', name: 'Jay', title: 'Barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 7 },
+  { id: 'vince', name: 'Vince', title: 'Barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 8 },
+  { id: 'mac', name: 'Mac', title: 'Barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 9 },
+  { id: 'dave', name: 'Dave', title: 'Stylist', specialty: 'Color, rebond and styling', groups: ['her'], rate: 60, dailyPay: 0, chair: 10 }
 ].map(b => ({ ...b, phone: '', days: [0, 1, 2, 3, 4, 5, 6], active: true }));
 export const publicBarber = b => ({ id: b.id, name: b.name, title: b.title || '', specialty: b.specialty || '', groups: b.groups || ['him'], tiers: b.tiers || [], days: b.days || [], chair: b.chair || '', photo: b.photo || '' });
 

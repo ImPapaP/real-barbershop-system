@@ -7,7 +7,7 @@ import {
 
 // The saved demo is keyed by a fingerprint of the starter data, so changing the menu or team
 // (or a browser briefly mixing old and new files) never leaves stale sample data behind.
-const SEED_REV = 7; // bump when seed() itself changes
+const SEED_REV = 10; // bump when seed() itself changes
 const fingerprint = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const KEY = `rb-demo-${SEED_REV}-${fingerprint(JSON.stringify([STARTER, STARTER_STAFF]))}`, USER_KEY = 'rb-demo-user';
 try { Object.keys(localStorage).filter(k => k.startsWith('rb-demo-') && k !== KEY && k !== USER_KEY).forEach(k => localStorage.removeItem(k)); } catch (_) {}
@@ -29,16 +29,16 @@ function seed() {
   let r = 11; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
   const pick = a => a[Math.floor(rnd() * a.length)];
   m.set('public/info', { ...clone(STARTER), policy: { ...STARTER.policy, onlineBooking: true }, barbers: STARTER_STAFF.map(publicBarber) });
-  STARTER_STAFF.forEach(({ id, ...b }) => m.set('staff/' + id, { ...b, since: '2024-01-15' }));
+  STARTER_STAFF.forEach(({ id, ...b }) => m.set('staff/' + id, { ...b, since: day(-40) }));
   m.set('admins/demo', { role: 'owner' });
   const svc = STARTER.services, him = svc.filter(s => s.group === 'him'), her = svc.filter(s => s.group === 'her' && !s.priceFrom);
   const names = ['Marco Reyes', 'Jericho Santos', 'Carlo Mendoza', 'Rafael Cruz', 'Joshua Villanueva', 'Kevin Ramos', 'Miguel Torres', 'Andrea Cruz', 'Bea Lim', 'Dennis Aquino'];
   names.forEach((n, i) => m.set(`customers/c${i}`, { name: n, phone: `09170000${String(100 + i)}`, phoneKey: `09170000${String(100 + i)}`, email: '', notes: i === 0 ? '#2 sides, scissor top' : '', createdAt: Date.now() - (90 - i * 7) * 864e5 }));
-  let n = 0;
+  let n = 0; const earned = {}; // barber -> day -> commission + tips, for the seeded weekly payouts
   for (let i = -40; i <= -1; i++) {
-    const d = day(i), cnt = 9 + Math.floor(rnd() * 8);
+    const d = day(i), cnt = 26 + Math.floor(rnd() * 12); // a busy 10-chair day
     for (let k = 0; k < cnt; k++) {
-      const forHer = rnd() < 0.15, s = forHer ? pick(her) : (rnd() < 0.45 ? svc[0] : pick(him.filter(x => x.kind === 'base')));
+      const forHer = rnd() < 0.1, regular = rnd() < 0.5, s = forHer ? pick(her) : regular ? pick(him.filter(x => x.tier === 'regular')) : (rnd() < 0.6 ? svc[0] : pick(him.filter(x => x.tier === 'deluxe')));
       const b = forHer ? 'dave' : s.tier === 'regular' ? pick(['ed', 'renz', 'jay', 'vince', 'mac']) : pick(['reymart', 'lyndon', 'rod', 'angelo']);
       const ci = rnd() < 0.35 && i > -26 ? Math.floor(rnd() * 6) : -1; // clients 6-9 last came 4-5 weeks ago (see below)
       const tip = rnd() < 0.2 ? pick([20, 50, 100]) : 0, dep = rnd() < 0.45 ? 200 : 0;
@@ -47,12 +47,22 @@ function seed() {
       const pt = prod ? prod.price : 0;
       m.set(`sales/x${n++}`, { date: d, time: `${String(9 + Math.floor(rnd() * 10)).padStart(2, '0')}:${rnd() < 0.5 ? '00' : '30'}`, at: Date.now() + i * 864e5,
         customerId: ci >= 0 ? `c${ci}` : '', name: ci >= 0 ? names[ci] : 'Walk-in', barberId: b, lines, svcTotal: s.price, prodTotal: pt, discount: 0, tip,
-        total: s.price + pt + tip, depositCredit: dep, method: pick(['Cash', 'Cash', 'GCash', 'Maya']), rate: 50, commission: s.price / 2 });
+        total: s.price + pt + tip, depositCredit: dep, method: pick(['Cash', 'Cash', 'GCash', 'Maya']), rate: 60, commission: Math.round(s.price * 60) / 100 });
+      ((earned[b] = earned[b] || {})[i] = (earned[b][i] || 0) + Math.round(s.price * 60) / 100 + tip);
     }
   }
+  // weekly payouts: daily pay for every day in + commission + tips, paid up to the day before each payday
+  let from = -40;
+  [-33, -26, -19, -12, -5].forEach((payday, w) => {
+    STARTER_STAFF.forEach(b => {
+      let amt = 0; for (let i = from; i < payday; i++) amt += (b.dailyPay || 0) + ((earned[b.id] || {})[i] || 0);
+      if (amt) m.set(`payouts/w${w}_${b.id}`, { barberId: b.id, amount: Math.round(amt * 100) / 100, date: day(payday), note: `Week of ${day(from)}`, createdAt: Date.now() + payday * 864e5 });
+    });
+    from = payday;
+  });
   // a few regulars last seen 4-5 weeks ago, so "Due for a trim" has people in it
   [[6, -29], [7, -31], [8, -33], [9, -36], [6, -60], [8, -64]].forEach(([ci, d], k) => m.set(`sales/r${k}`, { date: day(d), time: '15:00', at: Date.now() + d * 864e5, customerId: `c${ci}`, name: names[ci], barberId: 'lyndon',
-    lines: [{ kind: 'service', ref: 'h1', name: 'Deluxe Haircut', price: 399, qty: 1 }], svcTotal: 399, prodTotal: 0, discount: 0, tip: 0, total: 399, depositCredit: 0, method: 'Cash', rate: 50, commission: 199.5 }));
+    lines: [{ kind: 'service', ref: 'h1', name: 'Deluxe Haircut', price: 399, qty: 1 }], svcTotal: 399, prodTotal: 0, discount: 0, tip: 0, total: 399, depositCredit: 0, method: 'Cash', rate: 60, commission: 239.4 }));
   [['e1', day(-18), 'Rent', 'Shop rent', 25000, 'Bank transfer'], ['e2', day(-12), 'Electricity', 'Meralco bill', 6200, 'GCash'], ['e3', day(-9), 'Water', 'Water bill', 780, 'GCash'],
    ['e4', day(-6), 'Supplies', 'Blades, neck strips, alcohol', 1450, 'Cash'], ['e5', day(-3), 'Stock purchase', 'Clay pomade ×12', 3000, 'Cash'], ['e6', day(-1), 'Payment fees', 'PayMongo fees', 380, 'Bank transfer']]
     .forEach(([id, date, cat, desc, amount, method]) => m.set('expenses/' + id, { date, cat, desc, amount, method }));
