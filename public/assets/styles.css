@@ -777,8 +777,11 @@ html{font-synthesis-weight:none}
 .hero-x.has-photo .hero-mark{opacity:.16}
 .hero-side{align-self:end}
 @media (max-width:860px){
-  .hero-mark{width:118vw;right:-42vw;top:40px;opacity:.14;transform:rotate(-6deg)}
+  /* phones: same look as desktop: the whole badge, big and see-through, behind the headline */
+  .hero-mark{width:min(104vw,520px);right:auto;left:50%;top:clamp(24px,8vw,60px);opacity:.2;transform:translateX(-50%) rotate(-6deg)}
   .hero-anim .hero-mark{animation:markInSm 1.2s var(--ease) both .1s}
-  @keyframes markInSm{from{opacity:0;transform:rotate(-12deg) scale(1.06)}to{opacity:.14;transform:rotate(-6deg)}}
+  @keyframes markInSm{from{opacity:0;transform:translateX(-50%) rotate(-12deg) scale(1.06)}to{opacity:.2;transform:translateX(-50%) rotate(-6deg)}}
+  .hero-x h1,.hero-x .lede{text-shadow:0 2px 0 #000,0 0 24px rgba(0,0,0,.85)}
+  .brick::after{background:radial-gradient(ellipse 80% 40% at 50% 22%,rgba(255,255,255,.2),rgba(255,255,255,.05) 60%,transparent 80%),radial-gradient(ellipse 140% 90% at 50% 40%,transparent 40%,rgba(0,0,0,.75) 100%)}
 }
 @media (prefers-reduced-motion:reduce){.hero-anim .hero-mark{animation:none}}
