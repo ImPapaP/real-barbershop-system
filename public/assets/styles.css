@@ -670,3 +670,15 @@ a.rating:hover{border-color:var(--star)}
 .who.on{border-color:var(--accent);background:var(--accent-soft)}
 .who.on small{color:var(--ink)}
 .who:disabled{cursor:default}
+
+/* ---------- earns his keep ---------- */
+.keep{display:inline-flex;align-items:center;gap:8px;justify-content:flex-end;white-space:nowrap}
+.keep-bar{display:inline-block;width:64px;height:6px;border-radius:99px;background:var(--surface-2);overflow:hidden}
+.keep-bar i{display:block;height:100%;border-radius:99px}
+.keep-bar i.ok{background:var(--good)} .keep-bar i.bad{background:var(--bad)}
+.chip-good{color:var(--good)} .chip-bad{color:var(--bad)}
+.keep-cards{display:none;list-style:none;margin:0;padding:0;gap:10px}
+.keep-cards li{display:grid;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px}
+.keep-line{display:flex;align-items:center;gap:10px}
+.keep-bar.wide{flex:1;width:auto}
+@media (max-width:760px){.keep-tbl{display:none}.keep-cards{display:grid}}
