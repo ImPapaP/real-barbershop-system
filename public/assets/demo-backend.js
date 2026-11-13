@@ -2,12 +2,12 @@
 // Used for the live preview before Firebase is connected. Payments are skipped; bookings confirm instantly.
 import {
   windowOfTime, STARTER, STARTER_STAFF, publicBarber, comboError, commissionFor, isServiceStaff, rebookLink, slotId, blockTimes, isActiveSlot, availableTimes, policyOf,
-  startMs, phNow, addDays, sum
+  startMs, phNow, addDays, sum, promoCheck, cleanCode
 } from './shared.js';
 
 // The saved demo is keyed by a fingerprint of the starter data, so changing the menu or team
 // (or a browser briefly mixing old and new files) never leaves stale sample data behind.
-const SEED_REV = 12; // bump when seed() itself changes
+const SEED_REV = 13; // bump when seed() itself changes
 const fingerprint = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const KEY = `rb-demo-${SEED_REV}-${fingerprint(JSON.stringify([STARTER, STARTER_STAFF]))}`, USER_KEY = 'rb-demo-user';
 try { Object.keys(localStorage).filter(k => k.startsWith('rb-demo-') && k !== KEY && k !== USER_KEY).forEach(k => localStorage.removeItem(k)); } catch (_) {}
@@ -24,6 +24,8 @@ window.addEventListener('storage', e => { if (e.key === KEY) { store = load() ||
 export function resetDemo() { try { localStorage.removeItem(KEY); localStorage.removeItem(USER_KEY); localStorage.removeItem('lastBooking'); } catch (_) {} location.reload(); }
 
 // ---------- sample data ----------
+// Neutral placeholder for the sample payment screenshot (a real one is the customer's own phone screenshot).
+function sampleProof() { return 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="360" height="640" viewBox="0 0 360 640"><rect width="360" height="640" fill="#eef1f4"/><rect x="24" y="60" width="312" height="300" rx="16" fill="#fff"/><text x="180" y="120" font-family="Arial" font-size="18" fill="#555" text-anchor="middle">Sample payment screenshot</text><text x="180" y="190" font-family="Arial" font-size="40" font-weight="700" fill="#111" text-anchor="middle">PHP 200.00</text><text x="180" y="240" font-family="Arial" font-size="15" fill="#555" text-anchor="middle">Sent to 0966 368 7856</text><text x="180" y="270" font-family="Arial" font-size="15" fill="#555" text-anchor="middle">Ref. No. 5012 345 678</text><text x="180" y="320" font-family="Arial" font-size="13" fill="#888" text-anchor="middle">Demo only</text></svg>`); }
 function seed() {
   const m = new Map(), T = phNow().date, day = n => addDays(T, n);
   let r = 11; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
@@ -84,8 +86,18 @@ function seed() {
       email: '', customerId: `c${ci}`, code: 'DEMO' + (10 + i), token: 'demo' + i, notify: true, reminders: {},
       deposit: source === 'online' ? { amount: 200, status: 'paid', method: pick(['gcash', 'paymaya', 'card']) } : null, createdAt: Date.now() - 864e5 });
   });
+  // promo codes, a GCash screenshot waiting for the owner to check, a rated visit and a late client
+  m.set('promos/REAL10', { code: 'REAL10', kind: 'percent', value: 10, active: true, expires: '', maxUses: 0, uses: 3, note: 'Sample: 10% off for followers' });
+  m.set('promos/WELCOME50', { code: 'WELCOME50', kind: 'amount', value: 50, active: true, expires: day(30), maxUses: 100, uses: 12, note: 'Sample: first visit' });
+  m.set('appointments/gc1', { date: day(1), time: '13:00', startAt: startMs(day(1), '13:00'), barberId: 'renz', serviceIds: ['h9'], mins: 45, source: 'online', status: 'pending_payment', payMethod: 'gcash',
+    name: 'Paolo Garcia', phone: '09171112222', email: 'paolo@example.com', customerId: '', code: 'GC4X7P', token: 'demogc', notify: true, reminders: {}, holdUntil: startMs(day(1), '13:00'),
+    deposit: { amount: 200, status: 'unpaid' }, proof: { status: 'review', at: Date.now() - 25 * 60000, ref: '5012 345 678' }, createdAt: Date.now() - 30 * 60000 });
+  m.set('proofs/gc1', { apptId: 'gc1', ref: '5012 345 678', at: Date.now() - 25 * 60000, img: sampleProof() });
+  m.set('appointments/rt1', { date: day(-2), time: '15:00', startAt: startMs(day(-2), '15:00'), barberId: 'lyndon', serviceIds: ['h1'], mins: 60, source: 'online', status: 'done', name: names[2], phone: '09170000102', email: '', customerId: 'c2', code: 'RT2K9M', token: 'demort', notify: true, reminders: {},
+    deposit: { amount: 200, status: 'paid', method: 'gcash' }, rating: { stars: 5, text: 'Sobrang linis ng fade, and Lyndon took his time. Babalik ako!', at: Date.now() - 864e5 }, createdAt: Date.now() - 3 * 864e5 });
   m.set('waitlist/wl1', { name: 'Kevin Ramos', phone: '09170000105', phoneKey: '09170000105', email: '', date: day(1), window: 'morning', barberId: 'reymart', serviceIds: ['h1'], status: 'waiting', createdAt: Date.now() - 3600e3 });
   m.set('appointments/w1', { date: day(0), time: '09:40', source: 'walk-in', status: 'waiting', name: 'Walk-in', queueNo: 1, serviceIds: ['h1'], barberId: '', createdAt: Date.now() - 12 * 60000 });
+  { const a = m.get('appointments/a5'); if (a) m.set('appointments/a5', { ...a, late: { mins: 10, at: Date.now() - 5 * 60000 } }); }
   store = m;
   for (const k of [...m.keys()]) if (k.startsWith('appointments/')) syncSlots(k.split('/')[1]);
   return m;
@@ -167,8 +179,21 @@ function publicView(id) {
     deposit: { ...(a.deposit || { amount: pol.deposit, status: 'unpaid' }) }, holdUntil: a.holdUntil || 0, checkoutUrl: '',
     canReschedule: a.status === 'booked' && startAt - now >= pol.rescheduleHours * 3600e3 && (a.reschedules || 0) < pol.maxReschedules,
     canCancel: a.status === 'booked' && startAt > now,
-    policy: { deposit: pol.deposit, rescheduleHours: pol.rescheduleHours, lateMinutes: pol.lateMinutes, holdMinutes: pol.holdMinutes }
+    policy: { deposit: pol.deposit, rescheduleHours: pol.rescheduleHours, lateMinutes: pol.lateMinutes, holdMinutes: pol.holdMinutes },
+    payMethod: a.payMethod || 'online', proof: a.proof ? { status: a.proof.status, at: a.proof.at, note: a.proof.note || '' } : null,
+    gcash: a.payMethod === 'gcash' ? { number: I.shop.gcashNumber || '', name: I.shop.gcashName || '' } : null,
+    promo: a.promo || null, late: a.late || null, rating: a.rating || null, groupOf: a.groupOf || '', source: a.source || 'online'
   };
+}
+function queueFor(a) {
+  if (a.source === 'walk-in' && a.status === 'waiting' && a.date === phNow().date) {
+    const w = [...store].filter(([k, v]) => k.startsWith('appointments/') && v.date === a.date && v.source === 'walk-in' && v.status === 'waiting').map(([, v]) => v);
+    return { walkin: true, queueNo: a.queueNo || 0, ahead: w.filter(x => (x.queueNo || 0) < (a.queueNo || 0)).length, at: Date.now() };
+  }
+  if (a.status !== 'booked' || a.date !== phNow().date || !a.barberId) return null;
+  const rows = [...store].filter(([k, v]) => k.startsWith('appointments/') && v.date === a.date && v.barberId === a.barberId).map(([, v]) => v);
+  const mine = startMs(a.date, a.time);
+  return { ahead: rows.filter(x => ['booked', 'waiting', 'inchair'].includes(x.status) && startMs(x.date, x.time || '00:00') < mine).length, inChair: rows.some(x => x.status === 'inchair'), at: Date.now() };
 }
 function byToken(d) { const a = store.get('appointments/' + (d && d.id)); if (!a || a.token !== d.token) fail('not-found', 'Booking not found. Check the link in your email.'); return a; }
 const FUNCS = {
@@ -183,6 +208,7 @@ const FUNCS = {
     const combo = comboError(I, services); if (combo) fail('invalid-argument', combo);
     const t = availableTimes(I, { services, date: d.date, barberId: d.barberId }, slotsOn(d.date)).find(x => x.time === d.time);
     if (!t || !t.barbers.length) fail('already-exists', 'Sorry, that time was just taken. Please pick another time.');
+    const manual = d.payMethod === 'gcash' && !!I.shop.gcashNumber;
     // Book for two: same services, a second barber at the same time or the same barber right after
     let guest = null;
     if (d.guest) {
@@ -198,22 +224,33 @@ const FUNCS = {
       if (!gb) fail('already-exists', 'Sorry, the second person’s slot was just taken. Pick another option for them.');
       guest = { name: d.guest.name.trim(), date: gd, time: d.guest.time, barberId: gb, services: gsv };
     }
+    let promo = null;
+    const pc = cleanCode(d.promo);
+    if (pc) {
+      const r = promoCheck(store.get('promos/' + pc), sum([...services, ...(guest ? guest.services : [])], s => s.price), phNow().date);
+      if (!r.ok) fail('invalid-argument', r.error);
+      promo = { code: pc, off: r.off, label: r.label };
+      const p = store.get('promos/' + pc); store.set('promos/' + pc, { ...p, uses: (p.uses || 0) + 1 });
+    }
     const id = 'b' + Date.now().toString(36), token = Math.random().toString(36).slice(2, 14);
     const gid = guest ? id + 'g' : '';
+    const holdUntil = Date.now() + Math.max(pol.holdMinutes, 30) * 60e3;
+    const st = manual ? { status: 'pending_payment', payMethod: 'gcash', holdUntil } : { status: 'booked', payMethod: 'online' };
+    const dep = manual ? { amount: pol.deposit, status: 'unpaid' } : { amount: pol.deposit, status: 'paid', method: 'gcash' };
     const code = Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
     store.set('appointments/' + id, {
-      code, token, source: 'online', status: 'booked', notify: true, name: d.name.trim(), phone: d.phone.trim(), email: d.email.trim(), notes: d.notes || '', customerId: '',
+      code, token, source: 'online', ...st, ...(promo ? { promo } : {}), notify: true, name: d.name.trim(), phone: d.phone.trim(), email: d.email.trim(), notes: d.notes || '', customerId: '',
       serviceIds: services.map(s => s.id), mins: sum(services, s => s.mins), date: d.date, time: d.time, startAt: startMs(d.date, d.time), barberId: t.barbers[0],
-      deposit: { amount: pol.deposit, status: 'paid', method: 'gcash' }, reminders: {}, reschedules: 0, createdAt: Date.now(), guests: gid ? [gid] : []
+      deposit: dep, reminders: {}, reschedules: 0, createdAt: Date.now(), guests: gid ? [gid] : []
     });
     if (guest) store.set('appointments/' + gid, {
-      code: code.slice(0, 5) + '2', token: Math.random().toString(36).slice(2, 14), source: 'online', status: 'booked', notify: false, groupOf: id, bookedBy: d.name.trim(),
+      code: code.slice(0, 5) + '2', token: Math.random().toString(36).slice(2, 14), source: 'online', ...st, notify: false, groupOf: id, bookedBy: d.name.trim(),
       name: guest.name, phone: d.phone.trim(), email: d.email.trim(), notes: d.notes || '', customerId: '',
       serviceIds: guest.services.map(s => s.id), mins: sum(guest.services, s => s.mins), date: guest.date, time: guest.time, startAt: startMs(guest.date, guest.time), barberId: guest.barberId,
-      deposit: { amount: pol.deposit, status: 'paid', method: 'gcash', paidWith: id }, reminders: {}, reschedules: 0, createdAt: Date.now()
+      deposit: manual ? dep : { ...dep, paidWith: id }, reminders: {}, reschedules: 0, createdAt: Date.now()
     });
     afterWrite('appointments/' + id); if (guest) afterWrite('appointments/' + gid);
-    return { id, token, checkoutUrl: `booking.html?id=${id}&t=${token}&paid=1` };
+    return { id, token, checkoutUrl: `booking.html?id=${id}&t=${token}${manual ? '' : '&paid=1'}` };
   },
   getBooking(d) {
     const a = byToken(d), I = info(), every = Math.max(0, parseInt(I.shop.loyaltyEvery, 10) || 0);
@@ -221,7 +258,57 @@ const FUNCS = {
     if (!cid && a.phone) { const key = String(a.phone).replace(/\D/g, '').replace(/^63/, '0'); const c = [...store].find(([k, v]) => k.startsWith('customers/') && v.phoneKey === key); cid = c ? c[0].split('/')[1] : ''; }
     const visits = cid ? [...store].filter(([k, v]) => k.startsWith('sales/') && v.customerId === cid).length : 0;
     const guests = (a.guests || []).map(gid => { const g = store.get('appointments/' + gid); return g && { id: gid, token: g.token, name: g.name, status: g.status, date: g.date, time: g.time, barberName: (I.barbers.find(b => b.id === g.barberId) || {}).name || '', services: (g.serviceIds || []).map(s => (I.services.find(x => x.id === s) || {}).name).filter(Boolean) }; }).filter(Boolean);
-    return { ...publicView(d.id), loyalty: every ? { every, visits, nextFree: (visits + 1) % every === 0 } : null, guests, rebook: rebookLink('.', a, I) };
+    const cut = store.get('cuts/' + d.id);
+    return { ...publicView(d.id), loyalty: every ? { every, visits, nextFree: (visits + 1) % every === 0 } : null, guests, rebook: rebookLink('.', a, I), queue: queueFor(a), cutPhoto: a.status === 'done' && cut ? cut.img : '' };
+  },
+  checkPromo(d) {
+    const I = info(), code = cleanCode(d.code); if (!code) fail('invalid-argument', 'Type a promo code.');
+    const total = sum([...(d.serviceIds || []), ...(d.guestServiceIds || [])].map(s => I.services.find(x => x.id === s)).filter(Boolean), s => s.price);
+    const r = promoCheck(store.get('promos/' + code), total, phNow().date);
+    if (!r.ok) fail('invalid-argument', r.error);
+    return { code, off: r.off, label: r.label };
+  },
+  submitProof(d) {
+    const a = byToken(d), now = Date.now();
+    if (a.payMethod !== 'gcash') fail('failed-precondition', 'This booking is paid online.');
+    if (a.status !== 'pending_payment') fail('failed-precondition', a.status === 'booked' ? 'This booking is already confirmed.' : 'This booking can’t take a payment anymore. Please book again.');
+    if (!(a.proof && a.proof.status === 'review') && (a.holdUntil || 0) < now) fail('deadline-exceeded', 'The time to send your payment ran out and the slot was released. Please book again.');
+    if (!/^data:image\/(jpeg|png|webp);base64,/.test(d.image || '') || d.image.length > 900000) fail('invalid-argument', 'Upload a screenshot of your GCash payment (JPG or PNG).');
+    const ref = String(d.ref || '').replace(/[^\w\s-]/g, '').slice(0, 40), keep = Math.max(a.holdUntil || 0, startMs(a.date, a.time));
+    store.set('proofs/' + d.id, { img: d.image, ref, at: now, apptId: d.id });
+    store.set('appointments/' + d.id, { ...a, proof: { status: 'review', at: now, ref }, holdUntil: keep });
+    afterWrite('appointments/' + d.id);
+    for (const gid of a.guests || []) { const g = store.get('appointments/' + gid); if (g) { store.set('appointments/' + gid, { ...g, holdUntil: keep }); afterWrite('appointments/' + gid); } }
+    return publicView(d.id);
+  },
+  joinQueue(d) {
+    const I = info(), t = phNow(), h = I.hours.find(x => x.d === t.dow), toM = s => { const [a, b] = String(s).split(':').map(Number); return a * 60 + b; };
+    if (!h || h.closed || t.min < toM(h.open) - 15 || t.min > toM(h.close) - 30) fail('failed-precondition', 'The walk-in queue is closed right now. Book online for another day.');
+    const name = String(d.name || '').trim(), phone = String(d.phone || '').replace(/\D/g, '').replace(/^63/, '0');
+    if (name.length < 2) fail('invalid-argument', 'Enter your name.');
+    if (!/^09\d{9}$/.test(phone)) fail('invalid-argument', 'Enter a valid mobile number, like 0917 123 4567.');
+    const today = [...store].filter(([k, v]) => k.startsWith('appointments/') && v.date === t.date && v.source === 'walk-in');
+    const mine = today.find(([, v]) => v.phone === phone && v.status === 'waiting');
+    if (mine) return { id: mine[0].split('/')[1], token: mine[1].token, queueNo: mine[1].queueNo, again: true };
+    const queueNo = Math.max(0, ...today.map(([, v]) => v.queueNo || 0)) + 1, id = 'q' + Date.now().toString(36), token = Math.random().toString(36).slice(2, 14);
+    store.set('appointments/' + id, { date: t.date, time: `${String(Math.floor(t.min / 60)).padStart(2, '0')}:${String(t.min % 60).padStart(2, '0')}`, source: 'walk-in', status: 'waiting', name, phone,
+      serviceIds: (d.serviceIds || []).filter(x => I.services.some(s => s.id === x)), barberId: I.barbers.some(b => b.id === d.barberId) ? d.barberId : '', queueNo, token, code: 'Q' + queueNo, notify: false, fromQr: true, createdAt: Date.now() });
+    afterWrite('appointments/' + id);
+    return { id, token, queueNo };
+  },
+  runningLate(d) {
+    const a = byToken(d), pol = policyOf(info()), now = Date.now(), startAt = startMs(a.date, a.time);
+    const mins = Math.max(5, Math.min(pol.lateMinutes ? pol.lateMinutes - 1 : 30, parseInt(d.mins, 10) || 10));
+    if (a.status !== 'booked' || now > startAt + pol.lateMinutes * 60e3 || startAt - now > 3 * 3600e3) fail('failed-precondition', 'You can only tell us this on the day, close to your time.');
+    store.set('appointments/' + d.id, { ...a, late: { mins, at: now } }); afterWrite('appointments/' + d.id);
+    return publicView(d.id);
+  },
+  rateVisit(d) {
+    const a = byToken(d);
+    if (a.status !== 'done') fail('failed-precondition', 'You can rate your visit after your cut.');
+    const rating = { stars: Math.max(1, Math.min(5, parseInt(d.stars, 10) || 0)), text: String(d.text || '').trim().slice(0, 400), at: Date.now() };
+    store.set('appointments/' + d.id, { ...a, rating }); afterWrite('appointments/' + d.id);
+    return FUNCS.getBooking(d);
   },
   joinWaitlist(d) {
     const phone = String(d.phone || '').replace(/\D/g, '').replace(/^63/, '0');

@@ -176,3 +176,19 @@ test('"Book again" link keeps the same services and barber, dropping anything no
   assert.equal(rebookLink('https://x.app', { lines: [{ kind: 'service', ref: 'h1' }, { kind: 'product', ref: 'p' }, { kind: 'service', ref: 'old' }], barberId: 'left' }, inf), 'https://x.app/?svc=h1#book');
   assert.equal(rebookLink('.', {}, inf), './#book');
 });
+
+import { promoCheck, cleanCode, validProofImage } from '../src/core.js';
+test('promo codes: percent, amount, expiry, limits', () => {
+  assert.deepEqual(promoCheck({ kind: 'percent', value: 10 }, 399, '2026-11-13'), { ok: true, off: 39, label: '10% off' });
+  assert.equal(promoCheck({ kind: 'amount', value: 500 }, 399, '2026-11-13').off, 399);
+  assert.equal(promoCheck({ kind: 'amount', value: 50, expires: '2026-11-01' }, 399, '2026-11-13').ok, false);
+  assert.equal(promoCheck({ kind: 'amount', value: 50, maxUses: 5, uses: 5 }, 399, '2026-11-13').ok, false);
+  assert.equal(promoCheck({ kind: 'amount', value: 50, active: false }, 399, '2026-11-13').ok, false);
+  assert.equal(promoCheck({ kind: 'amount', value: 50, minSpend: 500 }, 399, '2026-11-13').ok, false);
+  assert.equal(cleanCode(' real-10 '), 'REAL10');
+});
+test('payment screenshots must be small images', () => {
+  assert.equal(validProofImage('data:image/jpeg;base64,AAAA'), true);
+  assert.equal(validProofImage('data:text/html;base64,AAAA'), false);
+  assert.equal(validProofImage('data:image/jpeg;base64,' + 'A'.repeat(900000)), false);
+});

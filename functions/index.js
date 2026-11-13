@@ -11,6 +11,11 @@
 //   joinWaitlist       website -> join the waitlist for a full day
 //   sendRebookReminders daily: "time for a trim" text to clients last seen N days ago
 //   sendTrimReminder   dashboard -> send that text to one client now
+//   checkPromo         website -> check a promo code before booking
+//   submitProof        booking link -> upload a GCash screenshot (pay-by-GCash bookings); the shop approves it
+//   runningLate        booking link -> tell the shop you're running a few minutes late
+//   rateVisit          booking link -> rate the visit after checkout
+//   joinQueue          walk-in QR poster in the shop -> join today's walk-in queue (no deposit)
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
@@ -22,7 +27,8 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import {
   validateRequest, policyOf, slotId, isActiveSlot, desiredSlots, slotStateFor, apptMins, startMs,
   verifyPaymongoSignature, rebookLink, newToken, tokenMatches, bookingCode, smsText, emailContent, eligibleBarbers,
-  servicesById, blockTimes, phNow, addDays, normalizePhone, validEmail, parseSlotId, waitlistMatches
+  servicesById, blockTimes, phNow, addDays, normalizePhone, validEmail, parseSlotId, waitlistMatches,
+  promoCheck, cleanCode, validProofImage
 } from './src/core.js';
 import { createCheckout, expireCheckout, sendSms, sendEmail } from './src/providers.js';
 
@@ -121,6 +127,19 @@ export const createBooking = onCall({ secrets: [PAYMONGO_SECRET_KEY] }, async re
     if (!vg.ok) throw new HttpsError('invalid-argument', `Second person: ${vg.error}`);
   }
 
+  // Pay online (PayMongo checkout) or send to the shop's GCash and upload a screenshot for the shop to check.
+  const manual = req.data && req.data.payMethod === 'gcash' && !!(info.shop && info.shop.gcashNumber) && pol.manualGcash !== false;
+  // Promo code: checked here again (the website check is only a preview). Comes off the bill at the shop.
+  let promo = null;
+  const code = cleanCode(req.data && req.data.promo);
+  if (code) {
+    const ps = await db.doc(`promos/${code}`).get();
+    const total = [...servicesById(info, v.serviceIds), ...(vg ? servicesById(info, vg.serviceIds) : [])].reduce((t, x) => t + (x ? x.price : 0), 0);
+    const r = promoCheck(ps.exists ? ps.data() : null, total, phNow(now).date);
+    if (!r.ok) throw new HttpsError('invalid-argument', r.error);
+    promo = { code, off: r.off, label: r.label };
+  }
+
   // One unpaid booking per phone number at a time, so nobody can tie up the calendar.
   const open = await db.collection('appointments').where('phone', '==', v.phone).where('status', '==', 'pending_payment').get();
   if (open.docs.some(d => (d.data().holdUntil || 0) > now)) {
@@ -128,8 +147,8 @@ export const createBooking = onCall({ secrets: [PAYMONGO_SECRET_KEY] }, async re
   }
 
   const id = db.collection('appointments').doc().id, gid = vg ? db.collection('appointments').doc().id : '';
-  const token = newToken(), code = bookingCode();
-  const holdUntil = now + pol.holdMinutes * 60e3;
+  const token = newToken(), bcode = bookingCode();
+  const holdUntil = now + (manual ? Math.max(pol.holdMinutes, 30) : pol.holdMinutes) * 60e3; // GCash transfers get 30 minutes
   const result = await db.runTransaction(async tx => {
     const refs = v.barbers.map(b => v.times.map(t => slotRef(slotId(b, v.date, t))));
     const grefs = vg ? vg.barbers.map(b => vg.times.map(t => slotRef(slotId(b, vg.date, t)))) : [];
@@ -144,7 +163,7 @@ export const createBooking = onCall({ secrets: [PAYMONGO_SECRET_KEY] }, async re
     const b = v.barbers[pick];
     refs[pick].forEach((r, i) => tx.set(r, { barberId: b, date: v.date, time: v.times[i], state: 'held', holdUntil, bookingId: id }));
     tx.set(apptRef(id), {
-      code, token, source: 'online', status: 'pending_payment', notify: true,
+      code: bcode, token, source: 'online', status: 'pending_payment', notify: true, payMethod: manual ? 'gcash' : 'online', ...(promo ? { promo } : {}),
       name: v.name, phone: v.phone, email: v.email, notes: v.notes, customerId: '',
       serviceIds: v.serviceIds, mins: v.mins, date: v.date, time: v.time, startAt: v.at, barberId: b,
       blocks: refs[pick].map(r => r.id), holdUntil, guests: gid ? [gid] : [],
@@ -154,25 +173,27 @@ export const createBooking = onCall({ secrets: [PAYMONGO_SECRET_KEY] }, async re
       const gb = vg.barbers[gpick];
       grefs[gpick].forEach((r, i) => tx.set(r, { barberId: gb, date: vg.date, time: vg.times[i], state: 'held', holdUntil, bookingId: gid }));
       tx.set(apptRef(gid), {
-        code: bookingCode(), token: newToken(), source: 'online', status: 'pending_payment', notify: false, groupOf: id, bookedBy: v.name,
+        code: bookingCode(), token: newToken(), source: 'online', status: 'pending_payment', notify: false, groupOf: id, bookedBy: v.name, payMethod: manual ? 'gcash' : 'online',
         name: vg.name, phone: v.phone, email: v.email, notes: v.notes, customerId: '',
         serviceIds: vg.serviceIds, mins: vg.mins, date: vg.date, time: vg.time, startAt: vg.at, barberId: gb,
         blocks: grefs[gpick].map(r => r.id), holdUntil,
         deposit: { amount: pol.deposit, status: 'unpaid' }, reminders: {}, reschedules: 0, createdAt: now
       });
     }
+    if (promo) tx.set(db.doc(`promos/${promo.code}`), { uses: FieldValue.increment(1) }, { merge: true });
     return { barberId: b };
   });
   if (result.taken === 'main') throw new HttpsError('already-exists', 'Sorry, that time was just taken. Please pick another time.');
   if (result.taken === 'guest') throw new HttpsError('already-exists', 'Sorry, the second person’s slot was just taken. Pick another option for them.');
   const barberId = result.barberId, people = vg ? 2 : 1;
+  if (manual) return { id, token, checkoutUrl: `booking.html?id=${encodeURIComponent(id)}&t=${encodeURIComponent(token)}` };
 
   try {
     const shop = (info.shop && info.shop.name) || 'Barbershop';
     const link = bookingLink(id, token);
     const cs = await createCheckout(PAYMONGO_SECRET_KEY.value(), {
       amount: pol.deposit * people,
-      itemName: people > 1 ? `Booking deposits for 2 people · ${code}` : `Booking deposit · ${code}`,
+      itemName: people > 1 ? `Booking deposits for 2 people · ${bcode}` : `Booking deposit · ${bcode}`,
       description: `${shop}: ${servicesById(info, v.serviceIds).map(s => s.name).join(', ')} with ${barberName(info, barberId)}, ${v.date} ${v.time}`,
       reference: id,
       methods: PAYMENT_METHODS.value().split(',').map(s => s.trim()).filter(Boolean),
@@ -264,8 +285,24 @@ function publicView(id, a, info) {
     checkoutUrl: a.status === 'pending_payment' && (a.holdUntil || 0) > now ? a.checkoutUrl || '' : '',
     canReschedule: a.status === 'booked' && startAt - now >= pol.rescheduleHours * 3600e3 && (a.reschedules || 0) < pol.maxReschedules,
     canCancel: a.status === 'booked' && startAt > now,
-    policy: { deposit: pol.deposit, rescheduleHours: pol.rescheduleHours, lateMinutes: pol.lateMinutes, holdMinutes: pol.holdMinutes }
+    policy: { deposit: pol.deposit, rescheduleHours: pol.rescheduleHours, lateMinutes: pol.lateMinutes, holdMinutes: pol.holdMinutes },
+    payMethod: a.payMethod || 'online', proof: a.proof ? { status: a.proof.status, at: a.proof.at, note: a.proof.note || '' } : null,
+    gcash: a.payMethod === 'gcash' ? { number: (info.shop && info.shop.gcashNumber) || '', name: (info.shop && info.shop.gcashName) || '' } : null,
+    promo: a.promo || null, late: a.late || null, rating: a.rating || null, groupOf: a.groupOf || '', source: a.source || 'online'
   };
+}
+// Live queue on the day: clients still ahead of you with the same barber (or, for walk-ins, in the queue).
+async function queueFor(a) {
+  if (a.source === 'walk-in' && a.status === 'waiting' && a.date === phNow().date) {
+    const q = await db.collection('appointments').where('date', '==', a.date).where('status', '==', 'waiting').get();
+    return { walkin: true, queueNo: a.queueNo || 0, ahead: q.docs.filter(d => d.data().source === 'walk-in' && (d.data().queueNo || 0) < (a.queueNo || 0)).length, at: Date.now() };
+  }
+  if (a.status !== 'booked' || a.date !== phNow().date || !a.barberId) return null;
+  const q = await db.collection('appointments').where('date', '==', a.date).where('barberId', '==', a.barberId).get();
+  const mine = a.startAt || startMs(a.date, a.time);
+  const rows = q.docs.map(d => d.data());
+  const ahead = rows.filter(x => ['booked', 'waiting', 'inchair'].includes(x.status) && (x.startAt || startMs(x.date, x.time || '00:00')) < mine).length;
+  return { ahead, inChair: rows.some(x => x.status === 'inchair'), at: Date.now() };
 }
 
 export const getBooking = onCall(async req => {
@@ -277,7 +314,85 @@ export const getBooking = onCall(async req => {
     const ga = gs.data();
     guests.push({ id: gid, token: ga.token, name: ga.name, status: ga.status, date: ga.date, time: ga.time, barberName: barberName(info, ga.barberId), services: servicesById(info, ga.serviceIds).filter(Boolean).map(x => x.name) });
   }
-  return { ...publicView(id, a, info), loyalty: await loyaltyFor(a, info), guests, rebook: rebookLink('.', a, info) };
+  const cut = a.status === 'done' ? await db.doc(`cuts/${id}`).get() : null;
+  return { ...publicView(id, a, info), loyalty: await loyaltyFor(a, info), guests, rebook: rebookLink('.', a, info), queue: await queueFor(a), cutPhoto: cut && cut.exists ? cut.data().img || '' : '' };
+});
+
+// =============== promo codes ===============
+export const checkPromo = onCall(async req => {
+  const info = await loadInfo(), code = cleanCode(req.data && req.data.code);
+  if (!code) throw new HttpsError('invalid-argument', 'Type a promo code.');
+  const ids = [...(Array.isArray(req.data.serviceIds) ? req.data.serviceIds : []), ...(Array.isArray(req.data.guestServiceIds) ? req.data.guestServiceIds : [])].slice(0, 20);
+  const total = servicesById(info, ids).reduce((t, x) => t + (x ? x.price : 0), 0);
+  const ps = await db.doc(`promos/${code}`).get();
+  const r = promoCheck(ps.exists ? ps.data() : null, total, phNow().date);
+  if (!r.ok) throw new HttpsError('invalid-argument', r.error);
+  return { code, off: r.off, label: r.label };
+});
+
+// =============== pay by GCash: the customer uploads a screenshot, the shop checks it ===============
+export const submitProof = onCall({ secrets: NOTIFY_SECRETS }, async req => {
+  const { id, a } = await bookingFromToken(req.data);
+  const info = await loadInfo(), now = Date.now();
+  if (a.payMethod !== 'gcash') throw new HttpsError('failed-precondition', 'This booking is paid online.');
+  if (a.status !== 'pending_payment') throw new HttpsError('failed-precondition', a.status === 'booked' ? 'This booking is already confirmed.' : 'This booking can’t take a payment anymore. Please book again.');
+  if (!(a.proof && a.proof.status === 'review') && (a.holdUntil || 0) < now) throw new HttpsError('deadline-exceeded', 'The time to send your payment ran out and the slot was released. Please book again.');
+  const img = req.data && req.data.image, ref = String(req.data && req.data.ref || '').replace(/[^\w\s-]/g, '').slice(0, 40);
+  if (!validProofImage(img)) throw new HttpsError('invalid-argument', 'Upload a screenshot of your GCash payment (JPG or PNG).');
+  const startAt = a.startAt || startMs(a.date, a.time), keep = Math.max(a.holdUntil || 0, startAt);
+  await db.doc(`proofs/${id}`).set({ img, ref, at: now, apptId: id });
+  await apptRef(id).update({ proof: { status: 'review', at: now, ref }, holdUntil: keep }); // keep the slot held until the shop checks it
+  for (const gid of a.guests || []) await apptRef(gid).update({ holdUntil: keep }).catch(() => {});
+  await notify('shop_proof', id, a, info, { sms: false, email: false, shop: 'shop_proof' }).catch(e => logger.error('Shop alert failed', e.message));
+  return publicView(id, { ...a, proof: { status: 'review', at: now, ref }, holdUntil: keep }, info);
+});
+
+// =============== on the day ===============
+// Walk-in QR: someone standing in the shop joins today's queue. No deposit; the front desk calls them in order.
+export const joinQueue = onCall(async req => {
+  const info = await loadInfo(), now = Date.now(), t = phNow(now);
+  const dow = new Date(`${t.date}T00:00:00Z`).getUTCDay(), h = (info.hours || []).find(x => x.d === dow);
+  const toM = s => { const [a, b] = String(s).split(':').map(Number); return a * 60 + b; };
+  if (!h || h.closed || t.min < toM(h.open) - 15 || t.min > toM(h.close) - 30) throw new HttpsError('failed-precondition', 'The walk-in queue is closed right now. Book online for another day.');
+  const name = String(req.data && req.data.name || '').trim().slice(0, 60), phone = normalizePhone(req.data && req.data.phone);
+  if (name.length < 2) throw new HttpsError('invalid-argument', 'Enter your name.');
+  if (!phone) throw new HttpsError('invalid-argument', 'Enter a valid mobile number, like 0917 123 4567.');
+  const serviceIds = (Array.isArray(req.data.serviceIds) ? req.data.serviceIds : []).filter(id => (info.services || []).some(s => s.id === id && s.active !== false)).slice(0, 5);
+  const barberId = (info.barbers || []).some(b => b.id === req.data.barberId) ? req.data.barberId : '';
+  const ref = db.collection('appointments').doc(), token = newToken();
+  const out = await db.runTransaction(async tx => {
+    const q = await tx.get(db.collection('appointments').where('date', '==', t.date).where('source', '==', 'walk-in'));
+    const mine = q.docs.find(d => d.data().phone === phone && d.data().status === 'waiting');
+    if (mine) return { id: mine.id, token: mine.data().token, queueNo: mine.data().queueNo, again: true };
+    const queueNo = Math.max(0, ...q.docs.map(d => d.data().queueNo || 0)) + 1;
+    tx.set(ref, { date: t.date, time: `${String(Math.floor(t.min / 60)).padStart(2, '0')}:${String(t.min % 60).padStart(2, '0')}`, source: 'walk-in', status: 'waiting', name, phone, serviceIds, barberId, queueNo,
+      token, code: bookingCode(), notify: false, customerId: '', fromQr: true, createdAt: now });
+    return { id: ref.id, token, queueNo };
+  });
+  if (!out.token) throw new HttpsError('already-exists', 'You’re already in the queue. Ask the front desk.');
+  return out;
+});
+
+export const runningLate = onCall(async req => {
+  const { id, a } = await bookingFromToken(req.data);
+  const info = await loadInfo(), pol = policyOf(info), now = Date.now();
+  const mins = Math.max(5, Math.min(pol.lateMinutes ? pol.lateMinutes - 1 : 30, parseInt(req.data && req.data.mins, 10) || 10));
+  const startAt = a.startAt || startMs(a.date, a.time);
+  if (a.status !== 'booked' || now > startAt + pol.lateMinutes * 60e3 || startAt - now > 3 * 3600e3) throw new HttpsError('failed-precondition', 'You can only tell us this on the day, close to your time.');
+  await apptRef(id).update({ late: { mins, at: now } });
+  return publicView(id, { ...a, late: { mins, at: now } }, info);
+});
+
+// =============== after the visit ===============
+export const rateVisit = onCall(async req => {
+  const { id, a } = await bookingFromToken(req.data);
+  const info = await loadInfo();
+  if (a.status !== 'done') throw new HttpsError('failed-precondition', 'You can rate your visit after your cut.');
+  const stars = Math.max(1, Math.min(5, parseInt(req.data && req.data.stars, 10) || 0));
+  const text = String(req.data && req.data.text || '').trim().slice(0, 400);
+  const rating = { stars, text, at: Date.now() };
+  await apptRef(id).update({ rating });
+  return { ...publicView(id, { ...a, rating }, info), loyalty: await loyaltyFor(a, info), rebook: rebookLink('.', a, info) };
 });
 
 // =============== waitlist ===============
@@ -486,4 +601,11 @@ export const syncSlots = onDocumentWritten({ document: 'appointments/{id}', secr
   });
   // Any slot that just opened (cancellation, reschedule, expired hold) is offered to the waitlist for that day.
   if (freed.length) await notifyWaitlist(freed, info).catch(e => logger.error('Waitlist notify failed', e.message));
+  // Messages that follow a change the shop made in the dashboard
+  if (before && after && after.notify) {
+    const was = before.status, now = after.status, say = (k, o) => notify(k, id, after, info, o).catch(e => logger.error(k, e.message));
+    if (was === 'pending_payment' && now === 'booked' && after.payMethod === 'gcash') await say('confirmed', { shop: null }); // GCash screenshot approved
+    else if (after.proof && after.proof.status === 'rejected' && !(before.proof && before.proof.status === 'rejected')) await say('proof_rejected');
+    else if (was !== 'done' && now === 'done' && !after.rating) await say('rate'); // "How was your cut?"
+  }
 });

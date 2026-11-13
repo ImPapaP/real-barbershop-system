@@ -225,6 +225,28 @@ Each barber earns a **guaranteed daily pay** for every day they work, plus a **c
 - **Booking Terms and Privacy Policy:** `terms.html` and `privacy.html`, linked from the checkbox and the footer. They fill in the deposit, late rule, reschedule window, address and contact from **Dashboard → Settings**, so they change when the policy does. They're a starting template: have them checked before going live.
 - **Cookies:** the site sets no tracking or advertising cookies and no analytics, so no cookie banner is needed. "Remember me" uses the customer's own browser storage, explained in the Privacy Policy.
 
+## Payments, the day of the visit, and after
+
+- **Pay by GCash screenshot:** besides paying online (PayMongo), customers can send the down payment to the shop's GCash number and upload the screenshot on their booking page. The slot stays held while you check it. **Schedule** (and Overview) shows **GCash screenshots to check**: open one, match it with your GCash history, then **Approve** (the booking is confirmed and the client gets the usual confirmation text and email) or **Reject** (the slot opens again and the client is told to call). Screenshots are stored as small images in Firestore, so this works on the free plan. Turn it off in Shop setup → Online booking rules.
+- **Price breakdown:** the booking summary lists every service (and the second person's), any promo, the estimated total, the down payment now and what's left to pay at the shop.
+- **Promo codes:** Shop setup → **Promo codes**. Percent or peso off, optional minimum, last day and max uses. Customers type the code when booking; it's checked on the server, shown on their booking, and filled in automatically as the discount at checkout. The down payment doesn't change.
+- **Live queue:** on the day, the customer's booking page shows how many clients are ahead of them with their barber, and updates every minute.
+- **Running late:** on the day, the booking page has 5 / 10 / 15 min buttons. The dashboard shows a "10 min late" tag on the booking and in Overview → Needs attention.
+- **Walk-in QR:** Schedule → **Walk-in QR** → **Print poster**. Customers in the shop scan it, type their name and number, and join the walk-in queue (no down payment). They get a live ticket ("#3 · 2 ahead of you") and show up in Schedule → Walk-in queue tagged "Joined by QR".
+- **Rating request:** after checkout, the customer gets a text and email asking how their cut was. Ratings show in Website → **Ratings from customers**; good ones go on the website with one tap, and each barber's average shows on their profile.
+- **Loyalty card:** the stamp card is on the customer's booking page (and the "My loyalty card" link when they come back to the website).
+- **Cut photo:** open a finished visit (Edit) → **Add photo**. The client sees it on their booking page so they can ask for the same cut; **Add to gallery** puts it on the website.
+
+## Website extras
+
+- **Style gallery:** tag each gallery photo with a style and barber (Website → Gallery). Customers filter by style, and **Book this look** books that barber with the look in the notes.
+- **Barber profiles:** tap a barber to see their bio (Staff → Edit → Short bio), days in, starting price, rating and recent work.
+- **Map:** a Google map under Visit, with your own "How to find us" note (Shop setup).
+- **Open now:** in the header, hero and next to the map.
+- **Messenger:** a floating "Message us" button, made from your Facebook page link (or set your own in Shop setup).
+- **Tagalog:** EN / TL switch in the header of the website and booking page. Menu items, names and your own text stay as you wrote them.
+- **FAQ:** "Good to know" section. It starts with suggested answers written from your booking rules; edit them in Website → Questions (FAQ).
+
 ## Repeat business
 
 - **Time for a trim**: `sendRebookReminders` runs at 10 AM every day. It texts (and emails, if known) clients whose last visit was 28 days ago and who have nothing booked. Change the number of days, or set it to 0 to turn this off, in Shop setup → Online booking rules. Clients → **Due for a trim** lists who's due and lets you send one now. Tick "Don't send trim reminders" on a client to opt them out.

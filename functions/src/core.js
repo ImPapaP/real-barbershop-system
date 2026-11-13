@@ -172,6 +172,8 @@ export function smsText(kind, b, info) {
     case 'cancelled': return `${shop}: Your booking ${b.code} for ${when} is cancelled.`;
     case 'slot_lost': return `${shop}: We got your P${pol.deposit} deposit, but that time was taken while you paid. We'll call you to rebook. Code ${b.code}.`;
     case 'rebook': return `${shop}: Hi ${firstName(b.name)}, it's been ${Math.round(pol.rebookDays / 7)} weeks since your last cut. Book online at our website or call ${(info.shop && info.shop.phone) || 'the shop'}.`;
+    case 'proof_rejected': return `${shop}: We couldn't confirm your GCash payment for booking ${b.code}. Please call ${(info.shop && info.shop.phone) || 'the shop'} or check your email.`;
+    case 'rate': return `${shop}: Thanks for coming in, ${firstName(b.name)}! How was your cut with ${who}? Rate your visit with the link in your email.`;
     case 'slot_open': return `${shop}: A slot just opened on ${fmtDate(b.date)} at ${fmtTime(b.time)}${b.barberName ? ' with ' + b.barberName : ''}. First to book online gets it. Details in your email.`;
   }
   return '';
@@ -191,7 +193,10 @@ export function emailContent(kind, b, info, link) {
     shop_cancelled: `Cancelled: ${b.name}, ${when}`,
     shop_attention: `Needs attention: ${b.name} paid but the slot was taken`,
     rebook: 'Time for a fresh cut?',
-    slot_open: `A slot opened: ${when}`
+    slot_open: `A slot opened: ${when}`,
+    proof_rejected: 'We couldn’t confirm your GCash payment',
+    rate: 'How was your cut?',
+    shop_proof: `GCash screenshot to check: ${b.name}, ${when}`
   };
   const lines = {
     confirmed: [`Hi ${b.name}, you're booked.`, `We received your ₱${pol.deposit} deposit${b.depositMethod ? ' via ' + b.depositMethod : ''}. It goes toward your bill.`],
@@ -203,13 +208,16 @@ export function emailContent(kind, b, info, link) {
     shop_cancelled: [`${b.name} (${b.phone}) cancelled their booking online. The deposit is kept.`],
     shop_attention: [`${b.name} (${b.phone}) paid the deposit after their hold expired and the slot was taken. Call them to rebook or refund it in PayMongo.`],
     rebook: [`Hi ${firstName(b.name)}, it's been about ${Math.round(pol.rebookDays / 7)} weeks since your last visit.`, 'Book your next cut online in a minute.'],
-    slot_open: [`Hi ${firstName(b.name)}, you're on our waitlist and a slot just opened.`, 'It goes to whoever books first, so grab it soon.']
+    slot_open: [`Hi ${firstName(b.name)}, you're on our waitlist and a slot just opened.`, 'It goes to whoever books first, so grab it soon.'],
+    proof_rejected: [`Hi ${b.name}, we couldn't match your GCash screenshot to a payment, so this booking isn't confirmed yet.`, `Please call or message the shop at ${(info.shop && info.shop.phone) || ''} and we'll sort it out.`],
+    rate: [`Hi ${firstName(b.name)}, thanks for coming in.`, `How was your cut with ${b.barberName || 'us'}? It takes 10 seconds and helps the team.`],
+    shop_proof: [`${b.name} (${b.phone}) sent a GCash screenshot for their booking. Check it in the dashboard and approve it if the payment came in.`]
   };
   const forShop = forShopKind(kind);
   const rows = kind === 'rebook' ? [] : kind === 'slot_open' ? [['When', when], ['Barber', b.barberName || 'Any barber']]
     : [['Booking code', b.code], ['When', when], ['Barber', b.barberName || 'Any barber'], ['Services', (b.serviceNames || []).join(', ')]];
-  const button = forShopKind(kind) ? 'Open the dashboard' : ['rebook', 'slot_open'].includes(kind) ? 'Book now' : 'View or change your booking';
-  const policy = forShop || ['rebook', 'slot_open'].includes(kind) ? '' : `<p style="color:#555;font-size:13px">Arriving ${pol.lateMinutes} minutes late or more cancels the booking and the deposit is kept. You can reschedule up to ${pol.rescheduleHours} hours before your appointment.</p>`;
+  const button = forShopKind(kind) ? 'Open the dashboard' : kind === 'rate' ? 'Rate your visit' : ['rebook', 'slot_open'].includes(kind) ? 'Book now' : 'View or change your booking';
+  const policy = forShop || ['rebook', 'slot_open', 'rate'].includes(kind) ? '' : `<p style="color:#555;font-size:13px">Arriving ${pol.lateMinutes} minutes late or more cancels the booking and the deposit is kept. You can reschedule up to ${pol.rescheduleHours} hours before your appointment.</p>`;
   const html = `<div style="font-family:Arial,sans-serif;max-width:520px;color:#111">
 <h2 style="margin:0 0 12px">${esc(shop)}</h2>
 ${lines[kind].map(l => `<p>${esc(l)}</p>`).join('')}
@@ -237,3 +245,18 @@ export function rebookLink(site, visit, info) {
   const q = p.toString().replace(/%2C/g, ',');
   return `${String(site).replace(/\/+$/, '')}/${q ? '?' + q : ''}#book`;
 }
+
+// ---------- promo codes (same rules as the website, public/assets/shared.js) ----------
+export function promoCheck(promo, total, today) {
+  if (!promo || promo.active === false) return { ok: false, error: 'That promo code isn’t valid.' };
+  if (promo.expires && today > promo.expires) return { ok: false, error: 'That promo code has expired.' };
+  if (promo.maxUses && (promo.uses || 0) >= promo.maxUses) return { ok: false, error: 'That promo code has been used up.' };
+  if (promo.minSpend && total < promo.minSpend) return { ok: false, error: `That code needs at least ₱${promo.minSpend} in services.` };
+  const v = Math.max(0, Number(promo.value) || 0);
+  const off = Math.min(total, promo.kind === 'amount' ? v : Math.floor(total * Math.min(v, 100) / 100));
+  if (!off) return { ok: false, error: 'That promo code isn’t valid.' };
+  return { ok: true, off, label: promo.kind === 'amount' ? `₱${v} off` : `${v}% off` };
+}
+export const cleanCode = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20);
+// Payment screenshots are stored as small JPEG data URLs (no Firebase Storage needed).
+export const validProofImage = s => typeof s === 'string' && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(s) && s.length < 900000;
