@@ -10,6 +10,7 @@ const S = {
   info: null, loaded: false, slow: false, menuTab: 'him', painted: false,
   slots: {}, slotsDate: '', slotsLoaded: false, unsub: null,
   bk: { group: 'him', tier: '', svc: {}, barber: '', date: '', time: '', name: '', phone: '', email: '', notes: '', consent: false, remember: true, guest: { on: false, mode: '', name: '', own: false, group: 'him', tier: '', svc: {} } },
+  touched: {}, tried: false,
   me: null, byBarber: false, range: { slots: {}, at: 0, loading: false }, urlApplied: false,
   err: '', busy: false, last: null, lb: -1,
   wl: { open: false, window: 'any', consent: false, done: '', err: '', busy: false }
@@ -173,7 +174,7 @@ function page() {
     <h3 class="sec-title reveal" style="font-size:30px;margin:48px 0 16px">Booking policy</h3>
     ${policyCards()}
   </div></section>
-  <footer class="site-foot"><div class="wrap"><span class="wordmark" style="font-size:18px">${brand(shop.wordmark || shop.name, 'sm')}</span><span>${esc(shop.address)} · ${esc(shop.phone)}</span><span>© ${today.date.slice(0, 4)} ${esc(shop.name)}</span></div></footer>
+  <footer class="site-foot"><div class="wrap"><span class="wordmark" style="font-size:18px">${brand(shop.wordmark || shop.name, 'sm')}</span><span>${esc(shop.address)} · ${esc(shop.phone)}</span><span>© ${today.date.slice(0, 4)} ${esc(shop.name)} · <a href="terms.html">Booking Terms</a> · <a href="privacy.html">Privacy Policy</a></span></div></footer>
   <div class="mbar" id="mbar" hidden><div><b id="mbar-t">Book a chair</b><small id="mbar-s">${policyOf(I).onlineBooking ? m(policyOf(I).deposit) + ' deposit secures your slot' : 'Call or message us to book'}</small></div><button class="btn btn-accent" data-act="mbar">Book now</button></div>
   <div id="lightbox" hidden></div>`;
 }
@@ -273,12 +274,13 @@ function guestBox(times) {
   if (!g.on) return `<button type="button" class="link-btn add-guest" data-act="guestOn">${ic('user')} Booking for someone else too? Add a second person</button>`;
   const opts = guestOptions(times), gs = guestSvcs();
   return `<div class="guest-box"><div class="row" style="justify-content:space-between"><b>Second person</b><button type="button" class="link-btn" data-act="guestOff">Remove</button></div>
-    <div class="field"><label for="bk-gname">Their name</label><input id="bk-gname" data-bind="bk.guest.name" value="${esc(g.name)}" autocomplete="off" placeholder="e.g. Miguel" data-live></div>
+    <div class="field${showErr('gname') && detailErrors().gname ? ' has-err' : ''}"><label for="bk-gname">Their name <span class="req" aria-hidden="true">*</span></label><input id="bk-gname" data-bind="bk.guest.name" data-touch="gname" value="${esc(g.name)}" autocomplete="off" placeholder="e.g. Miguel" required aria-required="true" data-live>${showErr('gname') && detailErrors().gname ? `<p class="field-err">${esc(detailErrors().gname)}</p>` : ''}</div>
     <div><p class="small" style="font-weight:700;margin:0 0 8px">Their services</p>
       <div class="seg" role="group" aria-label="Their services"><button type="button" data-act="guestOwn" data-v="0" aria-pressed="${!g.own}">Same as mine</button><button type="button" data-act="guestOwn" data-v="1" aria-pressed="${g.own}">Choose different</button></div>
       ${g.own ? guestPicker() : `<p class="muted small" style="margin:8px 0 0">${esc(chosen().map(x => x.name).join(', '))}</p>`}</div>
     ${!guestValid() ? (g.own && gs.length ? `<p class="err">${esc(comboError(info(), gs))}</p>` : '') : `<div><p class="small" style="font-weight:700;margin:0 0 8px">When</p>${opts.length ? `<div class="guest-opts" role="radiogroup" aria-label="When">${opts.map(o => `<button type="button" class="pickcard radio" role="radio" data-act="guestMode" data-v="${o.mode}" aria-pressed="${g.mode === o.mode}" aria-checked="${g.mode === o.mode}"><span class="tick" aria-hidden="true">${ic('check')}</span><b>${esc(o.label)}</b><small>${esc(o.sub)}</small></button>`).join('')}</div>`
       : `<p class="muted small">No free slot for them at ${fmtTime(S.bk.time)}${g.own ? ' for those services' : ''}. Try another time${g.own ? ' or service' : ''}.</p>`}</div>`}
+    ${S.tried && (detailErrors().gsvc || detailErrors().gmode) ? `<p class="field-err">${esc(detailErrors().gsvc || detailErrors().gmode)}</p>` : ''}
     <p class="muted small">Each person needs the ${m(pol.deposit)} down payment, so ${m(pol.deposit * 2)} in total.</p></div>`;
 }
 const guestPick = times => { const g = S.bk.guest; return g.on ? guestOptions(times).find(o => o.mode === g.mode) || null : null; };
@@ -302,9 +304,26 @@ function nextFree() {
   return null;
 }
 const dayWord = d => d === phNow().date ? 'Today' : d === addDays(phNow().date, 1) ? 'Tomorrow' : fmtDate(d);
+// ---------- required details (checked before the deposit) ----------
+const phoneDigits = v => String(v || '').replace(/\D/g, '');
+const validPhone = v => /^(09\d{9}|639\d{9})$/.test(phoneDigits(v));
+const validEmail = v => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v || '').trim());
+function detailErrors() {
+  const b = S.bk, e = {};
+  if (b.name.trim().length < 2) e.name = 'Enter your full name.';
+  if (!b.phone.trim()) e.phone = 'Enter your mobile number.'; else if (!validPhone(b.phone)) e.phone = 'Enter an 11-digit mobile number, like 0917 123 4567.';
+  if (!b.email.trim()) e.email = 'Enter your email. Your confirmation and booking link go there.'; else if (!validEmail(b.email)) e.email = 'Check your email address, like juan@gmail.com.';
+  if (b.guest.on) {
+    if (b.guest.name.trim().length < 2) e.gname = 'Enter the second person’s name.';
+    if (!guestValid()) e.gsvc = 'Pick the second person’s services.'; else if (!b.guest.mode) e.gmode = 'Pick when the second person comes.';
+  }
+  if (!b.consent) e.consent = 'Please agree to the Booking Terms and Privacy Policy.';
+  return e;
+}
+const showErr = k => S.tried || S.touched[k];
 function stepState() {
   const b = S.bk, picked = chosen().length > 0 && !comboError(info(), chosen()), when = !!(b.date && b.time);
-  const details = when && b.name.trim() && b.phone.trim() && b.email.trim() && b.consent && (!b.guest.on || (b.guest.mode && b.guest.name.trim() && guestValid()));
+  const details = when && !Object.keys(detailErrors()).length;
   return { picked, when, details, n: details ? 4 : when ? 3 : picked ? (b.date ? 2 : 1) : 0 };
 }
 function bookOffline() {
@@ -346,16 +365,17 @@ function booker() {
       <div class="dates" role="group" aria-label="Date">${dates.map(d => { const x = new Date(`${d.date}T00:00:00Z`); return `<button type="button" class="dchip" data-act="bkDate" data-v="${d.date}" aria-pressed="${d.date === b.date}" ${d.closed || d.off || !st.picked ? 'disabled' : ''}><small>${DAYS[x.getUTCDay()]}</small><b>${x.getUTCDate()}</b><span>${d.closed ? 'Closed' : d.off ? 'Off' : MONTHS[x.getUTCMonth()]}</span></button>`; }).join('')}</div>
       ${st.picked && b.date ? (S.slotsLoaded ? `<div class="times-in">${timeChips(times, b.time, 'bkTime')}</div>${waitlistBox(times)}` : '<p class="muted small"><span class="spinner"></span> Checking free times…</p>') : `<p class="muted small">${st.picked ? 'Pick a date to see free times.' : hasTiers(b.group) ? 'Pick a haircut first.' : 'Choose a service first.'}</p>`}
     </section>
-    <section class="step" id="st-4" ${st.when ? '' : 'aria-disabled="true"'}><div class="step-h"><span class="n ${st.details ? 'ok' : ''}">${st.details ? ic('check') : 4}</span><h3>Your details</h3></div>
+    <section class="step" id="st-4" ${st.when ? '' : 'aria-disabled="true"'}><div class="step-h"><span class="n ${st.details ? 'ok' : ''}">${st.details ? ic('check') : 4}</span><h3>Your details</h3><span class="req-note"><span class="req">*</span> Required</span></div>
       <div class="fgrid">
         ${fieldIn('Full name', 'bk-name', 'name', 'text', 'name')}
-        ${fieldIn('Mobile number', 'bk-phone', 'phone', 'tel', 'tel', '0917 123 4567')}
+        ${fieldIn('Mobile number', 'bk-phone', 'phone', 'tel', 'tel', '0917 123 4567', 'inputmode="tel" maxlength="16"')}
       </div>
-      ${fieldIn('Email (for your confirmation and booking link)', 'bk-email', 'email', 'email', 'email', 'you@example.com')}
+      ${fieldIn('Email (for your confirmation and booking link)', 'bk-email', 'email', 'email', 'email', 'you@example.com', 'inputmode="email"')}
       ${st.when ? guestBox(times) : ''}
       <div class="field"><label for="bk-notes">Notes (optional)</label><textarea id="bk-notes" data-bind="bk.notes" rows="2" placeholder="Style, reference photo on Facebook, anything we should know">${esc(b.notes)}</textarea></div>
       <label class="consent remember"><input type="checkbox" id="bk-remember" data-bind="bk.remember" ${b.remember ? 'checked' : ''}><span>Remember my details on this phone for next time</span></label>
-      <label class="consent"><input type="checkbox" id="bk-consent" data-bind="bk.consent" data-live ${b.consent ? 'checked' : ''}><span>I agree to the booking policy: the ${m(pol.deposit)} deposit isn’t refunded if I cancel or arrive ${pol.lateMinutes}+ minutes late. ${esc(I.shop.name)} may use my name, number and email to manage this booking and send reminders.</span></label>
+      <label class="consent${showErr('consent') && !b.consent ? ' has-err' : ''}"><input type="checkbox" id="bk-consent" data-bind="bk.consent" data-touch="consent" data-live required aria-required="true" ${b.consent ? 'checked' : ''}><span>I have read and agree to the <a href="terms.html" target="_blank" rel="noopener">Booking Terms</a> and the <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>: the ${m(pol.deposit)} down payment isn’t refunded if I cancel or arrive ${pol.lateMinutes}+ minutes late, and ${esc(I.shop.name)} may use my name, number and email to manage this booking and send reminders. <span class="req" aria-hidden="true">*</span></span></label>
+      ${showErr('consent') && !b.consent ? '<p class="field-err">Please agree to the Booking Terms and Privacy Policy.</p>' : ''}
     </section>
   </div>
   <aside class="summary" id="summary" aria-label="Booking summary">
@@ -369,7 +389,8 @@ function booker() {
       <div class="due"><span>Due now${people > 1 ? ' (2 people)' : ''}</span><b>${m(pol.deposit * people)}</b></div>
       <p class="muted small">Your slot is held for ${pol.holdMinutes} minutes while you pay. Pay the rest at the shop.</p>
       ${S.err ? `<p class="err shake" role="alert">${esc(S.err)}</p>` : ''}
-      <button type="button" class="btn btn-accent btn-lg pay-btn" data-act="pay" ${st.details && !S.busy ? '' : 'disabled'}>${S.busy ? '<span class="spinner"></span> Securing your slot…' : `Pay ${m(pol.deposit * people)} deposit${people > 1 ? 's' : ''} ${ic('arrow')}`}</button>
+      ${st.when && !st.details ? `<p class="muted small" id="pay-missing">${S.tried ? `Still needed: ${esc(Object.keys(detailErrors()).map(k => ({ name: 'your name', phone: 'mobile number', email: 'email', consent: 'agreeing to the terms', gname: 'second person’s name', gsvc: 'their services', gmode: 'when they come' }[k])).join(', '))}.` : 'Fill in your details to continue.'}</p>` : ''}
+      <button type="button" class="btn btn-accent btn-lg pay-btn" data-act="pay" ${st.when && !S.busy ? '' : 'disabled'} ${st.details ? '' : 'aria-describedby="pay-missing"'}>${S.busy ? '<span class="spinner"></span> Securing your slot…' : `Pay ${m(pol.deposit * people)} deposit${people > 1 ? 's' : ''} ${ic('arrow')}`}</button>
       <p class="paynote">${ic('check')} Secure payment by PayMongo: GCash, Maya, card or QR Ph</p>
     </div>
   </aside></div>`;
@@ -442,8 +463,11 @@ function waitlistBox(times) {
     ${w.err ? `<p class="err shake" role="alert">${esc(w.err)}</p>` : ''}
     <button type="button" class="btn btn-primary" data-act="wlJoin" ${w.busy ? 'disabled' : ''}>${w.busy ? '<span class="spinner"></span> Adding you…' : 'Join the waitlist'}</button></div>`;
 }
-function fieldIn(label, id, key, type, ac, ph = '') {
-  return `<div class="field"><label for="${id}">${esc(label)}</label><input id="${id}" type="${type}" data-bind="bk.${key}" data-live value="${esc(S.bk[key])}" autocomplete="${ac}" ${ph ? `placeholder="${esc(ph)}"` : ''}></div>`;
+function fieldIn(label, id, key, type, ac, ph = '', extra = '') {
+  const err = showErr(key) ? detailErrors()[key] : '';
+  return `<div class="field${err ? ' has-err' : ''}"><label for="${id}">${esc(label)} <span class="req" aria-hidden="true">*</span></label>
+    <input id="${id}" type="${type}" data-bind="bk.${key}" data-touch="${key}" data-live value="${esc(S.bk[key])}" autocomplete="${ac}" required aria-required="true" ${err ? `aria-invalid="true" aria-describedby="${id}-err"` : ''} ${ph ? `placeholder="${esc(ph)}"` : ''} ${extra}>
+    ${err ? `<p class="field-err" id="${id}-err">${esc(err)}</p>` : ''}</div>`;
 }
 function goStep(n) {
   if (window.innerWidth > 920 && n === 4) return; // the details step is right beside the summary on wide screens
@@ -566,6 +590,14 @@ const ACT = {
   },
   async pay() {
     const b = S.bk, when = { date: b.date, time: b.time };
+    const errs = detailErrors();
+    if (Object.keys(errs).length) {
+      S.tried = true; S.err = ''; renderBooker();
+      const first = { name: 'bk-name', phone: 'bk-phone', email: 'bk-email', gname: 'bk-gname', consent: 'bk-consent' }[Object.keys(errs)[0]];
+      const el = first && document.getElementById(first) || document.querySelector('.guest-box');
+      if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); if (el.focus) setTimeout(() => el.focus({ preventScroll: true }), 350); }
+      return;
+    }
     const gp = guestPick(availableTimes(info(), { services: chosen(), date: b.date, barberId: b.barber }, S.slots));
     if (b.guest.on && (!gp || !b.guest.name.trim())) { S.err = gp ? 'Enter the second person’s name.' : 'Pick when the second person comes, or remove them.'; renderBooker(); return; }
     S.busy = true; S.err = ''; renderBooker();
@@ -586,6 +618,7 @@ let tt;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; t.classList.remove('show'); void t.offsetWidth; t.classList.add('show'); clearTimeout(tt); tt = setTimeout(() => t.hidden = true, 2600); }
 function setPath(path, val) { const k = path.split('.'); let o = S; for (let i = 0; i < k.length - 1; i++) o = o[k[i]]; o[k[k.length - 1]] = val; }
 document.addEventListener('click', e => { const el = e.target.closest('[data-act]'); if (!el || el.disabled) return; const f = ACT[el.dataset.act]; if (f) { if (el.tagName === 'A') e.preventDefault(); f(el, e); } });
+document.addEventListener('focusout', e => { const k = e.target && e.target.dataset && e.target.dataset.touch; if (k && !S.touched[k]) { S.touched[k] = true; renderBooker(); } });
 document.addEventListener('input', e => { const el = e.target; if (!el.dataset || !el.dataset.bind) return; setPath(el.dataset.bind, el.type === 'checkbox' ? el.checked : el.value); S.err = ''; if (el.hasAttribute('data-live')) { cancelAnimationFrame(raf); raf = requestAnimationFrame(renderBooker); } });
 document.addEventListener('keydown', e => {
   if (S.lb < 0) return;

@@ -12,7 +12,7 @@ assets = sorted(p for p in (pub / 'assets').iterdir() if p.suffix in ('.js', '.c
 ver = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()[:10] for p in assets}
 
 build = hashlib.sha256(''.join(f'{n}{v}' for n, v in sorted(ver.items())).encode()).hexdigest()[:10]
-pages = [pub / 'index.html', pub / 'booking.html', pub / 'admin' / 'index.html']
+pages = [pub / 'index.html', pub / 'booking.html', pub / 'terms.html', pub / 'privacy.html', pub / 'admin' / 'index.html']
 # Build id covers the pages' own markup too (minus the stamp itself)
 strip = lambda h: re.sub(r'<meta name="build"[^>]*>\n?|<script id="fresh">.*?</script>\n?', '', re.sub(r'\?v=\w+', '', h), flags=re.S)
 build = hashlib.sha256((build + ''.join(strip(p.read_text()) for p in pages)).encode()).hexdigest()[:10]

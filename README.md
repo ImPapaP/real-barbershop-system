@@ -221,6 +221,10 @@ Each barber earns a **guaranteed daily pay** for every day they work, plus a **c
 - **Remember me:** ticked by default. The customer's name, number, email and last choice are saved on **their own phone only** (nothing extra on the shop's side). Next visit they see "Welcome back, Juan · Book the same again". "Not Juan?" forgets it.
 - **Book the same again:** links like `/?svc=h1,h6&barber=lyndon#book` open booking with those services and that barber picked. The customer's booking page uses this after a visit, and the "time for a trim" email's **Book now** button links to their last services and barber.
 
+- **Required details:** name, an 11-digit mobile number (09… or 639…), a valid email and the terms checkbox must be filled before the deposit. Missing or wrong fields turn red with a short message, and tapping Pay jumps to the first one.
+- **Booking Terms and Privacy Policy:** `terms.html` and `privacy.html`, linked from the checkbox and the footer. They fill in the deposit, late rule, reschedule window, address and contact from **Dashboard → Settings**, so they change when the policy does. They're a starting template: have them checked before going live.
+- **Cookies:** the site sets no tracking or advertising cookies and no analytics, so no cookie banner is needed. "Remember me" uses the customer's own browser storage, explained in the Privacy Policy.
+
 ## Repeat business
 
 - **Time for a trim**: `sendRebookReminders` runs at 10 AM every day. It texts (and emails, if known) clients whose last visit was 28 days ago and who have nothing booked. Change the number of days, or set it to 0 to turn this off, in Shop setup → Online booking rules. Clients → **Due for a trim** lists who's due and lets you send one now. Tick "Don't send trim reminders" on a client to opt them out.
