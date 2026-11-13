@@ -846,3 +846,31 @@ html{font-synthesis-weight:none}
 .pickcard.sm b{font-size:14px}
 .guest-svc .pick:not(.one-col){grid-template-columns:repeat(auto-fill,minmax(min(100%,150px),1fr))}
 @media (max-width:520px){.guest-svc .pick{grid-template-columns:repeat(2,minmax(0,1fr))!important}.guest-svc .pickcard.sm{padding:9px 10px}.guest-svc .pickcard.sm b{font-size:13px}}
+
+/* ---------- clearer form fields ---------- */
+input,select,textarea{border:1.5px solid var(--line-2);border-radius:10px;padding:12px 14px;font-size:16px;background:var(--surface);transition:border-color .15s,box-shadow .15s}
+input::placeholder,textarea::placeholder{color:var(--muted);opacity:.85}
+input:hover,select:hover,textarea:hover{border-color:var(--ink-2)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ink);box-shadow:0 0 0 3px color-mix(in srgb,var(--ink) 18%,transparent)}
+.step input,.step textarea{background:var(--bg)}
+.field label{font-weight:700;font-size:14px;color:var(--ink)}
+.req{color:var(--bad);font-weight:800}
+.req-note{margin-left:auto;font-size:12.5px;color:var(--muted)}
+.field.has-err input,.field.has-err textarea{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 6%,var(--bg))}
+.field.has-err input:focus{box-shadow:0 0 0 3px color-mix(in srgb,var(--bad) 22%,transparent)}
+.field-err{display:flex;gap:6px;align-items:flex-start;margin:2px 0 0;color:var(--bad);font-size:13px;font-weight:600}
+.field-err::before{content:"!";display:grid;place-items:center;flex:none;width:16px;height:16px;border-radius:50%;background:var(--bad);color:#fff;font-size:11px;font-weight:800;margin-top:1px}
+.consent{border:1.5px solid var(--line-2)}
+.consent.has-err{border-color:var(--bad)}
+.consent a{color:var(--ink);font-weight:700;text-decoration:underline;text-underline-offset:2px}
+.consent input[type=checkbox]{width:20px;height:20px;padding:0;flex:none;accent-color:var(--ink)}
+.site-foot a{text-decoration:underline;text-underline-offset:2px}
+
+/* ---------- Booking Terms / Privacy Policy ---------- */
+.legal{max-width:760px;padding-block:36px 64px}
+.legal h1{font:400 clamp(30px,5vw,44px)/1.05 var(--f-slab);margin:6px 0 6px}
+.legal-lead{font-size:17px;line-height:1.6;color:var(--ink-2);margin:18px 0 8px}
+.legal section{border-top:1px solid var(--line);padding-top:18px;margin-top:22px}
+.legal h2{font:700 18px/1.3 var(--f-body,inherit);margin:0 0 8px}
+.legal p{line-height:1.65;margin:0 0 10px;max-width:68ch}
+.legal a{color:var(--ink);text-decoration:underline;text-underline-offset:2px}
