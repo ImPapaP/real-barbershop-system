@@ -111,13 +111,13 @@ export const createBooking = onCall({ secrets: [PAYMONGO_SECRET_KEY] }, async re
   const v = validateRequest(info, req.data, now);
   if (!v.ok) throw new HttpsError('invalid-argument', v.error);
   const pol = v.policy;
-  // Book for two: a second person, same day, with the same services or their own (same time with another
-  // barber, or right after with the same barber). One checkout pays both deposits.
+  // Book for two: a second person with the same services or their own: same time with another barber, right
+  // after with the same barber, or any day and time they choose. One checkout pays both deposits.
   const g = req.data && req.data.guest;
   let vg = null;
   if (g) {
     const gsvc = Array.isArray(g.serviceIds) && g.serviceIds.length ? g.serviceIds.slice(0, 10) : req.data.serviceIds; // their own services, or the same
-    vg = validateRequest(info, { ...req.data, serviceIds: gsvc, name: g.name, barberId: g.barberId || '', time: g.time }, now);
+    vg = validateRequest(info, { ...req.data, serviceIds: gsvc, name: g.name, barberId: g.barberId || '', date: g.date || req.data.date, time: g.time }, now);
     if (!vg.ok) throw new HttpsError('invalid-argument', `Second person: ${vg.error}`);
   }
 
