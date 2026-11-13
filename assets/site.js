@@ -3,17 +3,18 @@
 import { db, call, demo, demoBar, resetDemo } from './fb.js';
 import {
   $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, DAYS_LONG, MONTHS, sum, phNow, dowOf, policyOf, openStatus,
-  availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph, brand, LOGO_LG, dur
+  availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph, brand, LOGO_LG, dur, isServiceStaff, toMin, fromMin, addDays
 } from './shared.js';
 
 const S = {
   info: null, loaded: false, slow: false, menuTab: 'him', painted: false,
   slots: {}, slotsDate: '', slotsLoaded: false, unsub: null,
-  bk: { group: 'him', tier: '', svc: {}, barber: '', date: '', time: '', name: '', phone: '', email: '', notes: '', consent: false },
+  bk: { group: 'him', tier: '', svc: {}, barber: '', date: '', time: '', name: '', phone: '', email: '', notes: '', consent: false, remember: true, guest: { on: false, mode: '', name: '' } },
+  me: null, byBarber: false, range: { slots: {}, at: 0, loading: false }, urlApplied: false,
   err: '', busy: false, last: null, lb: -1,
   wl: { open: false, window: 'any', consent: false, done: '', err: '', busy: false }
 };
-const PREVIEW = { ...STARTER, barbers: STARTER_STAFF.map(publicBarber) };
+const PREVIEW = { ...STARTER, barbers: STARTER_STAFF.filter(isServiceStaff).map(publicBarber) };
 const info = () => S.info || PREVIEW;
 const cur = () => info().shop.currency || '₱';
 const m = n => money(n, cur());
@@ -205,9 +206,80 @@ function menuBoard(group) {
 }
 
 // ---------- booking ----------
+// ---------- returning customers: remembered on this phone only ----------
+const ME_KEY = 'rb-me';
+function loadMe() { try { const v = JSON.parse(localStorage.getItem(ME_KEY) || 'null'); return v && v.name ? v : null; } catch (_) { return null; } }
+function saveMe() {
+  const b = S.bk;
+  try {
+    if (!b.remember) { localStorage.removeItem(ME_KEY); return; }
+    localStorage.setItem(ME_KEY, JSON.stringify({ name: b.name.trim(), phone: b.phone.trim(), email: b.email.trim(),
+      last: { group: b.group, svc: chosen().map(x => x.id), barber: b.barber }, at: Date.now() }));
+  } catch (_) {}
+}
+function forgetMe() { try { localStorage.removeItem(ME_KEY); } catch (_) {} S.me = null; Object.assign(S.bk, { name: '', phone: '', email: '' }); }
+// Pick services + barber (from "Book again", a rebook link, or the remembered last visit), then go to the date step.
+function applySelection({ group, svc = [], barber: bid = '' }) {
+  const list = svc.map(id => svcs().find(x => x.id === id)).filter(Boolean);
+  if (!list.length && !bid) return false;
+  const g = (list[0] && (list[0].group || 'him')) || group || (barber(bid)?.groups || ['him'])[0] || 'him';
+  S.bk.group = g; S.bk.svc = {}; S.bk.tier = '';
+  const bases = list.filter(x => x.kind === 'base');
+  for (const x of list) if (x.kind !== 'base' || x === bases[0]) S.bk.svc[x.id] = true;
+  if (bases[0] && bases[0].tier) S.bk.tier = bases[0].tier;
+  const b = barber(bid);
+  S.bk.barber = b && (!list.length || canServe(b, chosen())) ? b.id : '';
+  if (!S.bk.tier && b && (b.tiers || []).length === 1) S.bk.tier = b.tiers[0];
+  S.bk.time = ''; S.bk.date = firstDate(); watchSlots();
+  return true;
+}
+// ---------- book for two ----------
+// Same services for the second person: same time with another barber, or right after with the same barber.
+function guestOptions(times) {
+  const b = S.bk, pol = policyOf(info()), mins = sum(chosen(), x => x.mins), t = times.find(x => x.time === b.time);
+  if (!t) return [];
+  const out = [];
+  const others = b.barber ? t.barbers.filter(id => id !== b.barber) : t.barbers.slice(1);
+  if (others.length) out.push({ mode: 'same', time: b.time, barberId: '', label: `Same time, ${fmtTime(b.time)}, with another ${b.group === 'her' ? 'stylist' : 'barber'}`, sub: others.length === 1 ? `${barber(others[0])?.name || ''} is free` : `${others.length} are free` });
+  if (b.barber) {
+    const next = fromMin(toMin(b.time) + Math.ceil(mins / pol.step) * pol.step), n = times.find(x => x.time === next);
+    if (n && n.barbers.includes(b.barber)) out.push({ mode: 'after', time: next, barberId: b.barber, label: `Right after, ${fmtTime(next)}, with ${barber(b.barber)?.name || 'the same barber'}`, sub: 'One after the other' });
+  }
+  return out;
+}
+function guestBox(times) {
+  const g = S.bk.guest, opts = guestOptions(times), pol = policyOf(info());
+  if (!g.on) return `<button type="button" class="link-btn add-guest" data-act="guestOn">${ic('user')} Booking for someone else too? Add a second person</button>`;
+  return `<div class="guest-box"><div class="row" style="justify-content:space-between"><b>Second person</b><button type="button" class="link-btn" data-act="guestOff">Remove</button></div>
+    ${opts.length ? `<div class="guest-opts" role="radiogroup" aria-label="When">${opts.map(o => `<button type="button" class="pickcard radio" role="radio" data-act="guestMode" data-v="${o.mode}" aria-pressed="${g.mode === o.mode}" aria-checked="${g.mode === o.mode}"><span class="tick" aria-hidden="true">${ic('check')}</span><b>${esc(o.label)}</b><small>${esc(o.sub)}</small></button>`).join('')}</div>
+    <div class="field"><label for="bk-gname">Their name</label><input id="bk-gname" data-bind="bk.guest.name" value="${esc(g.name)}" autocomplete="off" placeholder="e.g. Miguel" data-live></div>
+    <p class="muted small">Same services as you (${esc(chosen().map(x => x.name).join(', '))}). Each person needs the ${m(pol.deposit)} down payment, so ${m(pol.deposit * 2)} in total.</p>`
+    : `<p class="muted small">No free slot for a second person at ${fmtTime(S.bk.time)}. Try another time, or pick “Any available”.</p>`}</div>`;
+}
+const guestPick = times => { const g = S.bk.guest; return g.on ? guestOptions(times).find(o => o.mode === g.mode) || null : null; };
+// ---------- next available ----------
+function ensureRange() {
+  const R = S.range; if (R.loading || Date.now() - R.at < 60e3) return;
+  const ds = bookableDates(info()).filter(d => !d.closed).slice(0, 14).map(d => d.date); if (!ds.length) return;
+  R.loading = true;
+  db.collection('slots').where('date', '>=', ds[0]).where('date', '<=', ds[ds.length - 1]).get()
+    .then(s => { R.slots = Object.fromEntries(s.docs.map(x => [x.id, x.data()])); R.at = Date.now(); R.loading = false; renderBooker(); })
+    .catch(() => { R.at = Date.now(); R.loading = false; });
+}
+function nextFree() {
+  const picked = chosen(); if (!picked.length || !S.range.at) return null;
+  const bb = barber(S.bk.barber), slots = { ...S.range.slots, ...(S.slotsDate ? S.slots : {}) };
+  for (const d of bookableDates(info()).slice(0, 15)) {
+    if (d.closed || (bb && !(bb.days || []).includes(dowOf(d.date)))) continue;
+    const t = availableTimes(info(), { services: picked, date: d.date, barberId: S.bk.barber }, slots).find(x => x.barbers.length);
+    if (t) return { date: d.date, time: t.time, barber: S.bk.barber || t.barbers[0], any: !S.bk.barber };
+  }
+  return null;
+}
+const dayWord = d => d === phNow().date ? 'Today' : d === addDays(phNow().date, 1) ? 'Tomorrow' : fmtDate(d);
 function stepState() {
   const b = S.bk, picked = chosen().length > 0 && !comboError(info(), chosen()), when = !!(b.date && b.time);
-  const details = when && b.name.trim() && b.phone.trim() && b.email.trim() && b.consent;
+  const details = when && b.name.trim() && b.phone.trim() && b.email.trim() && b.consent && (!b.guest.on || (b.guest.mode && b.guest.name.trim()));
   return { picked, when, details, n: details ? 4 : when ? 3 : picked ? (b.date ? 2 : 1) : 0 };
 }
 function bookOffline() {
@@ -227,11 +299,14 @@ function booker() {
   const dates = bookableDates(I).map(d => ({ ...d, off: !d.closed && b.barber && !(barber(b.barber)?.days || []).includes(dowOf(d.date)) }));
   const times = b.date && picked.length ? availableTimes(I, { services: picked, date: b.date, barberId: b.barber }, S.slots) : [];
   const total = sum(picked, s => s.price), from = picked.some(s => s.priceFrom), mins = sum(picked, s => s.mins);
+  const gpk = st.when ? guestPick(times) : null, people = gpk ? 2 : 1;
   const labels = ['Services', b.group === 'her' ? 'Stylist' : 'Barber', 'Date & time', 'Details'];
   const done = [st.picked, st.picked && b.date, st.when, st.details];
   return `<div class="progress" aria-label="Booking progress"><div class="bar-track"><i style="width:${st.n * 25}%"></i></div><ol>${labels.map((l, i) => `<li class="${done[i] ? 'done' : ''}"><span>${done[i] ? ic('check') : i + 1}</span>${l}</li>`).join('')}</ol></div>
   <div class="booker"><div class="steps">
     <section class="step" id="st-1"><div class="step-h"><span class="n ${st.picked ? 'ok' : ''}">${st.picked ? ic('check') : 1}</span><h3>Choose services</h3>${picked.length ? `<span class="done">${picked.length} selected · ${dur(mins)}</span>` : ''}</div>
+      ${welcomeBack()}
+      ${barberFirst()}
       <div class="tabs" role="tablist">${groupTabs().map(([k, l]) => `<button role="tab" type="button" aria-selected="${b.group === k}" data-act="bkGroup" data-v="${k}">${l}</button>`).join('')}</div>
       ${hasTiers(b.group) ? tierPicker() : `<div class="pick">${svcs().filter(s => (s.group || 'him') === b.group).map(s => svcCard(s)).join('')}</div>`}
     </section>
@@ -242,6 +317,7 @@ function booker() {
       </div>
     </section>
     <section class="step" id="st-3" ${st.picked ? '' : 'aria-disabled="true"'}><div class="step-h"><span class="n ${st.when ? 'ok' : ''}">${st.when ? ic('check') : 3}</span><h3>Pick a date and time</h3>${st.when ? `<span class="done">${fmtDate(b.date)}, ${fmtTime(b.time)}</span>` : ''}</div>
+      ${st.picked ? nextFreeCard() : ''}
       <div class="dates" role="group" aria-label="Date">${dates.map(d => { const x = new Date(`${d.date}T00:00:00Z`); return `<button type="button" class="dchip" data-act="bkDate" data-v="${d.date}" aria-pressed="${d.date === b.date}" ${d.closed || d.off || !st.picked ? 'disabled' : ''}><small>${DAYS[x.getUTCDay()]}</small><b>${x.getUTCDate()}</b><span>${d.closed ? 'Closed' : d.off ? 'Off' : MONTHS[x.getUTCMonth()]}</span></button>`; }).join('')}</div>
       ${st.picked && b.date ? (S.slotsLoaded ? `<div class="times-in">${timeChips(times, b.time, 'bkTime')}</div>${waitlistBox(times)}` : '<p class="muted small"><span class="spinner"></span> Checking free times…</p>') : `<p class="muted small">${st.picked ? 'Pick a date to see free times.' : hasTiers(b.group) ? 'Pick a haircut first.' : 'Choose a service first.'}</p>`}
     </section>
@@ -251,7 +327,9 @@ function booker() {
         ${fieldIn('Mobile number', 'bk-phone', 'phone', 'tel', 'tel', '0917 123 4567')}
       </div>
       ${fieldIn('Email (for your confirmation and booking link)', 'bk-email', 'email', 'email', 'email', 'you@example.com')}
+      ${st.when ? guestBox(times) : ''}
       <div class="field"><label for="bk-notes">Notes (optional)</label><textarea id="bk-notes" data-bind="bk.notes" rows="2" placeholder="Style, reference photo on Facebook, anything we should know">${esc(b.notes)}</textarea></div>
+      <label class="consent remember"><input type="checkbox" id="bk-remember" data-bind="bk.remember" ${b.remember ? 'checked' : ''}><span>Remember my details on this phone for next time</span></label>
       <label class="consent"><input type="checkbox" id="bk-consent" data-bind="bk.consent" data-live ${b.consent ? 'checked' : ''}><span>I agree to the booking policy: the ${m(pol.deposit)} deposit isn’t refunded if I cancel or arrive ${pol.lateMinutes}+ minutes late. ${esc(I.shop.name)} may use my name, number and email to manage this booking and send reminders.</span></label>
     </section>
   </div>
@@ -261,14 +339,39 @@ function booker() {
       <div class="sumrow"><span>Services</span><b>${picked.length ? picked.map(s => esc(s.name)).join('<br>') : '—'}</b></div>
       <div class="sumrow"><span>${b.group === 'her' ? 'Stylist' : 'Barber'}</span><b>${b.barber ? esc(barber(b.barber)?.name || '') : 'Any available'}</b></div>
       <div class="sumrow"><span>When</span><b>${st.when ? `${fmtDate(b.date)}<br>${fmtTime(b.time)}` : '—'}</b></div>
-      <div class="sumrow"><span>Estimated total</span><b>${picked.length ? (from ? 'from ' : '') + m(total) : '—'}</b></div>
-      <div class="due"><span>Due now</span><b>${m(pol.deposit)}</b></div>
+      ${gpk ? `<div class="sumrow"><span>Second person</span><b>${esc(b.guest.name.trim() || 'Guest')}<br>${fmtTime(gpk.time)}${gpk.barberId ? ` with ${esc(barber(gpk.barberId)?.name || '')}` : ', another barber'}</b></div>` : ''}
+      <div class="sumrow"><span>Estimated total</span><b>${picked.length ? (from ? 'from ' : '') + m(total * people) : '—'}</b></div>
+      <div class="due"><span>Due now${people > 1 ? ' (2 people)' : ''}</span><b>${m(pol.deposit * people)}</b></div>
       <p class="muted small">Your slot is held for ${pol.holdMinutes} minutes while you pay. Pay the rest at the shop.</p>
       ${S.err ? `<p class="err shake" role="alert">${esc(S.err)}</p>` : ''}
-      <button type="button" class="btn btn-accent btn-lg pay-btn" data-act="pay" ${st.details && !S.busy ? '' : 'disabled'}>${S.busy ? '<span class="spinner"></span> Securing your slot…' : `Pay ${m(pol.deposit)} deposit ${ic('arrow')}`}</button>
+      <button type="button" class="btn btn-accent btn-lg pay-btn" data-act="pay" ${st.details && !S.busy ? '' : 'disabled'}>${S.busy ? '<span class="spinner"></span> Securing your slot…' : `Pay ${m(pol.deposit * people)} deposit${people > 1 ? 's' : ''} ${ic('arrow')}`}</button>
       <p class="paynote">${ic('check')} Secure payment by PayMongo: GCash, Maya, card or QR Ph</p>
     </div>
   </aside></div>`;
+}
+function welcomeBack() {
+  const me = S.me; if (!me || chosen().length) return '';
+  const last = me.last || {}, list = (last.svc || []).map(id => svcs().find(x => x.id === id)).filter(Boolean), bb = barber(last.barber);
+  return `<div class="welcome"><div><b>Welcome back, ${esc(String(me.name).split(' ')[0])}</b>${list.length ? `<small>Last time: ${esc(list.map(x => x.name).join(' + '))}${bb ? ` with ${esc(bb.name)}` : ''}</small>` : ''}</div>
+    <div class="row">${list.length ? `<button type="button" class="btn btn-sm btn-accent" data-act="bookAgain">Book the same again</button>` : ''}<button type="button" class="link-btn" data-act="forgetMe">Not ${esc(String(me.name).split(' ')[0])}?</button></div></div>`;
+}
+// Start with the barber: pick him first, then only his level's haircuts and his free hours show.
+function barberFirst() {
+  const b = S.bk, chosenB = barber(b.barber), all = (info().barbers || []).filter(x => isServiceStaff(x) && x.active !== false);
+  if (chosenB) return `<div class="bf-chosen">${avatarOf(chosenB)}<span>Booking with <b>${esc(chosenB.name)}</b>${chosenB.tiers && chosenB.tiers.length === 1 ? ` · ${esc(TIERS[chosenB.tiers[0]] || '')} haircuts` : ''}</span><button type="button" class="link-btn" data-act="bfClear">Change</button></div>`;
+  if (!S.byBarber) return `<button type="button" class="link-btn bf-open" data-act="bfOpen">${ic('scissors')} Have a favorite barber? Choose him first</button>`;
+  const groups = [['deluxe', 'Deluxe · senior barbers'], ['regular', 'Regular · junior barbers'], ['her', 'Hair stylists'], ['nails', 'Nails']];
+  const inG = (x, k) => k === 'her' || k === 'nails' ? (x.groups || []).includes(k) : (x.groups || ['him']).includes('him') && (x.tiers || []).includes(k);
+  return `<div class="bf-pick"><div class="row" style="justify-content:space-between"><b>Choose your barber</b><button type="button" class="link-btn" data-act="bfClose">Close</button></div>
+    ${groups.map(([k, l]) => { const xs = all.filter(x => inG(x, k)); return xs.length ? `<p class="bf-label">${esc(l)}</p><div class="bf-row">${xs.map(x => `<button type="button" class="bf-chip" data-act="bfPick" data-id="${esc(x.id)}">${avatarOf(x)}<span>${esc(x.name)}</span></button>`).join('')}</div>` : ''; }).join('')}</div>`;
+}
+const avatarOf = x => `<span class="av">${x.photo ? `<img src="${esc(x.photo)}" alt="">` : esc(initials(x.name))}</span>`;
+function nextFreeCard() {
+  ensureRange();
+  const n = nextFree(); if (!n) return S.range.at ? '' : '<p class="muted small next-free-wait"><span class="spinner"></span> Finding the earliest free time…</p>';
+  const same = S.bk.date === n.date && S.bk.time === n.time, who = barber(n.barber)?.name || '';
+  return `<button type="button" class="next-free${same ? ' on' : ''}" data-act="bkNext" data-date="${n.date}" data-time="${n.time}">
+    <span class="nf-ic" aria-hidden="true">${ic('clock')}</span><span><small>Next available</small><b>${esc(dayWord(n.date))}, ${fmtTime(n.time)}${who ? ` with ${esc(who)}` : ''}</b></span><span class="nf-go">${same ? 'Selected' : 'Book this'}</span></button>`;
 }
 function svcCard(s, act = 'bkSvc', extra = {}) {
   return `<button type="button" class="pickcard${extra.radio ? ' radio' : ''}" data-act="${act}" data-id="${esc(s.id)}" aria-pressed="${!!S.bk.svc[s.id]}" ${extra.disabled ? 'disabled' : ''}><span class="tick" aria-hidden="true">${ic('check')}</span><b>${esc(s.name)}</b><small>${extra.note ? esc(extra.note) : `${dur(s.mins)}${s.desc && s.kind === 'base' && /^Save/.test(s.desc) ? ' · ' + esc(s.desc) : ''}`}</small><span class="p">${esc(priceLabel(s, cur()))}</span></button>`;
@@ -278,7 +381,8 @@ function svcCard(s, act = 'bkSvc', extra = {}) {
 function tierPicker() {
   const g = S.bk.group, all = svcs().filter(s => (s.group || 'him') === g);
   const bases = all.filter(s => s.kind === 'base'), extras = all.filter(s => s.kind !== 'base');
-  const tiers = [...new Set(bases.map(s => s.tier || ''))];
+  const bb = barber(S.bk.barber);
+  const tiers = [...new Set(bases.map(s => s.tier || ''))].filter(t => !bb || !(bb.tiers || []).length || !t || bb.tiers.includes(t));
   const tier = tiers.includes(S.bk.tier) ? S.bk.tier : (tiers.length === 1 ? tiers[0] : '');
   const base = bases.find(s => S.bk.svc[s.id]), err = chosen().length ? comboError(info(), chosen()) : '';
   const tierCard = t => {
@@ -379,7 +483,26 @@ const ACT = {
   lightbox(el) { S.lb = +el.dataset.i; lightbox(); },
   lbClose(el, e) { if (e && el.classList.contains('lb') && e.target !== el) return; S.lb = -1; lightbox(); },
   lbStep(el) { const n = gallery().length; S.lb = (S.lb + (+el.dataset.d) + n) % n; lightbox(); },
-  bkGroup(el) { if (S.bk.group === el.dataset.v) return; S.bk.group = el.dataset.v; S.bk.tier = ''; S.bk.svc = {}; S.bk.barber = ''; S.bk.time = ''; renderBooker(); },
+  bkGroup(el) { if (S.bk.group === el.dataset.v) return; S.bk.group = el.dataset.v; S.bk.tier = ''; S.bk.svc = {}; S.bk.barber = ''; S.bk.time = ''; S.bk.guest = { on: false, mode: '', name: '' }; renderBooker(); },
+  bfOpen() { S.byBarber = true; renderBooker(); },
+  bfClose() { S.byBarber = false; renderBooker(); },
+  bfClear() { S.bk.barber = ''; S.byBarber = true; S.bk.time = ''; renderBooker(); },
+  bfPick(el) {
+    const b = barber(el.dataset.id); if (!b) return;
+    const g = (b.groups || ['him'])[0];
+    if (S.bk.group !== g) { S.bk.group = g; S.bk.svc = {}; S.bk.tier = ''; }
+    if ((b.tiers || []).length === 1 && S.bk.tier !== b.tiers[0]) { S.bk.tier = b.tiers[0]; S.bk.svc = {}; }
+    if (!canServe(b, chosen())) S.bk.svc = {};
+    S.bk.barber = b.id; S.byBarber = false; S.bk.time = '';
+    if (S.bk.date && !(b.days || []).includes(dowOf(S.bk.date))) S.bk.date = '';
+    renderBooker();
+  },
+  bookAgain() { if (S.me && applySelection(S.me.last || {})) { renderBooker(); goStep(3); } },
+  forgetMe() { forgetMe(); renderBooker(); toast('Your details were removed from this phone'); },
+  bkNext(el) { S.bk.date = el.dataset.date; S.bk.time = el.dataset.time; S.err = ''; watchSlots(); renderBooker(); goStep(4); },
+  guestOn() { S.bk.guest.on = true; const o = guestOptions(availableTimes(info(), { services: chosen(), date: S.bk.date, barberId: S.bk.barber }, S.slots)); if (o.length === 1) S.bk.guest.mode = o[0].mode; renderBooker(); },
+  guestOff() { S.bk.guest = { on: false, mode: '', name: '' }; renderBooker(); },
+  guestMode(el) { S.bk.guest.mode = el.dataset.v; renderBooker(); },
   bkTier(el) {
     const t = el.dataset.v; if (S.bk.tier === t) return;
     S.bk.tier = t; S.bk.svc = {}; S.bk.time = ''; S.err = ''; fitBarber(); // switching level starts the haircut over
@@ -390,7 +513,7 @@ const ACT = {
   bkSvc(el) { const id = el.dataset.id; if (S.bk.svc[id]) { S.bk.svc[id] = false; S.bk.time = ''; } else pickService(id); renderBooker(); },
   bkBarber(el) { S.bk.barber = el.dataset.id; S.bk.time = ''; S.err = ''; const b = barber(S.bk.barber); if (b && S.bk.date && !(b.days || []).includes(dowOf(S.bk.date))) S.bk.date = firstDate(); watchSlots(); renderBooker(); goStep(3); },
   bkDate(el) { S.bk.date = el.dataset.v; S.bk.time = ''; S.err = ''; S.wl.done = ''; S.wl.err = ''; watchSlots(); renderBooker(); },
-  bkTime(el) { S.bk.time = el.dataset.v; S.err = ''; renderBooker(); goStep(4); },
+  bkTime(el) { S.bk.time = el.dataset.v; S.bk.guest.mode = ''; S.err = ''; renderBooker(); goStep(4); },
   wlOpen() { S.wl.open = true; S.wl.err = ''; renderBooker(); },
   wlClose() { S.wl.open = false; renderBooker(); },
   wlWin(el) { S.wl.window = el.dataset.v; renderBooker(); },
@@ -413,9 +536,13 @@ const ACT = {
   },
   async pay() {
     const b = S.bk, when = { date: b.date, time: b.time };
+    const gp = guestPick(availableTimes(info(), { services: chosen(), date: b.date, barberId: b.barber }, S.slots));
+    if (b.guest.on && (!gp || !b.guest.name.trim())) { S.err = gp ? 'Enter the second person’s name.' : 'Pick when the second person comes, or remove them.'; renderBooker(); return; }
     S.busy = true; S.err = ''; renderBooker();
     try {
-      const r = await call('createBooking', { serviceIds: Object.keys(b.svc).filter(k => b.svc[k]), barberId: b.barber, date: b.date, time: b.time, name: b.name, phone: b.phone, email: b.email, notes: b.notes, consent: b.consent });
+      const r = await call('createBooking', { serviceIds: Object.keys(b.svc).filter(k => b.svc[k]), barberId: b.barber, date: b.date, time: b.time, name: b.name, phone: b.phone, email: b.email, notes: b.notes, consent: b.consent,
+        ...(gp ? { guest: { name: b.guest.name.trim(), time: gp.time, barberId: gp.barberId } } : {}) });
+      saveMe();
       try { localStorage.setItem('lastBooking', JSON.stringify({ id: r.id, token: r.token, ...when })); } catch (_) {}
       location.href = r.checkoutUrl;
     } catch (e) {
@@ -444,6 +571,14 @@ renderAll();
   const slow = setTimeout(() => { S.slow = true; schedule(); }, 10000);
   db.doc('public/info').onSnapshot(s => {
     clearTimeout(slow);
-    S.info = s.exists ? s.data() : null; S.loaded = true; schedule();
+    S.info = s.exists ? s.data() : null; S.loaded = true;
+    if (!S.urlApplied) {
+      S.urlApplied = true;
+      S.me = loadMe(); if (S.me) Object.assign(S.bk, { name: S.me.name || '', phone: S.me.phone || '', email: S.me.email || '' });
+      const q = new URLSearchParams(location.search), svc = (q.get('svc') || '').split(',').filter(Boolean), bid = q.get('barber') || '';
+      if ((svc.length || bid) && applySelection({ svc, barber: bid })) { S.fromLink = true; history.replaceState(null, '', location.pathname + '#book'); }
+    }
+    schedule();
+    if (S.fromLink) { S.fromLink = false; setTimeout(() => goStep(chosen().length ? 3 : 1), 300); }
   }, () => { S.slow = true; schedule(); });
 }

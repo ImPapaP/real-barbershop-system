@@ -295,3 +295,13 @@ export function commissionFor(staff, lines, discount, lookup) {
   }
   return { commission: commissionOf(base, staff ? staff.rate : 0), fees };
 }
+
+// Same as functions/src/core.js rebookLink: site/?svc=h1,h6&barber=lyndon#book
+export function rebookLink(site, visit, info) {
+  const svcIds = (visit.serviceIds || (visit.lines || []).filter(l => l.kind === 'service').map(l => l.ref)).filter(id => (info.services || []).some(s => s.id === id && s.active !== false));
+  const p = new URLSearchParams();
+  if (svcIds.length) p.set('svc', [...new Set(svcIds)].join(','));
+  if (visit.barberId && (info.barbers || []).some(b => b.id === visit.barberId && b.active !== false)) p.set('barber', visit.barberId);
+  const q = p.toString().replace(/%2C/g, ',');
+  return `${String(site).replace(/\/+$/, '')}/${q ? '?' + q : ''}#book`;
+}
