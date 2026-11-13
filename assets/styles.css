@@ -874,3 +874,12 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ink);box
 .legal h2{font:700 18px/1.3 var(--f-body,inherit);margin:0 0 8px}
 .legal p{line-height:1.65;margin:0 0 10px;max-width:68ch}
 .legal a{color:var(--ink);text-decoration:underline;text-underline-offset:2px}
+
+/* Second person: choose their own day and time */
+.guest-when{margin-top:12px;padding:4px 14px 14px;border:1px solid var(--line-2);border-radius:12px;background:var(--surface);min-width:0}
+.guest-when .bf-chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--surface)}
+.guest-when .bf-chip[aria-pressed="true"] .av{background:var(--surface);color:var(--ink)}
+.guest-when .bf-chip .av.any{background:transparent;color:inherit;border:1px solid currentColor}
+.guest-when .bf-chip .av.any svg{width:15px;height:15px}
+.guest-when .times-in{margin-top:-4px}
+.booker>*,.steps>*,.step>*,.guest-box>*,.guest-box>div{min-width:0}

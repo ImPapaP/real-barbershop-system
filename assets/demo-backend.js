@@ -190,11 +190,13 @@ const FUNCS = {
       const gsv = (d.guest.serviceIds && d.guest.serviceIds.length ? d.guest.serviceIds.map(s => I.services.find(x => x.id === s)).filter(Boolean) : services);
       if (!gsv.length) fail('invalid-argument', 'Second person: pick at least one service.');
       const gc = comboError(I, gsv); if (gc) fail('invalid-argument', 'Second person: ' + gc);
-      const gt = availableTimes(I, { services: gsv, date: d.date, barberId: d.guest.barberId || '' }, slotsOn(d.date)).find(x => x.time === d.guest.time);
-      const mainB = t.barbers[0], overlaps = d.guest.time === d.time;
+      const gd = d.guest.date || d.date;
+      const gt = availableTimes(I, { services: gsv, date: gd, barberId: d.guest.barberId || '' }, slotsOn(gd)).find(x => x.time === d.guest.time);
+      const mainB = t.barbers[0], mb = blockTimes(d.time, sum(services, s => s.mins), pol.step), gbl = blockTimes(d.guest.time, sum(gsv, s => s.mins), pol.step);
+      const overlaps = gd === d.date && gbl.some(x => mb.includes(x));
       const gb = gt && gt.barbers.find(b => !(overlaps && b === mainB));
       if (!gb) fail('already-exists', 'Sorry, the second person’s slot was just taken. Pick another option for them.');
-      guest = { name: d.guest.name.trim(), time: d.guest.time, barberId: gb, services: gsv };
+      guest = { name: d.guest.name.trim(), date: gd, time: d.guest.time, barberId: gb, services: gsv };
     }
     const id = 'b' + Date.now().toString(36), token = Math.random().toString(36).slice(2, 14);
     const gid = guest ? id + 'g' : '';
@@ -207,7 +209,7 @@ const FUNCS = {
     if (guest) store.set('appointments/' + gid, {
       code: code.slice(0, 5) + '2', token: Math.random().toString(36).slice(2, 14), source: 'online', status: 'booked', notify: false, groupOf: id, bookedBy: d.name.trim(),
       name: guest.name, phone: d.phone.trim(), email: d.email.trim(), notes: d.notes || '', customerId: '',
-      serviceIds: guest.services.map(s => s.id), mins: sum(guest.services, s => s.mins), date: d.date, time: guest.time, startAt: startMs(d.date, guest.time), barberId: guest.barberId,
+      serviceIds: guest.services.map(s => s.id), mins: sum(guest.services, s => s.mins), date: guest.date, time: guest.time, startAt: startMs(guest.date, guest.time), barberId: guest.barberId,
       deposit: { amount: pol.deposit, status: 'paid', method: 'gcash', paidWith: id }, reminders: {}, reschedules: 0, createdAt: Date.now()
     });
     afterWrite('appointments/' + id); if (guest) afterWrite('appointments/' + gid);

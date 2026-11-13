@@ -3,13 +3,13 @@
 import { db, call, demo, demoBar, resetDemo } from './fb.js';
 import {
   $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, DAYS_LONG, MONTHS, sum, phNow, dowOf, policyOf, openStatus,
-  availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph, brand, LOGO_LG, dur, isServiceStaff, toMin, fromMin, addDays
+  availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph, brand, LOGO_LG, dur, isServiceStaff, toMin, fromMin, addDays, blockTimes, slotId
 } from './shared.js';
 
 const S = {
   info: null, loaded: false, slow: false, menuTab: 'him', painted: false,
   slots: {}, slotsDate: '', slotsLoaded: false, unsub: null,
-  bk: { group: 'him', tier: '', svc: {}, barber: '', date: '', time: '', name: '', phone: '', email: '', notes: '', consent: false, remember: true, guest: { on: false, mode: '', name: '', own: false, group: 'him', tier: '', svc: {} } },
+  bk: { group: 'him', tier: '', svc: {}, barber: '', date: '', time: '', name: '', phone: '', email: '', notes: '', consent: false, remember: true, guest: { on: false, mode: '', name: '', own: false, group: 'him', tier: '', svc: {}, date: '', time: '', barber: '' } },
   touched: {}, tried: false,
   me: null, byBarber: false, range: { slots: {}, at: 0, loading: false }, urlApplied: false,
   err: '', busy: false, last: null, lb: -1,
@@ -253,7 +253,32 @@ function guestOptions(times) {
     const n = availableTimes(info(), { services: gs, date: b.date, barberId: bb.id }, S.slots).find(x => x.time === next);
     if (n && n.barbers.includes(bb.id)) out.push({ mode: 'after', time: next, barberId: bb.id, label: `Right after, ${fmtTime(next)}, with ${bb.name}`, sub: 'One after the other' });
   }
+  // Their own time: any day, any free time, any barber who does their services
+  const g = b.guest, gt2 = g.time ? guestTimes().find(x => x.time === g.time) : null;
+  const gb = gt2 && (g.barber && gt2.barbers.includes(g.barber) ? g.barber : gt2.barbers[0]);
+  out.push({ mode: 'pick', date: g.date || b.date, time: gb ? g.time : '', barberId: gb || '', label: 'Choose their own time', sub: gb ? `${dayWord(g.date || b.date)}, ${fmtTime(g.time)} with ${barber(gb)?.name || ''}` : 'Any day, any free time, any barber' });
   return out;
+}
+// Free times for the second person on their chosen day, treating the main booking's chair as taken
+function guestTimes() {
+  const b = S.bk, g = b.guest, date = g.date || b.date, gs = guestSvcs(), pol = policyOf(info());
+  if (!gs.length || !b.time) return [];
+  const slots = { ...S.range.slots, ...(date === b.date ? S.slots : {}) };
+  const mt = availableTimes(info(), { services: chosen(), date: b.date, barberId: b.barber }, S.slots).find(x => x.time === b.time);
+  const mainB = b.barber || (mt && mt.barbers[0]);
+  if (mainB && date === b.date) blockTimes(b.time, sum(chosen(), x => x.mins), pol.step).forEach(t => { slots[slotId(mainB, b.date, t)] = { state: 'booked' }; });
+  return availableTimes(info(), { services: gs, date, barberId: g.barber }, slots);
+}
+function guestWhen() {
+  const b = S.bk, g = b.guest, gs = guestSvcs(), date = g.date || b.date;
+  const bars = (info().barbers || []).filter(x => isServiceStaff(x) && x.active !== false && canServe(x, gs));
+  const dates = bookableDates(info()).filter(d => !d.closed).slice(0, 14);
+  const times = guestTimes(), who = gs[0] && gs[0].group === 'her' ? 'stylist' : 'barber';
+  return `<div class="guest-when">
+    <p class="bf-label">Their ${who}</p><div class="bf-row"><button type="button" class="bf-chip" data-act="guestBarber" data-id="" aria-pressed="${!g.barber}"><span class="av any">${ic('scissors')}</span><span>Any</span></button>${bars.map(x => `<button type="button" class="bf-chip" data-act="guestBarber" data-id="${esc(x.id)}" aria-pressed="${g.barber === x.id}">${avatarOf(x)}<span>${esc(x.name)}</span></button>`).join('')}</div>
+    <p class="bf-label">Day</p><div class="dates" role="group" aria-label="Their day">${dates.map(d => { const x = new Date(`${d.date}T00:00:00Z`), off = g.barber && !((barber(g.barber) || {}).days || []).includes(dowOf(d.date)); return `<button type="button" class="dchip" data-act="guestDate" data-v="${d.date}" aria-pressed="${d.date === date}" ${off ? 'disabled' : ''}><small>${DAYS[x.getUTCDay()]}</small><b>${x.getUTCDate()}</b><span>${off ? 'Off' : d.date === b.date ? 'Same day' : MONTHS[x.getUTCMonth()]}</span></button>`; }).join('')}</div>
+    <p class="bf-label">Time</p>${date !== b.date && !S.range.at ? '<p class="muted small"><span class="spinner"></span> Checking free times…</p>' : `<div class="times-in">${timeChips(times, g.time, 'guestTime')}</div>`}
+  </div>`;
 }
 // Their own services: For him (Deluxe or Regular haircut + add-ons) or For her
 function guestPicker() {
@@ -278,12 +303,12 @@ function guestBox(times) {
     <div><p class="small" style="font-weight:700;margin:0 0 8px">Their services</p>
       <div class="seg" role="group" aria-label="Their services"><button type="button" data-act="guestOwn" data-v="0" aria-pressed="${!g.own}">Same as mine</button><button type="button" data-act="guestOwn" data-v="1" aria-pressed="${g.own}">Choose different</button></div>
       ${g.own ? guestPicker() : `<p class="muted small" style="margin:8px 0 0">${esc(chosen().map(x => x.name).join(', '))}</p>`}</div>
-    ${!guestValid() ? (g.own && gs.length ? `<p class="err">${esc(comboError(info(), gs))}</p>` : '') : `<div><p class="small" style="font-weight:700;margin:0 0 8px">When</p>${opts.length ? `<div class="guest-opts" role="radiogroup" aria-label="When">${opts.map(o => `<button type="button" class="pickcard radio" role="radio" data-act="guestMode" data-v="${o.mode}" aria-pressed="${g.mode === o.mode}" aria-checked="${g.mode === o.mode}"><span class="tick" aria-hidden="true">${ic('check')}</span><b>${esc(o.label)}</b><small>${esc(o.sub)}</small></button>`).join('')}</div>`
+    ${!guestValid() ? (g.own && gs.length ? `<p class="err">${esc(comboError(info(), gs))}</p>` : '') : `<div><p class="small" style="font-weight:700;margin:0 0 8px">When</p>${opts.length ? `<div class="guest-opts" role="radiogroup" aria-label="When">${opts.map(o => `<button type="button" class="pickcard radio" role="radio" data-act="guestMode" data-v="${o.mode}" aria-pressed="${g.mode === o.mode}" aria-checked="${g.mode === o.mode}"><span class="tick" aria-hidden="true">${ic('check')}</span><b>${esc(o.label)}</b><small>${esc(o.sub)}</small></button>`).join('')}</div>${g.mode === 'pick' ? guestWhen() : ''}`
       : `<p class="muted small">No free slot for them at ${fmtTime(S.bk.time)}${g.own ? ' for those services' : ''}. Try another time${g.own ? ' or service' : ''}.</p>`}</div>`}
     ${S.tried && (detailErrors().gsvc || detailErrors().gmode) ? `<p class="field-err">${esc(detailErrors().gsvc || detailErrors().gmode)}</p>` : ''}
     <p class="muted small">Each person needs the ${m(pol.deposit)} down payment, so ${m(pol.deposit * 2)} in total.</p></div>`;
 }
-const guestPick = times => { const g = S.bk.guest; return g.on ? guestOptions(times).find(o => o.mode === g.mode) || null : null; };
+const guestPick = times => { const g = S.bk.guest; if (!g.on) return null; const o = guestOptions(times).find(o => o.mode === g.mode); return o && o.time ? o : null; };
 // ---------- next available ----------
 function ensureRange() {
   const R = S.range; if (R.loading || Date.now() - R.at < 60e3) return;
@@ -315,7 +340,7 @@ function detailErrors() {
   if (!b.email.trim()) e.email = 'Enter your email. Your confirmation and booking link go there.'; else if (!validEmail(b.email)) e.email = 'Check your email address, like juan@gmail.com.';
   if (b.guest.on) {
     if (b.guest.name.trim().length < 2) e.gname = 'Enter the second person’s name.';
-    if (!guestValid()) e.gsvc = 'Pick the second person’s services.'; else if (!b.guest.mode) e.gmode = 'Pick when the second person comes.';
+    if (!guestValid()) e.gsvc = 'Pick the second person’s services.'; else if (!b.guest.mode) e.gmode = 'Pick when the second person comes.'; else if (b.guest.mode === 'pick' && !guestPick(availableTimes(info(), { services: chosen(), date: b.date, barberId: b.barber }, S.slots))) e.gmode = 'Pick a day and time for the second person.';
   }
   if (!b.consent) e.consent = 'Please agree to the Booking Terms and Privacy Policy.';
   return e;
@@ -384,7 +409,7 @@ function booker() {
       <div class="sumrow"><span>Services</span><b>${picked.length ? picked.map(s => esc(s.name)).join('<br>') : '—'}</b></div>
       <div class="sumrow"><span>${b.group === 'her' ? 'Stylist' : 'Barber'}</span><b>${b.barber ? esc(barber(b.barber)?.name || '') : 'Any available'}</b></div>
       <div class="sumrow"><span>When</span><b>${st.when ? `${fmtDate(b.date)}<br>${fmtTime(b.time)}` : '—'}</b></div>
-      ${gpk ? `<div class="sumrow"><span>Second person</span><b>${esc(b.guest.name.trim() || 'Guest')}${b.guest.own ? `<br>${guestSvcs().map(x => esc(x.name)).join('<br>')}` : ''}<br>${fmtTime(gpk.time)}${gpk.barberId ? ` with ${esc(barber(gpk.barberId)?.name || '')}` : ', another barber'}</b></div>` : ''}
+      ${gpk ? `<div class="sumrow"><span>Second person</span><b>${esc(b.guest.name.trim() || 'Guest')}${b.guest.own ? `<br>${guestSvcs().map(x => esc(x.name)).join('<br>')}` : ''}<br>${gpk.date && gpk.date !== b.date ? `${fmtDate(gpk.date)}, ` : ''}${fmtTime(gpk.time)}${gpk.barberId ? ` with ${esc(barber(gpk.barberId)?.name || '')}` : ', another barber'}</b></div>` : ''}
       <div class="sumrow"><span>Estimated total</span><b>${picked.length ? (from || (gpk && guestSvcs().some(x => x.priceFrom)) ? 'from ' : '') + m(total + (gpk ? sum(guestSvcs(), x => x.price) : 0)) : '—'}</b></div>
       <div class="due"><span>Due now${people > 1 ? ' (2 people)' : ''}</span><b>${m(pol.deposit * people)}</b></div>
       <p class="muted small">Your slot is held for ${pol.holdMinutes} minutes while you pay. Pay the rest at the shop.</p>
@@ -532,7 +557,7 @@ const ACT = {
   lightbox(el) { S.lb = +el.dataset.i; lightbox(); },
   lbClose(el, e) { if (e && el.classList.contains('lb') && e.target !== el) return; S.lb = -1; lightbox(); },
   lbStep(el) { const n = gallery().length; S.lb = (S.lb + (+el.dataset.d) + n) % n; lightbox(); },
-  bkGroup(el) { if (S.bk.group === el.dataset.v) return; S.bk.group = el.dataset.v; S.bk.tier = ''; S.bk.svc = {}; S.bk.barber = ''; S.bk.time = ''; S.bk.guest = { on: false, mode: '', name: '', own: false, group: 'him', tier: '', svc: {} }; renderBooker(); },
+  bkGroup(el) { if (S.bk.group === el.dataset.v) return; S.bk.group = el.dataset.v; S.bk.tier = ''; S.bk.svc = {}; S.bk.barber = ''; S.bk.time = ''; S.bk.guest = { on: false, mode: '', name: '', own: false, group: 'him', tier: '', svc: {}, date: '', time: '', barber: '' }; renderBooker(); },
   bfOpen() { S.byBarber = true; renderBooker(); },
   bfClose() { S.byBarber = false; renderBooker(); },
   bfClear() { S.bk.barber = ''; S.byBarber = true; S.bk.time = ''; renderBooker(); },
@@ -550,8 +575,11 @@ const ACT = {
   forgetMe() { forgetMe(); renderBooker(); toast('Your details were removed from this phone'); },
   bkNext(el) { S.bk.date = el.dataset.date; S.bk.time = el.dataset.time; S.err = ''; watchSlots(); renderBooker(); goStep(4); },
   guestOn() { S.bk.guest.on = true; S.bk.guest.group = S.bk.group; const o = guestOptions(availableTimes(info(), { services: chosen(), date: S.bk.date, barberId: S.bk.barber }, S.slots)); if (o.length === 1) S.bk.guest.mode = o[0].mode; renderBooker(); },
-  guestOff() { S.bk.guest = { on: false, mode: '', name: '', own: false, group: 'him', tier: '', svc: {} }; renderBooker(); },
-  guestMode(el) { S.bk.guest.mode = el.dataset.v; renderBooker(); },
+  guestOff() { S.bk.guest = { on: false, mode: '', name: '', own: false, group: 'him', tier: '', svc: {}, date: '', time: '', barber: '' }; renderBooker(); },
+  guestMode(el) { const g = S.bk.guest; g.mode = el.dataset.v; if (g.mode === 'pick') { g.date = g.date || S.bk.date; ensureRange(); } renderBooker(); },
+  guestBarber(el) { const g = S.bk.guest; g.barber = el.dataset.id; g.time = ''; const bb = barber(g.barber); if (bb && !(bb.days || []).includes(dowOf(g.date || S.bk.date))) g.date = ''; renderBooker(); },
+  guestDate(el) { const g = S.bk.guest; g.date = el.dataset.v; g.time = ''; ensureRange(); renderBooker(); },
+  guestTime(el) { S.bk.guest.time = el.dataset.v; renderBooker(); },
   guestOwn(el) { const g = S.bk.guest; g.own = el.dataset.v === '1'; g.mode = ''; if (g.own && !Object.values(g.svc).some(Boolean)) { g.group = S.bk.group; g.tier = ''; } renderBooker(); },
   guestGroup(el) { const g = S.bk.guest; if (g.group === el.dataset.v) return; g.group = el.dataset.v; g.tier = ''; g.svc = {}; g.mode = ''; renderBooker(); },
   guestTier(el) { const g = S.bk.guest; if (g.tier === el.dataset.v) return; g.tier = el.dataset.v; g.svc = {}; g.mode = ''; renderBooker(); },
@@ -567,7 +595,7 @@ const ACT = {
   bkSvc(el) { const id = el.dataset.id; if (S.bk.svc[id]) { S.bk.svc[id] = false; S.bk.time = ''; } else pickService(id); renderBooker(); },
   bkBarber(el) { S.bk.barber = el.dataset.id; S.bk.time = ''; S.err = ''; const b = barber(S.bk.barber); if (b && S.bk.date && !(b.days || []).includes(dowOf(S.bk.date))) S.bk.date = firstDate(); watchSlots(); renderBooker(); goStep(3); },
   bkDate(el) { S.bk.date = el.dataset.v; S.bk.time = ''; S.err = ''; S.wl.done = ''; S.wl.err = ''; watchSlots(); renderBooker(); },
-  bkTime(el) { S.bk.time = el.dataset.v; S.bk.guest.mode = ''; S.err = ''; renderBooker(); goStep(4); },
+  bkTime(el) { S.bk.time = el.dataset.v; S.bk.guest.mode = ''; S.bk.guest.time = ''; S.err = ''; renderBooker(); goStep(4); },
   wlOpen() { S.wl.open = true; S.wl.err = ''; renderBooker(); },
   wlClose() { S.wl.open = false; renderBooker(); },
   wlWin(el) { S.wl.window = el.dataset.v; renderBooker(); },
@@ -603,7 +631,7 @@ const ACT = {
     S.busy = true; S.err = ''; renderBooker();
     try {
       const r = await call('createBooking', { serviceIds: Object.keys(b.svc).filter(k => b.svc[k]), barberId: b.barber, date: b.date, time: b.time, name: b.name, phone: b.phone, email: b.email, notes: b.notes, consent: b.consent,
-        ...(gp ? { guest: { name: b.guest.name.trim(), time: gp.time, barberId: gp.barberId, ...(b.guest.own ? { serviceIds: guestSvcs().map(x => x.id) } : {}) } } : {}) });
+        ...(gp ? { guest: { name: b.guest.name.trim(), time: gp.time, barberId: gp.barberId, ...(gp.mode === 'pick' && gp.date !== b.date ? { date: gp.date } : {}), ...(b.guest.own ? { serviceIds: guestSvcs().map(x => x.id) } : {}) } } : {}) });
       saveMe();
       try { localStorage.setItem('lastBooking', JSON.stringify({ id: r.id, token: r.token, ...when })); } catch (_) {}
       location.href = r.checkoutUrl;
