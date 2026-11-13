@@ -35,9 +35,11 @@ Set a budget alert in Google Cloud (Billing → Budgets) so you're told if costs
 
 ## Setup
 
-Setup comes in two parts. **Part 1 costs nothing and needs no card.** It puts the website online, with the real menu and the full dashboard (schedule, walk-ins, checkout, income and expenses, barbers, clients, inventory). Customers book by calling or messaging the shop.
+Setup comes in three parts. **Part 1 costs nothing and needs no card.** It puts the website online, with the real menu and the full dashboard (schedule, walk-ins, checkout, income and expenses, barbers, clients, inventory). Customers book by calling or messaging the shop.
 
 **Part 2 is everything that involves payment:** Firebase's Blaze plan (needs a card), PayMongo and Semaphore credits. It adds online booking with the ₱200 deposit, texts and emails, and photo uploads.
+
+**Part 3, done last,** moves the site to the shop's own domain, R3ALBarbers.com.
 
 You need a computer with **Node.js 22** installed.
 
@@ -154,13 +156,30 @@ firebase deploy --only functions
 1. When PayMongo approves the account, set the live key: `firebase functions:secrets:set PAYMONGO_SECRET_KEY` (`sk_live_...`).
 2. Repeat step 9 with the live key. Live and test webhooks are separate, so this gives you a new `whsk_` secret. Set it as `PAYMONGO_WEBHOOK_SECRET`.
 3. `firebase deploy --only functions`.
-4. Optional: Firebase console → Hosting → **Add custom domain**, then update `SITE_URL` in `functions/.env` and deploy again.
 
 #### 12. Switch over from Setmore
 
 1. Add every Setmore booking that's still upcoming in the dashboard (Schedule → + Booking) so those times are blocked online.
 2. Turn off new bookings in Setmore. Keep the account open until its last booking has passed.
 3. Change the **Book** button on the Facebook page and the website link on the Google Business Profile to the new site.
+
+### Part 3: domain name, R3ALBarbers.com (do this last)
+
+Once Part 2 works, move the site from `<your-project-id>.web.app` to **r3albarbers.com**.
+
+#### 13. Buy the domain
+
+Buy `r3albarbers.com` at Cloudflare Registrar (https://dash.cloudflare.com), Namecheap or Porkbun, about ₱600–900 a year, and turn on auto-renew.
+
+#### 14. Connect it to Firebase Hosting
+
+Firebase console → Hosting → **Add custom domain** → `r3albarbers.com` (add `www.r3albarbers.com` as a redirect). Copy the DNS records it shows into your domain seller's DNS settings, then wait for **Connected** with https (usually within an hour, up to 24 hours).
+
+#### 15. Point everything at the new address
+
+1. Firebase console → Authentication → Settings → **Authorized domains** → add `r3albarbers.com` and `www.r3albarbers.com`.
+2. In `functions/.env` set `SITE_URL=https://r3albarbers.com`, then `firebase deploy --only functions`.
+3. Change the Facebook Book button, the Google Business Profile website and the Instagram bio link to r3albarbers.com.
 
 ## How a booking works
 
