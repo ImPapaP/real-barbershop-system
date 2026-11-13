@@ -187,11 +187,14 @@ const FUNCS = {
     let guest = null;
     if (d.guest) {
       if (!String(d.guest.name || '').trim()) fail('invalid-argument', 'Second person: enter their name.');
-      const gt = availableTimes(I, { services, date: d.date, barberId: d.guest.barberId || '' }, slotsOn(d.date)).find(x => x.time === d.guest.time);
+      const gsv = (d.guest.serviceIds && d.guest.serviceIds.length ? d.guest.serviceIds.map(s => I.services.find(x => x.id === s)).filter(Boolean) : services);
+      if (!gsv.length) fail('invalid-argument', 'Second person: pick at least one service.');
+      const gc = comboError(I, gsv); if (gc) fail('invalid-argument', 'Second person: ' + gc);
+      const gt = availableTimes(I, { services: gsv, date: d.date, barberId: d.guest.barberId || '' }, slotsOn(d.date)).find(x => x.time === d.guest.time);
       const mainB = t.barbers[0], overlaps = d.guest.time === d.time;
       const gb = gt && gt.barbers.find(b => !(overlaps && b === mainB));
       if (!gb) fail('already-exists', 'Sorry, the second person’s slot was just taken. Pick another option for them.');
-      guest = { name: d.guest.name.trim(), time: d.guest.time, barberId: gb };
+      guest = { name: d.guest.name.trim(), time: d.guest.time, barberId: gb, services: gsv };
     }
     const id = 'b' + Date.now().toString(36), token = Math.random().toString(36).slice(2, 14);
     const gid = guest ? id + 'g' : '';
@@ -204,7 +207,7 @@ const FUNCS = {
     if (guest) store.set('appointments/' + gid, {
       code: code.slice(0, 5) + '2', token: Math.random().toString(36).slice(2, 14), source: 'online', status: 'booked', notify: false, groupOf: id, bookedBy: d.name.trim(),
       name: guest.name, phone: d.phone.trim(), email: d.email.trim(), notes: d.notes || '', customerId: '',
-      serviceIds: services.map(s => s.id), mins: sum(services, s => s.mins), date: d.date, time: guest.time, startAt: startMs(d.date, guest.time), barberId: guest.barberId,
+      serviceIds: guest.services.map(s => s.id), mins: sum(guest.services, s => s.mins), date: d.date, time: guest.time, startAt: startMs(d.date, guest.time), barberId: guest.barberId,
       deposit: { amount: pol.deposit, status: 'paid', method: 'gcash', paidWith: id }, reminders: {}, reschedules: 0, createdAt: Date.now()
     });
     afterWrite('appointments/' + id); if (guest) afterWrite('appointments/' + gid);
@@ -215,7 +218,7 @@ const FUNCS = {
     let cid = a.customerId;
     if (!cid && a.phone) { const key = String(a.phone).replace(/\D/g, '').replace(/^63/, '0'); const c = [...store].find(([k, v]) => k.startsWith('customers/') && v.phoneKey === key); cid = c ? c[0].split('/')[1] : ''; }
     const visits = cid ? [...store].filter(([k, v]) => k.startsWith('sales/') && v.customerId === cid).length : 0;
-    const guests = (a.guests || []).map(gid => { const g = store.get('appointments/' + gid); return g && { id: gid, token: g.token, name: g.name, status: g.status, date: g.date, time: g.time, barberName: (I.barbers.find(b => b.id === g.barberId) || {}).name || '' }; }).filter(Boolean);
+    const guests = (a.guests || []).map(gid => { const g = store.get('appointments/' + gid); return g && { id: gid, token: g.token, name: g.name, status: g.status, date: g.date, time: g.time, barberName: (I.barbers.find(b => b.id === g.barberId) || {}).name || '', services: (g.serviceIds || []).map(s => (I.services.find(x => x.id === s) || {}).name).filter(Boolean) }; }).filter(Boolean);
     return { ...publicView(d.id), loyalty: every ? { every, visits, nextFree: (visits + 1) % every === 0 } : null, guests, rebook: rebookLink('.', a, I) };
   },
   joinWaitlist(d) {

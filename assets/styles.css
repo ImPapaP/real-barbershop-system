@@ -840,3 +840,9 @@ html{font-synthesis-weight:none}
 .consent.remember{margin-bottom:8px}
 .bf-chip .av,.bf-chosen .av{display:grid;place-items:center;border-radius:50%;background:var(--ink);color:var(--bg);font:800 12px/1 var(--f-body,inherit);flex:none;overflow:hidden;position:static}
 .bf-chip .av img,.bf-chosen .av img{width:100%;height:100%;object-fit:cover}
+.guest-svc{display:grid;gap:10px;margin-top:10px}
+.tabs.sm button{padding:6px 14px;font-size:14px}
+.pickcard.sm{padding:10px 12px}
+.pickcard.sm b{font-size:14px}
+.guest-svc .pick:not(.one-col){grid-template-columns:repeat(auto-fill,minmax(min(100%,150px),1fr))}
+@media (max-width:520px){.guest-svc .pick{grid-template-columns:repeat(2,minmax(0,1fr))!important}.guest-svc .pickcard.sm{padding:9px 10px}.guest-svc .pickcard.sm b{font-size:13px}}

@@ -39,7 +39,7 @@ function guestsCard(b) {
   const gs = b.guests || []; if (!gs.length) return '';
   const word = { booked: 'Confirmed', pending_payment: 'Waiting for deposit', cancelled: 'Cancelled', expired: 'Not confirmed', needs_attention: 'We’ll call you', done: 'Completed', noshow: 'Missed' };
   return `<section class="panel"><div class="panel-h"><h2>Also booked</h2></div>${gs.map(g => `<div class="row" style="justify-content:space-between;gap:10px;flex-wrap:wrap">
-    <div><b>${esc(g.name)}</b><div class="muted small">${fmtDate(g.date)}, ${fmtTime(g.time)} with ${esc(g.barberName || 'a barber')} · ${esc(word[g.status] || g.status)}</div></div>
+    <div><b>${esc(g.name)}</b><div class="muted small">${(g.services || []).length ? esc(g.services.join(' + ')) + '<br>' : ''}${fmtDate(g.date)}, ${fmtTime(g.time)} with ${esc(g.barberName || 'a barber')} · ${esc(word[g.status] || g.status)}</div></div>
     <a class="btn btn-sm" href="booking.html?id=${encodeURIComponent(g.id)}&t=${encodeURIComponent(g.token)}">Their booking</a></div>`).join('')}</section>`;
 }
 function loyaltyCard(b) {
