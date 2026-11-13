@@ -2,7 +2,8 @@
 // Sign-in is Firebase Auth; only users listed in the admins/ collection get in (see firestore.rules).
 import { db, demo, demoBar, resetDemo, login, logout, resetPassword, onAuth, uploadImage, deleteImage, call } from './fb.js';
 import { buildXlsx, xlDate, xlTime, colName } from './xlsx.js';
-import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, publicBarber, DEFAULT_POLICY, startMs, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE } from './shared.js';
+import { qrSvg } from './qr.js';
+import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, publicBarber, DEFAULT_POLICY, startMs, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE, defaultFaq, cleanCode } from './shared.js';
 
 // ---------- constants ----------
 const METHODS = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer'];
@@ -21,14 +22,16 @@ const APPT = {
 };
 const STATUS_CHOICES = ['booked', 'waiting', 'inchair', 'done', 'noshow', 'cancelled'];
 const PERIODS = [['today', 'Today'], ['week', 'This week'], ['month', 'This month'], ['lastmonth', 'Last month'], ['30d', 'Last 30 days'], ['year', 'This year'], ['custom', 'Custom']];
-const COLS = ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts', 'waitlist', 'attendance'];
+const COLS = ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts', 'waitlist', 'attendance', 'promos'];
+const STYLES = ['Fade', 'Taper', 'Crop', 'Mullet', 'Buzz cut', 'Pompadour', 'Perm', 'Color', 'Women’s cut', 'Beard', 'Shop'];
 const METHOD_NAMES = { gcash: 'GCash', paymaya: 'Maya', card: 'Card', qrph: 'QR Ph', grab_pay: 'GrabPay' };
 
 // ---------- state ----------
 const S = {
   ready: false, user: null, canAdmin: false, loginErr: '', loginBusy: false, loginMsg: '',
   info: null, infoMissing: false, slow: false,
-  staff: [], appointments: [], sales: [], expenses: [], customers: [], inventory: [], payouts: [], waitlist: [], attendance: [], loaded: {}, reminding: '',
+  staff: [], appointments: [], sales: [], expenses: [], customers: [], inventory: [], payouts: [], waitlist: [], attendance: [], promos: [], loaded: {}, reminding: '',
+  proofImgs: {}, cutImgs: {},
   schedDate: '', schedBarber: '', showExpired: false, period: 'month', from: '', to: '',
   clientQ: '', clientSort: 'recent', stockFilter: 'all', showArchived: false, pos: null, busy: false, uploading: ''
 };
@@ -70,8 +73,30 @@ const av = b => b && b.photo ? `<img class="avatar" src="${esc(b.photo)}" alt=""
 const custById = id => S.customers.find(c => c.id === id);
 const methodName = k => METHOD_NAMES[k] || k || 'Online';
 const depositPaid = a => a && a.deposit && a.deposit.status === 'paid' ? (a.deposit.amount || 0) : 0;
+// GCash screenshot payments waiting for the owner to check
+const toReview = () => S.appointments.filter(a => a.status === 'pending_payment' && a.payMethod === 'gcash' && a.proof && a.proof.status === 'review' && !a.groupOf).sort((a, b) => a.proof.at - b.proof.at);
+const groupOf = a => [a, ...S.appointments.filter(x => x.groupOf === a.id)];
+function proofImg(id) {
+  if (S.proofImgs[id] === undefined) { S.proofImgs[id] = ''; db.doc(`proofs/${id}`).get().then(d => { S.proofImgs[id] = d.exists ? d.data().img || 'none' : 'none'; schedule(); }).catch(() => { S.proofImgs[id] = 'none'; schedule(); }); }
+  return S.proofImgs[id];
+}
+function proofsPanel(compact) {
+  const list = toReview(); if (!list.length) return '';
+  return `<section class="panel proofs"><div class="panel-h"><h2>GCash screenshots to check</h2><span class="muted small">Match each one with your GCash history, then approve it to confirm the booking</span></div>
+    <div class="proof-list">${list.map(a => { const img = proofImg(a.id), ppl = groupOf(a).length, amt = (a.deposit && a.deposit.amount || pol().deposit) * ppl;
+      return `<article class="proof">
+        <button type="button" class="proof-img" data-act="viewProof" data-id="${esc(a.id)}" aria-label="View screenshot from ${esc(a.name)}">${img && img !== 'none' ? `<img src="${esc(img)}" alt="">` : img === 'none' ? '<span class="muted small">No image</span>' : '<span class="spinner"></span>'}</button>
+        <div class="grow"><b>${esc(a.name)}</b> <span class="muted small">${esc(a.phone || '')}</span>
+          <div class="sub">${fmtDate(a.date)} · ${fmtTime(a.time)} · ${esc(svcNames(a.serviceIds))} · ${esc(staffName(a.barberId))}${ppl > 1 ? ` · +${ppl - 1} more person` : ''}</div>
+          <div class="proof-meta"><span>Expect <b>${money(amt)}</b></span>${a.proof.ref ? `<span>Ref. <b>${esc(a.proof.ref)}</b></span>` : ''}<span class="muted">Sent ${ago(a.proof.at)}</span></div>
+          <div class="acts"><button class="btn btn-sm btn-primary" data-act="approveProof" data-id="${esc(a.id)}">Approve</button><button class="btn btn-sm btn-danger" data-act="rejectProof" data-id="${esc(a.id)}">Reject</button>${compact ? '' : `<button class="btn btn-sm btn-ghost" data-act="viewProof" data-id="${esc(a.id)}">View</button>`}</div></div>
+      </article>`; }).join('')}</div></section>`;
+}
+const ago = t => { const m = Math.max(0, Math.round((Date.now() - t) / 60000)); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} hr ago` : `${Math.round(m / 1440)} days ago`; };
+const lateChip = a => a.late && a.date === today() && ['booked', 'waiting'].includes(a.status) ? ' ' + chip({ kind: 'warn', icon: '⏱', label: `${a.late.mins} min late` }) : '';
 function depositChip(a) {
   const d = a.deposit || {};
+  if (a.status === 'pending_payment' && a.payMethod === 'gcash') return a.proof && a.proof.status === 'review' ? chip({ kind: 'warn', icon: '!', label: 'GCash screenshot to check' }) : chip({ kind: 'mute', icon: '◷', label: 'Waiting for GCash' });
   if (d.status === 'paid') return chip({ kind: 'good', icon: '✓', label: `${money(d.amount)} ${methodName(d.method)}` });
   if (d.status === 'kept') return chip({ kind: 'mute', icon: '•', label: `${money(d.amount)} kept` });
   if (d.status === 'refunded') return chip({ kind: 'mute', icon: '↩', label: 'Refunded' });
@@ -286,11 +311,11 @@ function apptRow(a, compact) {
   const canCheckout = ['booked', 'waiting', 'inchair'].includes(a.status);
   const actions = `${canCheckout ? `<button class="btn btn-sm btn-primary" data-act="checkoutAppt" data-id="${esc(a.id)}">Checkout</button>` : ''}${a.status === 'done' && a.saleId ? `<button class="btn btn-sm" data-act="showSale" data-id="${esc(a.saleId)}">Receipt</button>` : ''}`;
   const flag = a.conflict && ['booked', 'pending_payment'].includes(a.status) ? ' ' + chip({ kind: 'bad', icon: '!', label: 'Overlaps another booking' }) : '';
-  if (compact) return `<li>${a.barberId ? av(staffById(a.barberId)) : ''}<span class="t">${a.source === 'walk-in' ? `#${esc(a.queueNo || '')}` : fmtTime(a.time)}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b><div class="sub">${esc(svcNames(a.serviceIds))} · ${esc(staffName(a.barberId))}</div></div>${chip(APPT[a.status] || APPT.booked)}</li>`;
+  if (compact) return `<li>${a.barberId ? av(staffById(a.barberId)) : ''}<span class="t">${a.source === 'walk-in' ? `#${esc(a.queueNo || '')}` : fmtTime(a.time)}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${lateChip(a)}<div class="sub">${esc(svcNames(a.serviceIds))} · ${esc(staffName(a.barberId))}</div></div>${chip(APPT[a.status] || APPT.booked)}</li>`;
   const choices = STATUS_CHOICES.includes(a.status) ? STATUS_CHOICES : [a.status, ...STATUS_CHOICES];
   return `<tr>
     <td class="num nowrap"><b>${a.source === 'walk-in' ? `Walk-in #${esc(a.queueNo || '')}` : fmtTime(a.time)}</b>${a.source === 'walk-in' ? `<div class="muted small">arrived ${fmtTime(a.time)}</div>` : ''}</td>
-    <td><b>${esc(a.name || 'Walk-in')}</b>${a.code ? ` <span class="muted small">${esc(a.code)}</span>` : ''}${a.phone ? `<div class="muted small">${esc(a.phone)}</div>` : ''}</td>
+    <td><b>${esc(a.name || 'Walk-in')}</b>${a.code ? ` <span class="muted small">${esc(a.code)}</span>` : ''}${lateChip(a)}${a.promo ? ' ' + chip({ kind: 'info', icon: '%', label: `${a.promo.code} −${money(a.promo.off)}` }) : ''}${a.phone ? `<div class="muted small">${esc(a.phone)}</div>` : ''}</td>
     <td>${esc(svcNames(a.serviceIds))}${a.notes ? `<div class="muted small">${esc(a.notes)}</div>` : ''}${flag}</td>
     <td>${esc(staffName(a.barberId))}</td>
     <td><span class="muted small">${a.source === 'online' ? 'Online' : a.source === 'walk-in' ? 'Walk-in' : 'Phone / in person'}</span><div>${depositChip(a)}</div></td>
@@ -311,8 +336,10 @@ function vOverview() {
   const byB = serviceStaff().map(b => ({ label: b.name, value: sum(wk.sales.filter(x => x.barberId === b.id), netOf), tip: `${wk.sales.filter(x => x.barberId === b.id).length} clients this week` })).sort((a, b) => b.value - a.value);
   const low = S.inventory.filter(i => i.stock <= i.reorder).sort((a, b) => a.stock - b.stock);
   const issues = S.appointments.filter(a => a.status === 'needs_attention' || (a.conflict && ['booked', 'pending_payment'].includes(a.status)));
+  const lates = appts.filter(a => a.late && ['booked', 'waiting'].includes(a.status));
   const onlineToday = appts.filter(a => a.source === 'online' && a.status !== 'expired').length;
   return `${pageHead(fmtDate(t, true), 'Overview', `<button class="btn" data-act="newWalkin">+ Walk-in</button><button class="btn" data-act="newBooking">+ Booking</button><a class="btn btn-primary" href="#checkout">${icon('checkout')}Checkout</a>`)}
+  ${proofsPanel(true)}
   <section class="kpis" aria-label="Today">
     ${kpi('Sales today', money(s.net), delta(s.net, lw.net, 'this time last ' + DAYS[parseYmd(t).getDay()]))}
     ${kpi('Clients served', s.count, `<span class="d">${upcoming.length} more booked today · ${onlineToday} online</span>`)}
@@ -338,8 +365,9 @@ function vOverview() {
     <section class="panel"><div class="panel-h"><h2>Needs attention</h2></div>
       <ul class="list">
         ${issues.map(a => `<li><span class="grow"><b>${esc(a.name)}</b><span class="sub" style="display:block">${a.status === 'needs_attention' ? 'Paid deposit but the slot was taken. Call to rebook or refund.' : 'Booking overlaps another one'} · ${fmtDate(a.date)} ${fmtTime(a.time)}</span></span><button class="btn btn-sm" data-act="editAppt" data-id="${esc(a.id)}">Open</button></li>`).join('')}
+        ${lates.map(a => `<li><span class="grow"><b>${esc(a.name)}</b><span class="sub" style="display:block">Running ${a.late.mins} min late for ${fmtTime(a.time)} with ${esc(staffName(a.barberId))} · told us ${ago(a.late.at)}</span></span>${chip({ kind: 'warn', icon: '⏱', label: 'Late' })}</li>`).join('')}
         ${low.slice(0, 4).map(i => `<li><span class="grow"><b>${esc(i.name)}</b><span class="sub" style="display:block">${i.stock} ${esc(i.unit || 'left')} · reorder at ${i.reorder}</span></span>${chip(i.stock <= 0 ? { kind: 'bad', icon: '✕', label: 'Out' } : { kind: 'warn', icon: '!', label: 'Low' })}</li>`).join('')}
-        ${!issues.length && !low.length ? '<li class="muted">All clear. No booking problems and nothing to restock.</li>' : ''}
+        ${!issues.length && !low.length && !lates.length ? '<li class="muted">All clear. No booking problems and nothing to restock.</li>' : ''}
       </ul></section>
   </div>`;
 }
@@ -367,12 +395,13 @@ function vSchedule() {
   const counts = Object.keys(APPT).map(k => [k, all.filter(a => a.status === k).length]).filter(x => x[1]);
   const expiredN = all.filter(a => a.status === 'expired').length;
   const issues = S.appointments.filter(a => a.status === 'needs_attention');
-  return `${pageHead(isToday ? 'Today' : fmtDate(d, true), 'Schedule', `<button class="btn" data-act="newWalkin">+ Walk-in</button><button class="btn btn-primary" data-act="newBooking">+ Booking</button>`)}
+  return `${pageHead(isToday ? 'Today' : fmtDate(d, true), 'Schedule', `<button class="btn" data-act="walkinQr">Walk-in QR</button><button class="btn" data-act="newWalkin">+ Walk-in</button><button class="btn btn-primary" data-act="newBooking">+ Booking</button>`)}
+  ${proofsPanel()}
   ${issues.length ? `<section class="panel"><div class="panel-h"><h2>Paid, but the slot was taken</h2><span class="muted small">Call these clients to rebook, or refund them in PayMongo</span></div><div class="tbl-wrap"><table class="tbl"><tbody>
     ${issues.map(a => `<tr><td class="num nowrap"><b>${fmtDate(a.date)}</b><div class="muted small">${fmtTime(a.time)}</div></td><td><b>${esc(a.name)}</b><div class="muted small">${esc(a.phone)} · ${esc(a.email || '')}</div></td><td>${esc(svcNames(a.serviceIds))}</td><td>${depositChip(a)}</td><td><div class="acts"><button class="btn btn-sm btn-primary" data-act="editAppt" data-id="${esc(a.id)}">Rebook</button></div></td></tr>`).join('')}
   </tbody></table></div></section>` : ''}
   ${isToday ? `<section class="panel"><div class="panel-h"><h2>Walk-in queue</h2><span class="muted small">Served in order of arrival</span></div>
-    ${queue.length ? `<ul class="list">${queue.map(a => `<li><span class="qno">#${esc(a.queueNo || '')}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b><div class="sub">${esc(svcNames(a.serviceIds))} · waiting ${Math.max(0, Math.round((Date.now() - (a.createdAt || Date.now())) / 60000))} min</div></div>
+    ${queue.length ? `<ul class="list">${queue.map(a => `<li><span class="qno">#${esc(a.queueNo || '')}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${a.fromQr ? ` ${chip({ kind: 'info', icon: '▦', label: 'Joined by QR' })}` : ''}<div class="sub">${a.phone ? esc(a.phone) + ' · ' : ''}${esc(svcNames(a.serviceIds) || 'Not sure yet')} · waiting ${Math.max(0, Math.round((Date.now() - (a.createdAt || Date.now())) / 60000))} min</div></div>
       <select data-change="apptBarber" data-id="${esc(a.id)}" aria-label="Barber for #${esc(a.queueNo || '')}" style="width:auto">${opt('', 'Any barber', !a.barberId)}${serviceStaff().map(b => opt(b.id, b.name, b.id === a.barberId)).join('')}</select>
       <button class="btn btn-sm btn-primary" data-act="startAppt" data-id="${esc(a.id)}">Start</button></li>`).join('')}</ul>` : '<p class="empty">Nobody waiting. Add a walk-in when someone arrives.</p>'}</section>` : ''}
   ${whosIn(d)}
@@ -714,7 +743,8 @@ function vSetup() {
         ${field('Short description', `<textarea id="sh-about" name="about" rows="2">${esc(sh.about)}</textarea>`, 'sh-about')}
         ${field('Address', `<input id="sh-addr" name="address" value="${esc(sh.address)}">`, 'sh-addr')}
         <div class="fgrid">${field('Phone', `<input id="sh-phone" name="phone" value="${esc(sh.phone)}">`, 'sh-phone')}${field('Facebook page', `<input id="sh-fb" name="facebook" value="${esc(sh.facebook || '')}">`, 'sh-fb')}</div>
-        ${field('Instagram', `<input id="sh-ig" name="instagram" value="${esc(sh.instagram || '')}" placeholder="https://www.instagram.com/...">`, 'sh-ig')}
+        <div class="fgrid">${field('Instagram', `<input id="sh-ig" name="instagram" value="${esc(sh.instagram || '')}" placeholder="https://www.instagram.com/...">`, 'sh-ig')}${field('Messenger link (optional)', `<input id="sh-msg" name="messenger" value="${esc(sh.messenger || '')}" placeholder="Made from your Facebook page if empty">`, 'sh-msg')}</div>
+        ${field('How to find us (shown under the map)', `<textarea id="sh-dir" name="directions" rows="2" maxlength="240" placeholder="e.g. Ground floor, beside the escalator. Jeepneys to Antipolo Cathedral stop in front.">${esc(sh.directions || '')}</textarea>`, 'sh-dir')}
         <div class="fgrid">${field('GCash number for down payments', `<input id="sh-gcash" name="gcashNumber" value="${esc(sh.gcashNumber || '')}" inputmode="tel">`, 'sh-gcash')}${field('GCash account name', `<input id="sh-gname" name="gcashName" value="${esc(sh.gcashName || '')}">`, 'sh-gname')}</div>
         <div class="fgrid">${field('Currency symbol', `<input id="sh-cur" name="currency" value="${esc(sh.currency || '₱')}" maxlength="4">`, 'sh-cur')}${field('Free cut every N visits (0 = off)', `<input id="sh-loy" name="loyaltyEvery" type="number" min="0" max="50" value="${esc(sh.loyaltyEvery ?? 10)}">`, 'sh-loy')}</div>
         <div class="modal-f"><button class="btn btn-primary" type="submit">Save details</button></div>
@@ -738,6 +768,7 @@ function vSetup() {
         ${field('“Time for a trim” text after (days, 0 = off)', `<input id="po-rebook" name="rebookDays" type="number" min="0" max="120" value="${esc(p.rebookDays ?? 28)}">`, 'po-rebook')}
       </div>
       <label class="consent"><input type="checkbox" id="po-online" name="onlineBooking" ${p.onlineBooking ? 'checked' : ''}><span><b>Take online bookings with a deposit.</b> Turn this on only after the booking backend and PayMongo are set up (checklist part 2). While it’s off, the website asks customers to call or message the shop instead.</span></label>
+      <label class="consent"><input type="checkbox" id="po-gcash" name="manualGcash" ${p.manualGcash !== false ? 'checked' : ''}><span><b>Also let customers pay by GCash screenshot.</b> They send the down payment to your GCash number above and upload the screenshot. The booking is confirmed when you approve it on the Schedule.</span></label>
       <p class="muted small">PayMongo needs at least ₱100 per payment. The website shows these rules to customers before they pay.</p>
       <div class="modal-f"><button class="btn btn-primary" type="submit">Save rules</button></div>
     </form></section>
@@ -745,8 +776,48 @@ function vSetup() {
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Service</th><th>For</th><th>Category</th><th class="r">Minutes</th><th class="r">Price</th><th>On website</th><th></th></tr></thead><tbody>
       ${services().map(s => `<tr><td><b>${esc(s.name)}</b><div class="muted small">${esc(s.desc || '')}</div></td><td>${s.group === 'her' ? 'Her' : 'Him'}${s.tier ? ` · ${s.tier === 'deluxe' ? 'Deluxe' : 'Regular'}` : ''}${s.kind === 'extra' ? ' · Add-on' : ''}</td><td>${esc(s.cat || '')}</td><td class="r">${esc(s.mins)}</td><td class="r"><b>${esc(priceLabel(s, cur()))}</b></td><td>${s.active !== false ? chip({ kind: 'good', icon: '✓', label: 'Shown' }) : chip({ kind: 'mute', icon: '–', label: 'Hidden' })}</td><td><div class="acts"><button class="btn btn-sm btn-ghost" data-act="editService" data-id="${esc(s.id)}">Edit</button><button class="btn btn-sm btn-danger" data-act="delService" data-id="${esc(s.id)}">Remove</button></div></td></tr>`).join('')}
     </tbody></table></div></section>
+  ${promosPanel()}
   <section class="panel"><div class="panel-h"><h2>Who can use this dashboard</h2></div>
     <p class="muted" style="max-width:72ch">Anyone with a sign-in whose user ID is in the <b>admins</b> collection in Firebase. To add a staff account: create the user in Firebase console → Authentication, copy their User UID, then add a document with that ID in Firestore → admins. README step 3 has the details.</p></section>`;
+}
+
+// ---------- promo codes ----------
+function promosPanel() {
+  const list = [...S.promos].sort((a, b) => (b.active !== false) - (a.active !== false) || a.id.localeCompare(b.id)), t = today();
+  const state = x => x.active === false ? chip({ kind: 'mute', icon: '–', label: 'Off' }) : x.expires && t > x.expires ? chip({ kind: 'mute', icon: '–', label: 'Expired' }) : x.maxUses && (x.uses || 0) >= x.maxUses ? chip({ kind: 'mute', icon: '–', label: 'Used up' }) : chip({ kind: 'good', icon: '✓', label: 'Active' });
+  return `<section class="panel"><div class="panel-h"><h2>Promo codes</h2><button class="btn btn-sm btn-primary" data-act="newPromo">+ Promo code</button></div>
+    <p class="muted small" style="margin-bottom:10px">Customers type the code when they book online. The discount comes off the bill at checkout (it fills in automatically); the down payment stays the same.</p>
+    ${list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Code</th><th>Discount</th><th class="r">Used</th><th>Ends</th><th>Status</th><th></th></tr></thead><tbody>${list.map(x => `<tr><td><b class="mono">${esc(x.id)}</b>${x.note ? `<div class="muted small">${esc(x.note)}</div>` : ''}</td><td>${x.kind === 'amount' ? money(x.value) + ' off' : x.value + '% off'}${x.minSpend ? `<div class="muted small">from ${money(x.minSpend)}</div>` : ''}</td><td class="r">${x.uses || 0}${x.maxUses ? ' / ' + x.maxUses : ''}</td><td>${x.expires ? fmtDate(x.expires) : '—'}</td><td>${state(x)}</td><td><div class="acts"><button class="btn btn-sm btn-ghost" data-act="editPromo" data-id="${esc(x.id)}">Edit</button></div></td></tr>`).join('')}</tbody></table></div>`
+      : '<p class="empty">No promo codes yet. Make one for a Facebook post, a holiday or first-timers.</p>'}</section>`;
+}
+function promoModal(x) {
+  const c = x || { kind: 'percent', value: 10, active: true };
+  openModal(x ? `Edit ${x.id}` : 'New promo code', `<form class="stack" data-form="promo" data-id="${esc(c.id || '')}">
+    <div class="fgrid">${field('Code', `<input id="pr-code" name="code" value="${esc(c.id || '')}" ${x ? 'readonly' : 'required'} maxlength="20" placeholder="e.g. REAL10" style="text-transform:uppercase">`, 'pr-code')}${field('Note (only you see this)', `<input id="pr-note" name="note" value="${esc(c.note || '')}" placeholder="e.g. Facebook post, November">`, 'pr-note')}</div>
+    <div class="fgrid three">${field('Type', `<select id="pr-kind" name="kind">${opt('percent', 'Percent off', c.kind !== 'amount')}${opt('amount', 'Peso amount off', c.kind === 'amount')}</select>`, 'pr-kind')}${field('Value', `<input id="pr-val" name="value" type="number" min="1" step="1" value="${esc(c.value)}" required>`, 'pr-val')}${field('Minimum services total (₱)', `<input id="pr-min" name="minSpend" type="number" min="0" value="${esc(c.minSpend || '')}">`, 'pr-min')}</div>
+    <div class="fgrid">${field('Last day (optional)', `<input id="pr-exp" name="expires" type="date" value="${esc(c.expires || '')}">`, 'pr-exp')}${field('Max uses (0 = no limit)', `<input id="pr-max" name="maxUses" type="number" min="0" value="${esc(c.maxUses || 0)}">`, 'pr-max')}</div>
+    <label class="row small"><input type="checkbox" name="active" ${c.active !== false ? 'checked' : ''}> Customers can use it</label>
+    <p class="err" id="m-err" hidden></p>${mFoot(x ? 'Save changes' : 'Create code', x ? `<button type="button" class="btn btn-danger" data-act="delPromo" data-id="${esc(c.id)}" style="margin-right:auto">Delete</button>` : '')}</form>`);
+}
+// ---------- walk-in QR poster ----------
+const walkinUrl = () => new URL('../?walkin=1', location.href).href;
+function qrModal() {
+  const url = walkinUrl();
+  openModal('Walk-in QR code', `<div class="stack qr-modal"><div class="qr-box">${qrSvg(url, { size: 240 })}</div>
+    <p>Customers in the shop scan this to join the walk-in queue on their phone. They show up in <b>Schedule → Walk-in queue</b> with their number and name. No down payment.</p>
+    <p class="muted small mono" style="word-break:break-all">${esc(url)}</p>
+    <div class="modal-f"><button type="button" class="btn" data-act="copyQrLink">Copy link</button><button type="button" class="btn btn-primary" data-act="printQr">Print poster</button></div></div>`);
+}
+function printPoster() {
+  const sh = info().shop, w = window.open('', '_blank'); if (!w) { toast('Allow pop-ups to print the poster.', 'bad'); return; }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Walk-in QR · ${esc(sh.name)}</title><style>
+    @page{size:A4;margin:0}body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#111;display:grid;place-items:center;min-height:100vh;text-align:center}
+    .p{width:180mm;padding:16mm 0}.logo{width:42mm;height:42mm;object-fit:contain}h1{font-size:40pt;margin:6mm 0 2mm;letter-spacing:-.5pt}p{font-size:16pt;margin:2mm 0;color:#333}
+    .qr{margin:8mm auto;width:110mm;height:110mm}.qr svg{width:100%;height:100%}.s{font-size:13pt;color:#555;margin-top:6mm}</style></head><body><div class="p">
+    <img class="logo" src="${new URL('../assets/logo.png', location.href).href}" alt=""><h1>Walk-in? Join the queue</h1><p>Scan with your phone camera. No down payment.</p>
+    <div class="qr">${qrSvg(walkinUrl(), { size: 400 })}</div><p><b>${esc(sh.name)}</b></p><p class="s">We call names in order. Clients with a booking go first at their time.</p></div>
+    <script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`);
+  w.document.close();
 }
 
 // ---------- tab: website (photos, gallery, announcement, reviews) ----------
@@ -770,8 +841,12 @@ function vWebsite() {
   <section class="panel"><div class="panel-h"><h2>Gallery</h2><div class="row"><span class="muted small">${gal.length} photo${gal.length === 1 ? '' : 's'} · first 12 show on the website</span>${upBtn('gallery', '+ Add photos', true)}</div></div>
     ${gal.length ? `<div class="gal-admin">${gal.map((g, i) => `<figure><img src="${esc(g.url)}" alt="${esc(g.caption || 'Gallery photo')}" loading="lazy"><figcaption>
       <input id="gc-${esc(g.id)}" data-caption="${esc(g.id)}" value="${esc(g.caption || '')}" placeholder="Caption, e.g. Mid fade by Reymart" aria-label="Caption">
+      <span class="fgrid gal-meta"><select data-galfield="style" data-id="${esc(g.id)}" aria-label="Style">${opt('', 'Style…', !g.style)}${STYLES.map(x => opt(x, x, g.style === x)).join('')}</select><select data-galfield="barberId" data-id="${esc(g.id)}" aria-label="Barber">${opt('', 'Barber…', !g.barberId)}${serviceStaff().map(b => opt(b.id, b.name, g.barberId === b.id)).join('')}</select></span>
       <span class="row"><button class="icon-btn" data-act="galMove" data-id="${esc(g.id)}" data-d="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move earlier">←</button><button class="icon-btn" data-act="galMove" data-id="${esc(g.id)}" data-d="1" ${i === gal.length - 1 ? 'disabled' : ''} aria-label="Move later">→</button><button class="btn btn-sm btn-danger" data-act="galDel" data-id="${esc(g.id)}">Remove</button></span></figcaption></figure>`).join('')}</div>`
-      : '<p class="empty">No photos yet. Add finished cuts, color work and the shop itself. They’re resized automatically.</p>'}</section>
+      : '<p class="empty">No photos yet. Add finished cuts, color work and the shop itself. They’re resized automatically.</p>'}
+    ${gal.length ? '<p class="muted small" style="margin-top:10px">Tag the style and barber: customers can filter the gallery by style, and tap “Book this look” to book that barber.</p>' : ''}</section>
+  ${ratingsPanel()}
+  ${faqPanel()}
   <div class="grid2e">
     <section class="panel"><div class="panel-h"><h2>Reviews</h2><button class="btn btn-sm btn-primary" data-act="newReview">+ Review</button></div>
       <p class="muted small" style="margin-bottom:10px">Copy real reviews customers left on Google, Facebook or Setmore, with their permission. Only add reviews people actually wrote.</p>
@@ -788,6 +863,29 @@ function vWebsite() {
   <section class="panel"><div class="panel-h"><h2>Team photos</h2><a class="btn btn-sm btn-ghost" href="#team">Edit team</a></div>
     <div class="team-admin">${serviceStaff().map(b => `<div class="tm">${b.photo ? `<img src="${esc(b.photo)}" alt="${esc(b.name)}">` : `<span class="mono">${esc(initials(b.name))}</span>`}<b>${esc(b.name)}</b><label class="btn btn-sm upload">${S.uploading === 'staff-' + b.id ? '<span class="spinner"></span>' : b.photo ? 'Replace' : 'Upload'}<input type="file" accept="image/*" data-upload="staff-${esc(b.id)}" hidden></label></div>`).join('') || '<p class="empty">Add your team first in Barbers.</p>'}</div></section>`;
 }
+// Ratings customers left on their booking page after a visit
+function ratingsPanel() {
+  const rated = S.appointments.filter(a => a.rating).sort((a, b) => b.rating.at - a.rating.at), revs = info().reviews || [];
+  const avg = rated.length ? sum(rated, a => a.rating.stars) / rated.length : 0;
+  return `<section class="panel"><div class="panel-h"><h2>Ratings from customers</h2>${rated.length ? `<span class="muted small"><b>${avg.toFixed(1)} ★</b> average from ${rated.length} visit${rated.length === 1 ? '' : 's'}</span>` : ''}</div>
+    <p class="muted small" style="margin-bottom:10px">After checkout, customers get a text and email asking how their cut was. Their ratings land here. Show the good ones on the website with one tap; each barber’s average shows on their profile.</p>
+    ${rated.length ? `<ul class="list">${rated.slice(0, 20).map(a => { const on = revs.some(r => r.id === 'r_' + a.id); return `<li><div class="grow"><b>${esc(a.name)}</b> <span class="stars" aria-label="${a.rating.stars} stars">${stars(a.rating.stars)}</span> <span class="muted small">${esc(staffName(a.barberId))} · ${fmtDate(a.date)}</span>${a.rating.text ? `<div class="sub">“${esc(a.rating.text)}”</div>` : ''}</div>
+      ${on ? chip({ kind: 'good', icon: '✓', label: 'On website' }) : a.rating.text && a.rating.stars >= 4 ? `<button class="btn btn-sm" data-act="showRating" data-id="${esc(a.id)}">Show on website</button>` : ''}</li>`; }).join('')}</ul>
+      <div class="row" style="margin-top:10px"><button class="btn btn-sm btn-ghost" data-act="syncRatings">Update barber ratings on the website</button></div>` : '<p class="empty">No ratings yet. They come in after customers’ visits are checked out.</p>'}</section>`;
+}
+function faqPanel() {
+  const own = Array.isArray(info().faq) && info().faq.length, list = own ? info().faq : defaultFaq(info());
+  return `<section class="panel"><div class="panel-h"><h2>Questions (FAQ)</h2><button class="btn btn-sm btn-primary" data-act="newFaq">+ Question</button></div>
+    <p class="muted small" style="margin-bottom:10px">${own ? 'Shown on the website under “Good to know”.' : 'The website shows these suggested answers, written from your booking rules. Edit any of them to make the list your own.'}</p>
+    <ul class="list">${list.map((f, i) => `<li><div class="grow"><b>${esc(f.q)}</b><div class="sub">${esc(f.a)}</div></div><div class="acts"><button class="icon-btn" data-act="faqMove" data-i="${i}" data-d="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button class="btn btn-sm btn-ghost" data-act="editFaq" data-i="${i}">Edit</button></div></li>`).join('')}</ul></section>`;
+}
+function faqModal(i) {
+  const list = Array.isArray(info().faq) && info().faq.length ? info().faq : defaultFaq(info()), c = i >= 0 ? list[i] : { q: '', a: '' };
+  openModal(i >= 0 ? 'Edit question' : 'Add question', `<form class="stack" data-form="faq" data-i="${i}">
+    ${field('Question', `<input id="fq-q" name="q" value="${esc(c.q)}" maxlength="120" required>`, 'fq-q')}
+    ${field('Answer', `<textarea id="fq-a" name="a" rows="4" maxlength="600" required>${esc(c.a)}</textarea>`, 'fq-a')}
+    <p class="err" id="m-err" hidden></p>${mFoot(i >= 0 ? 'Save' : 'Add', i >= 0 ? `<button type="button" class="btn btn-danger" data-act="delFaq" data-i="${i}" style="margin-right:auto">Delete</button>` : '')}</form>`);
+}
 function reviewModal(r) {
   const c = r || { rating: 5, source: 'Google' };
   openModal(r ? 'Edit review' : 'Add review', `<form class="stack" data-form="review" data-id="${esc(c.id || '')}">
@@ -797,6 +895,15 @@ function reviewModal(r) {
 }
 async function handleUpload(input) {
   const kind = input.dataset.upload, files = [...input.files]; if (!files.length) return;
+  if (kind.startsWith('cut-')) { // small JPEG kept in Firestore, so it works without Firebase Storage
+    const id = kind.slice(4), a = S.appointments.find(x => x.id === id);
+    try {
+      const blob = await resizeImage(files[0], 900, 0.7), img = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(blob); });
+      if (await put('cuts', id, { img, at: Date.now(), barberId: (a && a.barberId) || '' })) { S.cutImgs[id] = img; await patch('appointments', id, { hasCutPhoto: true }); toast('Photo saved. The client can see it on their booking page.'); }
+    } catch (e) { toast(e.message || 'Couldn’t save the photo.', 'bad'); }
+    const el = document.getElementById('cut-' + id); if (el && a) el.outerHTML = cutField(a);
+    return;
+  }
   S.uploading = kind; render();
   try {
     const big = kind === 'hero' ? 1920 : kind.startsWith('staff-') ? 800 : 1600, small = demo ? (kind === 'hero' ? 1280 : 900) : big;
@@ -834,6 +941,9 @@ function apptModal(a, mode) {
     ${a && !walk ? field('Status', `<select id="m-status" name="status">${(STATUS_CHOICES.includes(c.status) ? STATUS_CHOICES : [c.status, ...STATUS_CHOICES]).map(k => opt(k, APPT[k].label, k === c.status)).join('')}</select>`, 'm-status') : ''}
     ${d.status && d.status !== 'unpaid' ? field(`Online deposit (${money(d.amount)} via ${methodName(d.method)})`, `<select id="m-dep" name="deposit">${opt('paid', 'Paid · counts toward the bill', d.status === 'paid')}${opt('kept', 'Kept · no-show or late cancellation', d.status === 'kept')}${opt('refunded', 'Refunded in PayMongo', d.status === 'refunded')}</select>`, 'm-dep') : ''}
     ${field('Notes', `<textarea id="m-notes" name="notes" rows="2">${esc(c.notes || '')}</textarea>`, 'm-notes')}
+    ${c.proof ? `<div class="field"><label>GCash screenshot</label><div class="row"><button type="button" class="btn btn-sm" data-act="viewProof" data-id="${esc(c.id)}">View screenshot</button><span class="muted small">${c.proof.status === 'approved' ? 'Approved' : c.proof.status === 'rejected' ? 'Rejected' : 'Waiting for you to check'}${c.proof.ref ? ` · Ref. ${esc(c.proof.ref)}` : ''}</span></div></div>` : ''}
+    ${d.status === 'paid' && d.paymentId ? `<p class="muted small">Paid online through PayMongo · payment ${esc(d.paymentId)}</p>` : ''}
+    ${a && c.status === 'done' ? cutField(c) : ''}
     ${walk ? '' : `<label class="row small"><input type="checkbox" name="notify" ${c.notify !== false ? 'checked' : ''}> Text the client reminders (needs a mobile number)</label>`}
     <p class="err" id="m-err" hidden></p>
     ${mFoot(a ? 'Save changes' : walk ? 'Add to queue' : 'Save booking', a ? `<button type="button" class="btn btn-danger" data-act="delAppt" data-id="${esc(c.id)}" style="margin-right:auto">Delete</button>` : '')}
@@ -847,13 +957,22 @@ function expenseModal(e) {
     <div class="fgrid">${field('Amount (' + cur() + ')', `<input id="m-eamt" name="amount" inputmode="decimal" value="${esc(c.amount || '')}" required>`, 'm-eamt')}${field('Paid by', `<select id="m-emeth" name="method">${METHODS.map(x => opt(x, x, x === c.method)).join('')}</select>`, 'm-emeth')}</div>
     <p class="err" id="m-err" hidden></p>${mFoot(e ? 'Save changes' : 'Add expense')}</form>`);
 }
+function cutField(c) {
+  if (S.cutImgs[c.id] === undefined) { S.cutImgs[c.id] = ''; db.doc(`cuts/${c.id}`).get().then(d => { S.cutImgs[c.id] = d.exists ? d.data().img : 'none'; const el = document.getElementById('cut-' + c.id); if (el) el.outerHTML = cutField(c); }).catch(() => {}); }
+  const img = S.cutImgs[c.id];
+  return `<div class="field" id="cut-${esc(c.id)}"><label>Photo of the cut</label><div class="row">${img && img !== 'none' ? `<img class="cut-thumb" src="${esc(img)}" alt="Photo of the cut">` : ''}
+    <label class="btn btn-sm upload">${S.uploading === 'cut-' + c.id ? '<span class="spinner"></span> Saving…' : img && img !== 'none' ? 'Replace photo' : 'Add photo'}<input type="file" accept="image/*" data-upload="cut-${esc(c.id)}" hidden></label>
+    ${img && img !== 'none' ? `<button type="button" class="btn btn-sm btn-ghost" data-act="cutToGallery" data-id="${esc(c.id)}">Add to gallery</button>` : ''}</div>
+    <p class="muted small">The client sees it on their booking page, so they can ask for the same cut next time.</p></div>`;
+}
 function staffModal(b) {
   const c = b || { role: 'barber', rate: 60, dailyPay: 500, days: [0, 1, 2, 3, 4, 5, 6], groups: ['him'], tiers: ['regular'], active: true };
   const f = c.productFee || PRODUCT_FEE;
   openModal(b ? `Edit ${b.name}` : 'Add staff member', `<form class="stack staff-form" data-form="staff" data-id="${esc(c.id || '')}">
     <div class="fgrid">${field('Name', `<input id="m-sname" name="name" value="${esc(c.name || '')}" required>`, 'm-sname')}${field('Role', `<select id="m-srole" name="role">${Object.entries(ROLES).map(([k, l]) => opt(k, l, (c.role || 'barber') === k)).join('')}</select>`, 'm-srole')}</div>
     <div class="fgrid">${field('Title', `<input id="m-stitle" name="title" value="${esc(c.title || '')}" placeholder="Senior barber, Stylist">`, 'm-stitle')}${field('Phone', `<input id="m-sphone" name="phone" value="${esc(c.phone || '')}">`, 'm-sphone')}</div>
-    <div class="svc-only">${field('Specialty (shown on website)', `<input id="m-sspec" name="specialty" value="${esc(c.specialty || '')}">`, 'm-sspec')}</div>
+    <div class="svc-only">${field('Specialty (shown on website)', `<input id="m-sspec" name="specialty" value="${esc(c.specialty || '')}">`, 'm-sspec')}
+      ${field('Short bio for their profile (optional)', `<textarea id="m-sbio" name="bio" rows="2" maxlength="300" placeholder="e.g. 8 years behind the chair. Known for clean skin fades and textured crops.">${esc(c.bio || '')}</textarea>`, 'm-sbio')}</div>
     <div class="fgrid">${field('Guaranteed daily pay (₱)', `<input id="m-sdaily" name="dailyPay" type="number" min="0" step="any" value="${esc(c.dailyPay ?? 0)}" required>`, 'm-sdaily', 'Paid for every day worked, even with no clients')}<div class="svc-only">${field('Commission on services (%)', `<input id="m-srate" name="rate" type="number" min="0" max="100" value="${esc(c.rate ?? 60)}">`, 'm-srate', 'Their share, rounded down to the peso. Seniors 50, juniors 60, Dave 55.')}</div></div>
     <fieldset class="field svc-only"><legend>Product fee</legend>
       <label class="row small"><input type="checkbox" name="pf" ${c.productFee ? 'checked' : ''}> On services that use salon products, the shop takes a fixed amount first, then the rest is split</label>
@@ -958,6 +1077,52 @@ const ACT = {
   async forgot() { const email = $('#l-email')?.value.trim(); if (!email) { S.loginErr = 'Type your email first, then tap “Forgot password?”.'; render(); return; } try { await resetPassword(email); S.loginErr = ''; S.loginMsg = 'Password reset email sent. Check your inbox.'; } catch (e) { S.loginErr = 'Couldn’t send the reset email. Check the address.'; } render(); },
   newBooking() { apptModal(null, 'booking'); },
   newWalkin() { apptModal(null, 'walkin'); },
+  async viewProof(el) {
+    const a = S.appointments.find(x => x.id === el.dataset.id); if (!a) return;
+    let img = S.proofImgs[a.id];
+    if (!img) { try { const d = await db.doc(`proofs/${a.id}`).get(); img = S.proofImgs[a.id] = d.exists ? d.data().img : 'none'; } catch (_) { img = 'none'; } }
+    const review = a.status === 'pending_payment' && a.proof && a.proof.status === 'review', ppl = groupOf(a).length;
+    openModal(`Screenshot from ${a.name}`, `<div class="stack"><div class="proof-full">${img && img !== 'none' ? `<img src="${esc(img)}" alt="GCash screenshot from ${esc(a.name)}">` : '<p class="empty">No screenshot found.</p>'}</div>
+      <div class="totals" style="font-size:14px"><div><span>Expected</span><b>${money((a.deposit && a.deposit.amount || pol().deposit) * ppl)}</b></div>${a.proof && a.proof.ref ? `<div><span>Reference no.</span><b>${esc(a.proof.ref)}</b></div>` : ''}<div><span>Booking</span><span>${fmtDate(a.date)} · ${fmtTime(a.time)} · ${esc(staffName(a.barberId))}</span></div><div><span>Sent</span><span>${a.proof ? ago(a.proof.at) : ''}</span></div></div>
+      ${review ? `<p class="muted small">Check your GCash app for a payment with this amount and reference number before approving.</p><div class="modal-f"><button type="button" class="btn btn-danger" data-act="rejectProof" data-id="${esc(a.id)}" style="margin-right:auto">Reject</button><button type="button" class="btn" data-act="closeModal">Close</button><button type="button" class="btn btn-primary" data-act="approveProof" data-id="${esc(a.id)}">Approve and confirm booking</button></div>` : ''}</div>`, true);
+  },
+  async approveProof(el) {
+    const a = S.appointments.find(x => x.id === el.dataset.id); if (!a) return;
+    const now = Date.now(), dep = x => ({ ...(x.deposit || {}), amount: (x.deposit && x.deposit.amount) || pol().deposit, status: 'paid', method: 'gcash', paidAt: now, ref: (a.proof && a.proof.ref) || '', ...(x.id !== a.id ? { paidWith: a.id } : {}) });
+    let ok = true;
+    for (const x of groupOf(a)) ok = (await patch('appointments', x.id, { status: 'booked', deposit: dep(x), ...(x.id === a.id ? { proof: { ...a.proof, status: 'approved', decidedAt: now, by: (S.user && S.user.email) || '' } } : {}) })) && ok;
+    if (ok) { closeModal(); toast(`${a.name}’s booking is confirmed. They’ll get a text and email.`); }
+  },
+  async rejectProof(el) {
+    if (!armed(el)) return;
+    const a = S.appointments.find(x => x.id === el.dataset.id); if (!a) return;
+    const now = Date.now();
+    for (const x of groupOf(a)) await patch('appointments', x.id, { status: 'cancelled', cancelledBy: 'shop', ...(x.id === a.id ? { proof: { ...a.proof, status: 'rejected', decidedAt: now, by: (S.user && S.user.email) || '' } } : {}) });
+    closeModal(); toast('Rejected. The slot is open again and the client is told to call the shop.');
+  },
+  walkinQr() { qrModal(); },
+  printQr() { printPoster(); },
+  async copyQrLink() { try { await navigator.clipboard.writeText(walkinUrl()); toast('Link copied'); } catch (_) { toast(walkinUrl()); } },
+  newPromo() { promoModal(null); },
+  editPromo(el) { const x = S.promos.find(p => p.id === el.dataset.id); if (x) promoModal(x); },
+  async delPromo(el) { if (!armed(el)) return; if (await del('promos', el.dataset.id)) { closeModal(); toast('Promo code deleted'); } },
+  async showRating(el) {
+    const a = S.appointments.find(x => x.id === el.dataset.id); if (!a || !a.rating) return;
+    const parts = String(a.name || 'Client').trim().split(/\s+/), name = parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1][0]}.` : parts[0];
+    const list = [{ id: 'r_' + a.id, name, text: a.rating.text, rating: a.rating.stars, source: 'Booked online' }, ...(info().reviews || []).filter(r => r.id !== 'r_' + a.id)];
+    if (await saveInfo({ reviews: list })) { toast('Showing on the website'); syncPublicBarbers(); }
+  },
+  async syncRatings() { await syncPublicBarbers(); toast('Barber ratings updated on the website'); },
+  newFaq() { faqModal(-1); },
+  editFaq(el) { faqModal(+el.dataset.i); },
+  async delFaq(el) { if (!armed(el)) return; const list = faqOwn(); list.splice(+el.dataset.i, 1); if (await saveInfo({ faq: list })) { closeModal(); toast('Question removed'); } },
+  async faqMove(el) { const list = faqOwn(), i = +el.dataset.i, j = i + (+el.dataset.d); if (j < 0 || j >= list.length) return; [list[i], list[j]] = [list[j], list[i]]; await saveInfo({ faq: list }); },
+  async cutToGallery(el) {
+    const img = S.cutImgs[el.dataset.id]; if (!img || img === 'none') return;
+    try { const blob = await (await fetch(img)).blob(), up = await uploadImage(blob, 'gallery'), a = S.appointments.find(x => x.id === el.dataset.id);
+      await saveInfo({ gallery: [...(info().gallery || []), { id: newId(), url: up.url, path: up.path, caption: '', barberId: a ? a.barberId || '' : '' }] }); toast('Added to the gallery. Tag the style in Website.'); }
+    catch (e) { toast(/^storage\//.test(e.code || '') ? 'Gallery uploads need Firebase Storage (Blaze plan, checklist part 2).' : 'Couldn’t add it. Try again.', 'bad'); }
+  },
   editAppt(el) { const a = S.appointments.find(x => x.id === el.dataset.id); if (a) apptModal(a, 'edit'); },
   async delAppt(el) { if (!armed(el)) return; if (await del('appointments', el.dataset.id)) { closeModal(); toast('Visit deleted'); } },
   dayShift(el) { S.schedDate = addDays(S.schedDate || today(), +el.dataset.n); render(); },
@@ -968,6 +1133,7 @@ const ACT = {
     const p = blankPos(); p.apptId = a.id; p.name = a.name || ''; p.phone = a.phone || ''; p.barberId = a.barberId || '';
     p.deposit = depositPaid(a); p.depositMethod = a.deposit && a.deposit.method;
     p.lines = (a.serviceIds || []).map(svcById).filter(Boolean).map(s => ({ kind: 'service', ref: s.id, name: s.name, price: s.price, qty: 1 }));
+    if (a.promo) { p.discount = String(a.promo.off); p.discountNote = `Promo ${a.promo.code}`; }
     S.pos = p; closeModal(); location.hash = '#checkout';
   },
   checkoutClient(el) { const c = custById(el.dataset.id); if (!c) return; const p = blankPos(); p.name = c.name; p.phone = c.phone || ''; S.pos = p; closeModal(); location.hash = '#checkout'; },
@@ -1089,8 +1255,31 @@ async function saveInfo(partial) {
   if (S.infoMissing) return put('public', 'info', { ...JSON.parse(JSON.stringify(STARTER)), ...partial });
   return patch('public', 'info', partial);
 }
-async function syncPublicBarbers() { await saveInfo({ barbers: S.staff.filter(b => b.active !== false && isServiceStaff(b)).sort((a, b) => (a.chair || 99) - (b.chair || 99)).map(publicBarber) }); }
+const faqOwn = () => JSON.parse(JSON.stringify(Array.isArray(info().faq) && info().faq.length ? info().faq : defaultFaq(info())));
+// Barbers on the website, with their average rating from booked clients
+async function syncPublicBarbers() {
+  const rated = S.appointments.filter(a => a.rating && a.barberId);
+  await saveInfo({ barbers: S.staff.filter(b => b.active !== false && isServiceStaff(b)).sort((a, b) => (a.chair || 99) - (b.chair || 99)).map(b => {
+    const r = rated.filter(a => a.barberId === b.id);
+    return publicBarber({ ...b, rating: r.length ? Math.round(sum(r, a => a.rating.stars) / r.length * 10) / 10 : 0, ratingCount: r.length });
+  }) });
+}
 const FORM = {
+  async promo(f) {
+    const fd = new FormData(f), code = f.dataset.id || cleanCode(fd.get('code')), kind = String(fd.get('kind')), value = Math.max(0, num(fd.get('value')));
+    if (!code || code.length < 3) return modalErr(f, 'Use at least 3 letters or numbers for the code.');
+    if (!f.dataset.id && S.promos.some(x => x.id === code)) return modalErr(f, 'That code already exists.');
+    if (!value || (kind === 'percent' && value > 100)) return modalErr(f, kind === 'percent' ? 'Enter a percent from 1 to 100.' : 'Enter the peso amount.');
+    const old = S.promos.find(x => x.id === code) || {};
+    const data = { code, kind, value, minSpend: Math.max(0, num(fd.get('minSpend'))), expires: String(fd.get('expires') || ''), maxUses: Math.max(0, parseInt(fd.get('maxUses'), 10) || 0), active: fd.has('active'), note: String(fd.get('note') || '').trim().slice(0, 80), uses: old.uses || 0 };
+    if (await put('promos', code, data)) { closeModal(); toast(`${code} saved`); }
+  },
+  async faq(f) {
+    const fd = new FormData(f), q = String(fd.get('q') || '').trim(), a = String(fd.get('a') || '').trim(), i = +f.dataset.i;
+    if (!q || !a) return modalErr(f, 'Enter the question and the answer.');
+    const list = faqOwn(); if (i >= 0) list[i] = { q, a }; else list.push({ q, a });
+    if (await saveInfo({ faq: list })) { closeModal(); toast('FAQ saved'); }
+  },
   async login(f) {
     const fd = new FormData(f); S.loginBusy = true; S.loginErr = ''; S.loginMsg = ''; render();
     try { await login(String(fd.get('email')).trim(), String(fd.get('pass'))); }
@@ -1139,7 +1328,7 @@ const FORM = {
     if (rate < 0 || rate > 100) return modalErr(f, 'Commission must be between 0 and 100%.');
     const groups = svcRole ? fd.getAll('groups') : []; if (svcRole && !groups.length) return modalErr(f, 'Pick which services they take bookings for.');
     const productFee = svcRole && fd.has('pf') ? { threshold: Math.max(0, num(fd.get('pfThreshold'))), low: Math.max(0, num(fd.get('pfLow'))), high: Math.max(0, num(fd.get('pfHigh'))) } : null;
-    const data = { name, title: String(fd.get('title') || '').trim(), phone: String(fd.get('phone') || '').trim(), specialty: String(fd.get('specialty') || '').trim(), role, rate, productFee, dailyPay: Math.max(0, Number(fd.get('dailyPay')) || 0), groups, tiers: svcRole ? fd.getAll('tiers') : [], chair: fd.get('chair') ? +fd.get('chair') : '', days: fd.getAll('days').map(Number).sort() };
+    const data = { name, title: String(fd.get('title') || '').trim(), phone: String(fd.get('phone') || '').trim(), specialty: String(fd.get('specialty') || '').trim(), bio: String(fd.get('bio') || '').trim().slice(0, 300), role, rate, productFee, dailyPay: Math.max(0, Number(fd.get('dailyPay')) || 0), groups, tiers: svcRole ? fd.getAll('tiers') : [], chair: fd.get('chair') ? +fd.get('chair') : '', days: fd.getAll('days').map(Number).sort() };
     const id = f.dataset.id;
     const ok = id ? await patch('staff', id, { ...data, active: fd.has('active') }) : await put('staff', newId(), { ...data, active: true, since: today() });
     if (ok) { closeModal(); toast(id ? `${name} updated` : `${name} added`); setTimeout(syncPublicBarbers, 400); }
@@ -1186,7 +1375,7 @@ const FORM = {
     const fd = new FormData(f), name = String(fd.get('name') || '').trim();
     if (!name) { toast('Enter the shop name.', 'bad'); return; }
     const g = k => String(fd.get(k) || '').trim();
-    const shop = { ...info().shop, name, wordmark: g('wordmark'), tagline: g('tagline'), about: g('about'), address: g('address'), phone: g('phone'), facebook: g('facebook'), instagram: g('instagram'), gcashNumber: g('gcashNumber'), gcashName: g('gcashName'), currency: g('currency') || '₱', loyaltyEvery: Math.max(0, parseInt(fd.get('loyaltyEvery'), 10) || 0) };
+    const shop = { ...info().shop, name, wordmark: g('wordmark'), tagline: g('tagline'), about: g('about'), address: g('address'), phone: g('phone'), facebook: g('facebook'), instagram: g('instagram'), messenger: g('messenger'), directions: g('directions'), gcashNumber: g('gcashNumber'), gcashName: g('gcashName'), currency: g('currency') || '₱', loyaltyEvery: Math.max(0, parseInt(fd.get('loyaltyEvery'), 10) || 0) };
     if (shop.facebook && !/^https:\/\//.test(shop.facebook)) shop.facebook = 'https://' + shop.facebook.replace(/^http:\/\//, '');
     if (await saveInfo({ shop })) toast('Shop details saved');
   },
@@ -1214,7 +1403,7 @@ const FORM = {
   },
   async policy(f) {
     const fd = new FormData(f), n = (k, min, max) => Math.min(max, Math.max(min, parseInt(fd.get(k), 10) || 0));
-    const policy = { ...pol(), deposit: n('deposit', 100, 100000), holdMinutes: n('holdMinutes', 5, 60), rescheduleHours: n('rescheduleHours', 0, 168), lateMinutes: n('lateMinutes', 0, 120), leadMinutes: n('leadMinutes', 0, 1440), bookAheadDays: n('bookAheadDays', 1, 90), rebookDays: n('rebookDays', 0, 120), lastBooking: /^\d{2}:\d{2}$/.test(String(fd.get('lastBooking') || '')) ? String(fd.get('lastBooking')) : '', onlineBooking: fd.has('onlineBooking') };
+    const policy = { ...pol(), deposit: n('deposit', 100, 100000), holdMinutes: n('holdMinutes', 5, 60), rescheduleHours: n('rescheduleHours', 0, 168), lateMinutes: n('lateMinutes', 0, 120), leadMinutes: n('leadMinutes', 0, 1440), bookAheadDays: n('bookAheadDays', 1, 90), rebookDays: n('rebookDays', 0, 120), manualGcash: fd.has('manualGcash'), lastBooking: /^\d{2}:\d{2}$/.test(String(fd.get('lastBooking') || '')) ? String(fd.get('lastBooking')) : '', onlineBooking: fd.has('onlineBooking') };
     if (await saveInfo({ policy })) toast('Booking rules saved');
   }
 };
@@ -1234,6 +1423,7 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => {
   const el = e.target; if (!el.dataset) return;
   if (el.dataset.upload) { handleUpload(el); return; }
+  if (el.dataset.galfield) { const g = (info().gallery || []).map(x => x.id === el.dataset.id ? { ...x, [el.dataset.galfield]: el.value } : x); saveInfo({ gallery: g }).then(ok => ok && toast('Saved')); return; }
   if (el.dataset.caption) { const g = (info().gallery || []).map(x => x.id === el.dataset.caption ? { ...x, caption: el.value.trim().slice(0, 80) } : x); saveInfo({ gallery: g }).then(ok => ok && toast('Caption saved')); return; }
   if (el.dataset.change && CHG[el.dataset.change]) CHG[el.dataset.change](el, e);
 });
@@ -1262,6 +1452,7 @@ function startWatches() {
   watchCol('inventory', db.collection('inventory'));
   watchCol('payouts', db.collection('payouts'));
   watchCol('attendance', db.collection('attendance'));
+  watchCol('promos', db.collection('promos'));
   watchCol('waitlist', db.collection('waitlist').where('date', '>=', addDays(today(), -7)));
 }
 setInterval(() => { if (S.canAdmin && $('#modal').hidden && !document.activeElement.matches('input,select,textarea')) schedule(); }, 60000);

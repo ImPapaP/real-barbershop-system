@@ -175,7 +175,7 @@ export const STARTER_STAFF = [
   { id: 'alex', name: 'Alex', role: 'reception', title: 'Receptionist', specialty: '', groups: [], rate: 0, dailyPay: 700 },
   { id: 'airyl', name: 'Airyl', role: 'reception', title: 'Receptionist', specialty: '', groups: [], rate: 0, dailyPay: 700 },
 ].map(b => ({ ...b, phone: '', days: [0, 1, 2, 3, 4, 5, 6], active: true }));
-export const publicBarber = b => ({ id: b.id, name: b.name, role: b.role || 'barber', title: b.title || '', specialty: b.specialty || '', groups: b.groups || ['him'], tiers: b.tiers || [], days: b.days || [], chair: b.chair || '', photo: b.photo || '' });
+export const publicBarber = b => ({ id: b.id, name: b.name, role: b.role || 'barber', title: b.title || '', specialty: b.specialty || '', groups: b.groups || ['him'], tiers: b.tiers || [], days: b.days || [], chair: b.chair || '', photo: b.photo || '', bio: b.bio || '', rating: b.rating || 0, ratingCount: b.ratingCount || 0 });
 
 // Shrinks a photo in the browser before upload: longest side `max` px, JPEG. Returns a Blob.
 export async function resizeImage(file, max = 1600, quality = 0.82) {
@@ -304,4 +304,40 @@ export function rebookLink(site, visit, info) {
   if (visit.barberId && (info.barbers || []).some(b => b.id === visit.barberId && b.active !== false)) p.set('barber', visit.barberId);
   const q = p.toString().replace(/%2C/g, ',');
   return `${String(site).replace(/\/+$/, '')}/${q ? '?' + q : ''}#book`;
+}
+
+// ---------- promo codes ----------
+// promo: { code, kind: 'percent' | 'amount', value, active, expires: 'YYYY-MM-DD' | '', maxUses, uses, minSpend }
+// Returns { ok, off, label } or { ok: false, error }. The discount comes off the service total at the shop, never the deposit.
+export function promoCheck(promo, total, today) {
+  if (!promo || promo.active === false) return { ok: false, error: 'That promo code isn’t valid.' };
+  if (promo.expires && today > promo.expires) return { ok: false, error: 'That promo code has expired.' };
+  if (promo.maxUses && (promo.uses || 0) >= promo.maxUses) return { ok: false, error: 'That promo code has been used up.' };
+  if (promo.minSpend && total < promo.minSpend) return { ok: false, error: `That code needs at least ₱${promo.minSpend} in services.` };
+  const v = Math.max(0, Number(promo.value) || 0);
+  const off = Math.min(total, promo.kind === 'amount' ? v : Math.floor(total * Math.min(v, 100) / 100));
+  if (!off) return { ok: false, error: 'That promo code isn’t valid.' };
+  return { ok: true, off, label: promo.kind === 'amount' ? `₱${v} off` : `${v}% off` };
+}
+export const cleanCode = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20);
+// Messenger link from the Facebook page address (facebook.com/R3ALBarbers -> m.me/R3ALBarbers)
+export function messengerLink(shop) {
+  if (shop.messenger) return shop.messenger;
+  const m = /facebook\.com\/(?!profile\.php)([A-Za-z0-9.\-]+)/.exec(shop.facebook || '');
+  return m ? `https://m.me/${m[1]}` : '';
+}
+// Suggested FAQ, built from the shop's own rules. The owner can edit it in Dashboard → Website.
+export function defaultFaq(info) {
+  const p = policyOf(info), sh = info.shop || {}, peso = n => `₱${n}`;
+  const deluxe = (info.barbers || []).filter(b => (b.tiers || []).includes('deluxe')).map(b => b.name);
+  return [
+    { q: 'How do I book?', a: `Pick your service, barber and time on this page, then pay the ${peso(p.deposit)} down payment to lock in your slot. Your confirmation comes by text and email.` },
+    { q: 'Can I walk in without a booking?', a: 'Yes, walk-ins are welcome when a chair is free. At the shop, scan the QR code at the front desk to join the queue. Clients with a booking go first at their time.' },
+    { q: 'How do I pay the down payment?', a: `Online with GCash, Maya, card or QR Ph${sh.gcashNumber ? `, or send it to our GCash (${sh.gcashNumber}) and upload the screenshot` : ''}. It’s deducted from your bill at the shop.` },
+    { q: 'What’s the difference between Deluxe and Regular?', a: `Deluxe haircuts are with our senior barbers${deluxe.length ? ` (${deluxe.join(', ')})` : ''} and include shampoo, hot towel and massage. Regular haircuts are with our junior barbers.` },
+    { q: 'What if I’m running late?', a: `Arriving ${p.lateMinutes} minutes late or more cancels the booking, and the down payment isn’t refunded. Running a little late? Tap “Running late” on your booking page so we know.` },
+    { q: 'Can I reschedule or cancel?', a: `You can reschedule online up to ${p.rescheduleHours} hours before your appointment, using the link in your confirmation. If you cancel, the down payment isn’t refunded.` },
+    { q: 'Can I book for someone else too?', a: 'Yes. In “Your details”, add a second person. They can have the same or different services, at the same time with another barber, right after you, or any time you pick. Each person needs the down payment.' },
+    { q: 'Do you have promo codes?', a: 'When we run a promo, we post the code on our Facebook and Instagram. Type it in “Have a promo code?” when you book. It comes off your bill at the shop.' }
+  ];
 }
