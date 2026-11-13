@@ -111,12 +111,13 @@ export const createBooking = onCall({ secrets: [PAYMONGO_SECRET_KEY] }, async re
   const v = validateRequest(info, req.data, now);
   if (!v.ok) throw new HttpsError('invalid-argument', v.error);
   const pol = v.policy;
-  // Book for two: a second person with the same services, same day (same time with another barber,
-  // or right after with the same barber). One checkout pays both deposits.
+  // Book for two: a second person, same day, with the same services or their own (same time with another
+  // barber, or right after with the same barber). One checkout pays both deposits.
   const g = req.data && req.data.guest;
   let vg = null;
   if (g) {
-    vg = validateRequest(info, { ...req.data, name: g.name, barberId: g.barberId || '', time: g.time }, now);
+    const gsvc = Array.isArray(g.serviceIds) && g.serviceIds.length ? g.serviceIds.slice(0, 10) : req.data.serviceIds; // their own services, or the same
+    vg = validateRequest(info, { ...req.data, serviceIds: gsvc, name: g.name, barberId: g.barberId || '', time: g.time }, now);
     if (!vg.ok) throw new HttpsError('invalid-argument', `Second person: ${vg.error}`);
   }
 
@@ -274,7 +275,7 @@ export const getBooking = onCall(async req => {
   for (const gid of a.guests || []) {
     const gs = await apptRef(gid).get(); if (!gs.exists) continue;
     const ga = gs.data();
-    guests.push({ id: gid, token: ga.token, name: ga.name, status: ga.status, date: ga.date, time: ga.time, barberName: barberName(info, ga.barberId) });
+    guests.push({ id: gid, token: ga.token, name: ga.name, status: ga.status, date: ga.date, time: ga.time, barberName: barberName(info, ga.barberId), services: servicesById(info, ga.serviceIds).filter(Boolean).map(x => x.name) });
   }
   return { ...publicView(id, a, info), loyalty: await loyaltyFor(a, info), guests, rebook: rebookLink('.', a, info) };
 });
