@@ -213,6 +213,14 @@ Each barber earns a **guaranteed daily pay** for every day they work, plus a **c
 - **Barbers** shows days worked, daily pay, commission, tips, total earned, and what's owed since the last payout.
 - **Pay vs what each barber brings in** (Barbers tab): his service sales next to what the shop pays him (daily pay + commission), pay as a % of his sales, and how much is left for the shop or how much more the shop pays than he brings in. A barber pays for himself once his services pass his daily pay ÷ the shop’s share each day (₱1,250 for ₱500/day + 60%, ₱1,400 for ₱700/day + 50%). The Excel Summary has the same columns.
 
+## Booking extras for customers
+
+- **Choose your barber first:** "Have a favorite barber? Choose him first" at the top of booking. Picking a barber shows only his level's haircuts and his free hours.
+- **Next available:** the date step shows the earliest free slot ("Tomorrow, 9:00 AM with Mac"), for the chosen barber or anyone. One tap picks it.
+- **Book for two:** in "Your details", add a second person with the same services: the same time with another barber, or right after with the same barber. Both slots are held together and one checkout pays both deposits (₱400). The second person gets their own booking, shown under "Also booked" on the main booking page.
+- **Remember me:** ticked by default. The customer's name, number, email and last choice are saved on **their own phone only** (nothing extra on the shop's side). Next visit they see "Welcome back, Juan · Book the same again". "Not Juan?" forgets it.
+- **Book the same again:** links like `/?svc=h1,h6&barber=lyndon#book` open booking with those services and that barber picked. The customer's booking page uses this after a visit, and the "time for a trim" email's **Book now** button links to their last services and barber.
+
 ## Repeat business
 
 - **Time for a trim**: `sendRebookReminders` runs at 10 AM every day. It texts (and emails, if known) clients whose last visit was 28 days ago and who have nothing booked. Change the number of days, or set it to 0 to turn this off, in Shop setup → Online booking rules. Clients → **Due for a trim** lists who's due and lets you send one now. Tick "Don't send trim reminders" on a client to opt them out.

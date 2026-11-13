@@ -34,6 +34,14 @@ function details(b) {
     ${b.deposit.status === 'paid' ? `<div class="tc-cut" aria-hidden="true"></div><div class="tc-body totals" style="font-family:var(--f-body)"><div><span>Pay at the shop</span><b style="font:800 26px/1 var(--f-display)">${from ? 'from ' : ''}${m(Math.max(0, total - (b.deposit.amount || 0)))}</b></div></div>` : ''}
     </section>`;
 }
+// A second person booked in the same go (book for two): shown on the main booking, with their own link.
+function guestsCard(b) {
+  const gs = b.guests || []; if (!gs.length) return '';
+  const word = { booked: 'Confirmed', pending_payment: 'Waiting for deposit', cancelled: 'Cancelled', expired: 'Not confirmed', needs_attention: 'We’ll call you', done: 'Completed', noshow: 'Missed' };
+  return `<section class="panel"><div class="panel-h"><h2>Also booked</h2></div>${gs.map(g => `<div class="row" style="justify-content:space-between;gap:10px;flex-wrap:wrap">
+    <div><b>${esc(g.name)}</b><div class="muted small">${fmtDate(g.date)}, ${fmtTime(g.time)} with ${esc(g.barberName || 'a barber')} · ${esc(word[g.status] || g.status)}</div></div>
+    <a class="btn btn-sm" href="booking.html?id=${encodeURIComponent(g.id)}&t=${encodeURIComponent(g.token)}">Their booking</a></div>`).join('')}</section>`;
+}
 function loyaltyCard(b) {
   const L = b.loyalty; if (!L || !L.every) return '';
   const pos = L.visits % L.every, next = (L.visits + 1) % L.every === 0, left = L.every - ((L.visits + 1) % L.every);
@@ -56,23 +64,25 @@ function body() {
     case 'pending_payment': {
       if (S.justPaid && S.polls < 20) return `<div class="status-hero">${chipHTML('info', '◷', 'Confirming payment')}<h1>Almost done</h1><p class="muted"><span class="spinner"></span> We’re confirming your payment with PayMongo. This usually takes a few seconds.</p></div>${details(b)}`;
       const left = Math.max(0, Math.ceil((b.holdUntil - Date.now()) / 60000));
+      const ppl = 1 + (b.guests || []).length;
       return `<div class="status-hero">${chipHTML('warn', '●', 'Waiting for deposit')}<h1>${S.paymentCancelled ? 'Payment not finished' : 'Finish your booking'}</h1>
-        <p class="muted">Your slot is held for ${left} more minute${left === 1 ? '' : 's'}. Pay the ${m(pol.deposit)} deposit to confirm it.</p>
-        ${b.checkoutUrl ? `<a class="btn btn-accent btn-lg" href="${esc(b.checkoutUrl)}">Pay ${m(pol.deposit)} deposit</a>` : ''}</div>${details(b)}`;
+        <p class="muted">Your slot${ppl > 1 ? 's are' : ' is'} held for ${left} more minute${left === 1 ? '' : 's'}. Pay the ${m(pol.deposit * ppl)} deposit${ppl > 1 ? 's for 2 people' : ''} to confirm.</p>
+        ${b.checkoutUrl ? `<a class="btn btn-accent btn-lg" href="${esc(b.checkoutUrl)}">Pay ${m(pol.deposit * ppl)} deposit${ppl > 1 ? 's' : ''}</a>` : ''}</div>${details(b)}${guestsCard(b)}`;
     }
     case 'booked': return `<div class="status-hero">${S.justPaid ? '<span class="success-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>' : chipHTML('good', '✓', 'Confirmed')}<h1>${S.justPaid ? 'You’re booked!' : 'See you ' + fmtDate(b.date)}</h1>
         <p class="muted">${fmtTime(b.time)} with ${esc(b.barberName || 'your barber')}. Please arrive on time: ${pol.lateMinutes} minutes late or more cancels the booking and the deposit is kept.</p></div>
         ${details(b)}
+        ${guestsCard(b)}
         ${loyaltyCard(b)}
         <div class="actions-row"><button class="btn btn-primary" data-act="ics">Add to calendar</button><a class="btn" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(info().shop.name + ' ' + info().shop.address)}" target="_blank" rel="noopener">Get directions</a><button class="btn btn-ghost" data-act="copyCode">Copy booking code</button></div>
         <section class="panel"><div class="panel-h"><h2>Need to change it?</h2></div>
           <p class="muted small" style="margin-bottom:12px">${b.canReschedule ? `You can reschedule online up to ${pol.rescheduleHours} hours before your appointment.` : `Online rescheduling closes ${pol.rescheduleHours} hours before your appointment. Call the shop if you need help.`}</p>
           <div class="row">${b.canReschedule ? '<button class="btn btn-primary" data-act="mode" data-v="reschedule">Reschedule</button>' : ''}${b.canCancel ? '<button class="btn btn-danger" data-act="mode" data-v="cancel">Cancel booking</button>' : ''}<span class="muted small">Shop: <b>${esc(info().shop.phone)}</b></span></div></section>`;
-    case 'expired': return `<div class="status-hero">${chipHTML('mute', '–', 'Not confirmed')}<h1>Your hold ran out</h1><p class="muted">The deposit wasn’t paid within ${pol.holdMinutes} minutes, so the slot was released. No money was taken.</p><a class="btn btn-accent btn-lg" href="./#book">Book again</a></div>`;
-    case 'cancelled': return `<div class="status-hero">${chipHTML('mute', '–', 'Cancelled')}<h1>Booking cancelled</h1><p class="muted">This booking for ${fmtDate(b.date)}, ${fmtTime(b.time)} is cancelled.</p><a class="btn btn-accent" href="./#book">Make a new booking</a></div>${details(b)}`;
+    case 'expired': return `<div class="status-hero">${chipHTML('mute', '–', 'Not confirmed')}<h1>Your hold ran out</h1><p class="muted">The deposit wasn’t paid within ${pol.holdMinutes} minutes, so the slot was released. No money was taken.</p><a class="btn btn-accent btn-lg" href="${esc(b.rebook || './#book')}">Book again</a></div>`;
+    case 'cancelled': return `<div class="status-hero">${chipHTML('mute', '–', 'Cancelled')}<h1>Booking cancelled</h1><p class="muted">This booking for ${fmtDate(b.date)}, ${fmtTime(b.time)} is cancelled.</p><a class="btn btn-accent" href="${esc(b.rebook || './#book')}">Make a new booking</a></div>${details(b)}`;
     case 'needs_attention': return `<div class="status-hero">${chipHTML('warn', '!', 'We’ll call you')}<h1>We got your deposit</h1><p class="muted">Someone confirmed the same time while you were paying. The shop will call you to pick a new time or refund your deposit. You can also call <b>${esc(info().shop.phone)}</b>.</p></div>${details(b)}`;
-    case 'done': return `<div class="status-hero">${chipHTML('good', '✓', 'Completed')}<h1>Thanks for visiting</h1><p class="muted">See you on your next cut.</p><a class="btn btn-accent" href="./#book">Book again</a></div>${loyaltyCard(b)}`;
-    case 'noshow': return `<div class="status-hero">${chipHTML('bad', '✕', 'Missed')}<h1>We missed you</h1><p class="muted">This appointment was marked as missed and the deposit was kept, per the booking policy.</p><a class="btn btn-accent" href="./#book">Book again</a></div>`;
+    case 'done': return `<div class="status-hero">${chipHTML('good', '✓', 'Completed')}<h1>Thanks for visiting</h1><p class="muted">See you on your next cut.</p><a class="btn btn-accent" href="${esc(b.rebook || './#book')}">Book the same again</a><p class="muted small" style="margin-top:8px">Same service and barber, you just pick the day.</p></div>${loyaltyCard(b)}`;
+    case 'noshow': return `<div class="status-hero">${chipHTML('bad', '✕', 'Missed')}<h1>We missed you</h1><p class="muted">This appointment was marked as missed and the deposit was kept, per the booking policy.</p><a class="btn btn-accent" href="${esc(b.rebook || './#book')}">Book again</a></div>`;
     default: return `<div class="status-hero">${chipHTML('info', '◷', 'In progress')}<h1>${fmtDate(b.date)}, ${fmtTime(b.time)}</h1></div>${details(b)}`;
   }
 }

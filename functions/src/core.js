@@ -226,3 +226,14 @@ export const windowOf = t => toMin(t) < 720 ? 'morning' : toMin(t) < 1020 ? 'aft
 export const parseSlotId = id => { const p = String(id).split('_'); if (p.length < 3) return null; const hm = p.pop(), d = p.pop(); return { barberId: p.join('_'), date: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`, time: `${hm.slice(0, 2)}:${hm.slice(2, 4)}` }; };
 // Does a freed slot suit a waitlist entry? entry: {barberId, window}
 export const waitlistMatches = (entry, slot) => (!entry.barberId || entry.barberId === slot.barberId) && (!entry.window || entry.window === 'any' || entry.window === windowOf(slot.time));
+
+// "Book again" link: same services and barber as a past visit, if they're still on the menu / working.
+// site/?svc=h1,h6&barber=lyndon#book  — the website picks them and jumps to the date step.
+export function rebookLink(site, visit, info) {
+  const svcIds = (visit.serviceIds || (visit.lines || []).filter(l => l.kind === 'service').map(l => l.ref)).filter(id => (info.services || []).some(s => s.id === id && s.active !== false));
+  const p = new URLSearchParams();
+  if (svcIds.length) p.set('svc', [...new Set(svcIds)].join(','));
+  if (visit.barberId && (info.barbers || []).some(b => b.id === visit.barberId && b.active !== false)) p.set('barber', visit.barberId);
+  const q = p.toString().replace(/%2C/g, ',');
+  return `${String(site).replace(/\/+$/, '')}/${q ? '?' + q : ''}#book`;
+}

@@ -21,7 +21,7 @@ import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import {
   validateRequest, policyOf, slotId, isActiveSlot, desiredSlots, slotStateFor, apptMins, startMs,
-  verifyPaymongoSignature, newToken, tokenMatches, bookingCode, smsText, emailContent, eligibleBarbers,
+  verifyPaymongoSignature, rebookLink, newToken, tokenMatches, bookingCode, smsText, emailContent, eligibleBarbers,
   servicesById, blockTimes, phNow, addDays, normalizePhone, validEmail, parseSlotId, waitlistMatches
 } from './src/core.js';
 import { createCheckout, expireCheckout, sendSms, sendEmail } from './src/providers.js';
@@ -111,6 +111,14 @@ export const createBooking = onCall({ secrets: [PAYMONGO_SECRET_KEY] }, async re
   const v = validateRequest(info, req.data, now);
   if (!v.ok) throw new HttpsError('invalid-argument', v.error);
   const pol = v.policy;
+  // Book for two: a second person with the same services, same day (same time with another barber,
+  // or right after with the same barber). One checkout pays both deposits.
+  const g = req.data && req.data.guest;
+  let vg = null;
+  if (g) {
+    vg = validateRequest(info, { ...req.data, name: g.name, barberId: g.barberId || '', time: g.time }, now);
+    if (!vg.ok) throw new HttpsError('invalid-argument', `Second person: ${vg.error}`);
+  }
 
   // One unpaid booking per phone number at a time, so nobody can tie up the calendar.
   const open = await db.collection('appointments').where('phone', '==', v.phone).where('status', '==', 'pending_payment').get();
@@ -118,35 +126,52 @@ export const createBooking = onCall({ secrets: [PAYMONGO_SECRET_KEY] }, async re
     throw new HttpsError('resource-exhausted', `You already have a booking waiting for payment. Finish paying, or try again in ${pol.holdMinutes} minutes.`);
   }
 
-  const id = db.collection('appointments').doc().id;
+  const id = db.collection('appointments').doc().id, gid = vg ? db.collection('appointments').doc().id : '';
   const token = newToken(), code = bookingCode();
   const holdUntil = now + pol.holdMinutes * 60e3;
-  const barberId = await db.runTransaction(async tx => {
+  const result = await db.runTransaction(async tx => {
     const refs = v.barbers.map(b => v.times.map(t => slotRef(slotId(b, v.date, t))));
-    const snaps = await tx.getAll(...refs.flat());
-    let k = 0;
-    const free = refs.map(rs => rs.map(() => snaps[k++]).every(s => !isActiveSlot(s.exists ? s.data() : null, now)));
-    const pick = free.indexOf(true);
-    if (pick < 0) return null;
+    const grefs = vg ? vg.barbers.map(b => vg.times.map(t => slotRef(slotId(b, vg.date, t)))) : [];
+    const uniq = [...new Map([...refs.flat(), ...grefs.flat()].map(r => [r.path, r])).values()];
+    const snaps = await tx.getAll(...uniq);
+    const busy = new Set(uniq.filter((r, i) => isActiveSlot(snaps[i].exists ? snaps[i].data() : null, now)).map(r => r.path));
+    const pick = refs.findIndex(rs => rs.every(r => !busy.has(r.path)));
+    if (pick < 0) return { taken: 'main' };
+    refs[pick].forEach(r => busy.add(r.path));
+    const gpick = vg ? grefs.findIndex(rs => rs.every(r => !busy.has(r.path))) : -1;
+    if (vg && gpick < 0) return { taken: 'guest' };
     const b = v.barbers[pick];
     refs[pick].forEach((r, i) => tx.set(r, { barberId: b, date: v.date, time: v.times[i], state: 'held', holdUntil, bookingId: id }));
     tx.set(apptRef(id), {
       code, token, source: 'online', status: 'pending_payment', notify: true,
       name: v.name, phone: v.phone, email: v.email, notes: v.notes, customerId: '',
       serviceIds: v.serviceIds, mins: v.mins, date: v.date, time: v.time, startAt: v.at, barberId: b,
-      blocks: refs[pick].map(r => r.id), holdUntil,
+      blocks: refs[pick].map(r => r.id), holdUntil, guests: gid ? [gid] : [],
       deposit: { amount: pol.deposit, status: 'unpaid' }, reminders: {}, reschedules: 0, createdAt: now
     });
-    return b;
+    if (vg) {
+      const gb = vg.barbers[gpick];
+      grefs[gpick].forEach((r, i) => tx.set(r, { barberId: gb, date: vg.date, time: vg.times[i], state: 'held', holdUntil, bookingId: gid }));
+      tx.set(apptRef(gid), {
+        code: bookingCode(), token: newToken(), source: 'online', status: 'pending_payment', notify: false, groupOf: id, bookedBy: v.name,
+        name: vg.name, phone: v.phone, email: v.email, notes: v.notes, customerId: '',
+        serviceIds: vg.serviceIds, mins: vg.mins, date: vg.date, time: vg.time, startAt: vg.at, barberId: gb,
+        blocks: grefs[gpick].map(r => r.id), holdUntil,
+        deposit: { amount: pol.deposit, status: 'unpaid' }, reminders: {}, reschedules: 0, createdAt: now
+      });
+    }
+    return { barberId: b };
   });
-  if (!barberId) throw new HttpsError('already-exists', 'Sorry, that time was just taken. Please pick another time.');
+  if (result.taken === 'main') throw new HttpsError('already-exists', 'Sorry, that time was just taken. Please pick another time.');
+  if (result.taken === 'guest') throw new HttpsError('already-exists', 'Sorry, the second person’s slot was just taken. Pick another option for them.');
+  const barberId = result.barberId, people = vg ? 2 : 1;
 
   try {
     const shop = (info.shop && info.shop.name) || 'Barbershop';
     const link = bookingLink(id, token);
     const cs = await createCheckout(PAYMONGO_SECRET_KEY.value(), {
-      amount: pol.deposit,
-      itemName: `Booking deposit · ${code}`,
+      amount: pol.deposit * people,
+      itemName: people > 1 ? `Booking deposits for 2 people · ${code}` : `Booking deposit · ${code}`,
       description: `${shop}: ${servicesById(info, v.serviceIds).map(s => s.name).join(', ')} with ${barberName(info, barberId)}, ${v.date} ${v.time}`,
       reference: id,
       methods: PAYMENT_METHODS.value().split(',').map(s => s.trim()).filter(Boolean),
@@ -192,7 +217,23 @@ export const paymongoWebhook = onRequest({ secrets: [PAYMONGO_WEBHOOK_SECRET, ..
     const snaps = slots.length ? await tx.getAll(...slots.map(x => slotRef(x.id))) : [];
     const now = Date.now();
     const taken = snaps.some(x => x.exists && isActiveSlot(x.data(), now) && x.data().bookingId !== id);
-    const deposit = { ...(a.deposit || {}), status: 'paid', method, amount: amount ?? (a.deposit && a.deposit.amount), paidAt: now, checkoutId: cs.id || '', paymentId: pay.id || '', livemode: !!sig.livemode };
+    // A second person booked in the same checkout is confirmed (or flagged) together with this booking.
+    const gsnaps = (a.guests || []).length ? await tx.getAll(...a.guests.map(apptRef)) : [];
+    const guests = [];
+    for (const gs of gsnaps) {
+      if (!gs.exists) continue;
+      const ga = gs.data(), gslots = desiredSlots({ ...ga, status: 'booked' }, info);
+      const gss = gslots.length ? await tx.getAll(...gslots.map(x => slotRef(x.id))) : [];
+      guests.push({ id: gs.id, a: ga, slots: gslots, taken: gss.some(x => x.exists && isActiveSlot(x.data(), now) && x.data().bookingId !== gs.id) });
+    }
+    const perPerson = guests.length ? (a.deposit && a.deposit.amount) : (amount ?? (a.deposit && a.deposit.amount));
+    const deposit = { ...(a.deposit || {}), status: 'paid', method, amount: perPerson, paidAt: now, checkoutId: cs.id || '', paymentId: pay.id || '', livemode: !!sig.livemode };
+    for (const gx of guests) {
+      const gdep = { ...(gx.a.deposit || {}), status: 'paid', method, amount: perPerson, paidAt: now, checkoutId: cs.id || '', paidWith: id };
+      if (gx.taken || ['cancelled', 'noshow', 'done'].includes(gx.a.status)) { tx.update(apptRef(gx.id), { deposit: gdep, status: 'needs_attention' }); continue; }
+      gx.slots.forEach(x => tx.set(slotRef(x.id), { barberId: gx.a.barberId, date: gx.a.date, time: x.time, state: 'booked', holdUntil: 0, bookingId: gx.id }));
+      tx.update(apptRef(gx.id), { deposit: gdep, status: 'booked', blocks: gx.slots.map(x => x.id) });
+    }
     if (taken || ['cancelled', 'noshow', 'done'].includes(a.status)) {
       tx.update(apptRef(id), { deposit, status: 'needs_attention' });
       return { kind: 'slot_lost', a: { ...a, deposit }, info };
@@ -229,7 +270,13 @@ function publicView(id, a, info) {
 export const getBooking = onCall(async req => {
   const { id, a } = await bookingFromToken(req.data);
   const info = await loadInfo();
-  return { ...publicView(id, a, info), loyalty: await loyaltyFor(a, info) };
+  const guests = [];
+  for (const gid of a.guests || []) {
+    const gs = await apptRef(gid).get(); if (!gs.exists) continue;
+    const ga = gs.data();
+    guests.push({ id: gid, token: ga.token, name: ga.name, status: ga.status, date: ga.date, time: ga.time, barberName: barberName(info, ga.barberId) });
+  }
+  return { ...publicView(id, a, info), loyalty: await loyaltyFor(a, info), guests, rebook: rebookLink('.', a, info) };
 });
 
 // =============== waitlist ===============
@@ -278,7 +325,9 @@ async function hasUpcoming(customerId, phone) {
   return false;
 }
 async function remindOne(ref, c, lastVisit, info) {
-  const res = await sendTo('rebook', { name: c.name, phone: c.phone, email: c.email }, info, `${site()}/#book`);
+  const last = (await db.collection('sales').where('customerId', '==', ref.id).orderBy('date', 'desc').limit(1).get()).docs[0];
+  const link = last ? rebookLink(site(), last.data(), info) : `${site()}/#book`; // "Book now" = same cut, same barber
+  const res = await sendTo('rebook', { name: c.name, phone: c.phone, email: c.email }, info, link);
   await ref.update({ rebookSentFor: lastVisit, rebookSentAt: Date.now() });
   return res;
 }

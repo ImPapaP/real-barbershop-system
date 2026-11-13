@@ -168,3 +168,11 @@ test('bookings start on the hour, and phone bookings at :30 block the hours they
   assert.deepEqual(blockTimes('10:00', 90, 60), ['10:00', '11:00']);
   assert.deepEqual(blockTimes('10:30', 45, 60), ['10:00', '11:00']);
 });
+
+test('"Book again" link keeps the same services and barber, dropping anything no longer offered', async () => {
+  const { rebookLink } = await import('../src/core.js');
+  const inf = { services: [{ id: 'h1' }, { id: 'h6' }, { id: 'old', active: false }], barbers: [{ id: 'lyndon' }, { id: 'left', active: false }] };
+  assert.equal(rebookLink('https://r3albarbers.com/', { serviceIds: ['h1', 'h6'], barberId: 'lyndon' }, inf), 'https://r3albarbers.com/?svc=h1,h6&barber=lyndon#book');
+  assert.equal(rebookLink('https://x.app', { lines: [{ kind: 'service', ref: 'h1' }, { kind: 'product', ref: 'p' }, { kind: 'service', ref: 'old' }], barberId: 'left' }, inf), 'https://x.app/?svc=h1#book');
+  assert.equal(rebookLink('.', {}, inf), './#book');
+});

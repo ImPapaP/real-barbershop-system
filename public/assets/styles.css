@@ -810,3 +810,33 @@ html{font-synthesis-weight:none}
 .staff-form:has(select[name=role] option[value=maintenance]:checked) .support-only{display:block}
 .staff-form:has(select[name=role] option[value=stylist]:checked) .barber-only,
 .staff-form:has(select[name=role] option[value=nails]:checked) .barber-only{display:none}
+
+/* ---------- booking: returning customers, barber first, next available, second person ---------- */
+.link-btn{background:none;border:0;padding:0;font:inherit;font-weight:600;color:var(--ink);text-decoration:underline;text-underline-offset:3px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.link-btn .ic{width:16px;height:16px}
+.welcome{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;margin-bottom:14px;border:2px solid var(--ink);border-radius:14px;background:var(--surface);box-shadow:4px 4px 0 var(--ink)}
+.welcome b{display:block;font:400 20px/1.1 var(--f-slab)}
+.welcome small{display:block;color:var(--muted);margin-top:4px}
+.welcome .row{gap:14px;align-items:center}
+.bf-open{margin-bottom:14px}
+.bf-pick{border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px;background:var(--surface-2)}
+.bf-label{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:12px 0 8px}
+.bf-row{display:flex;flex-wrap:wrap;gap:8px}
+.bf-chip{display:inline-flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;border:1px solid var(--line-2);border-radius:99px;background:var(--surface);color:var(--ink);font:inherit;font-weight:600;cursor:pointer}
+.bf-chip:hover{border-color:var(--ink)}
+.bf-chip .av,.bf-chosen .av{width:30px;height:30px;font-size:12px}
+.bf-chosen{display:flex;align-items:center;gap:10px;padding:10px 12px;margin-bottom:14px;border:1.5px solid var(--accent);border-radius:12px;background:var(--accent-soft)}
+.bf-chosen span:not(.av){flex:1;min-width:0}
+.next-free{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 14px;margin-bottom:14px;border:1.5px dashed var(--ink);border-radius:14px;background:var(--surface);color:var(--ink);font:inherit;cursor:pointer}
+.next-free:hover,.next-free.on{border-style:solid;box-shadow:3px 3px 0 var(--ink)}
+.next-free .nf-ic{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--accent-ink);flex:none}
+.next-free small{display:block;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.next-free b{display:block}
+.next-free > span:nth-child(2){flex:1;min-width:0}
+.next-free .nf-go{font-weight:700;white-space:nowrap}
+.add-guest{margin:6px 0 14px}
+.guest-box{display:grid;gap:12px;padding:14px;margin-bottom:14px;border:1px solid var(--line);border-radius:14px;background:var(--surface-2)}
+.guest-opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:10px}
+.consent.remember{margin-bottom:8px}
+.bf-chip .av,.bf-chosen .av{display:grid;place-items:center;border-radius:50%;background:var(--ink);color:var(--bg);font:800 12px/1 var(--f-body,inherit);flex:none;overflow:hidden;position:static}
+.bf-chip .av img,.bf-chosen .av img{width:100%;height:100%;object-fit:cover}
