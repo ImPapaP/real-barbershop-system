@@ -720,8 +720,12 @@ html{font-synthesis-weight:none}
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='56' viewBox='0 0 120 56'%3E%3Cg fill='none' stroke='%23050506' stroke-width='3'%3E%3Cpath d='M0 1.5h120M0 29.5h120M1.5 0v28M61.5 0v28M31.5 28v28M91.5 28v28'/%3E%3C/g%3E%3Cg fill='%23ffffff'%3E%3Crect x='4' y='4' width='55' height='23' opacity='.035'/%3E%3Crect x='64' y='4' width='55' height='23' opacity='.02'/%3E%3Crect x='34' y='32' width='55' height='22' opacity='.03'/%3E%3Crect x='94' y='32' width='26' height='22' opacity='.045'/%3E%3Crect x='0' y='32' width='29' height='22' opacity='.045'/%3E%3C/g%3E%3C/svg%3E");
   background-size:120px 56px}
 .brick::after{content:"";position:absolute;inset:0;background:
-  radial-gradient(ellipse 44% 62% at 76% 46%,rgba(255,255,255,.22),rgba(255,255,255,.06) 55%,transparent 75%),
+  linear-gradient(90deg,rgba(12,12,14,.9) 0%,rgba(12,12,14,.78) 38%,rgba(12,12,14,.35) 62%,transparent 80%),
+  radial-gradient(ellipse 44% 62% at 76% 46%,rgba(255,255,255,.16),rgba(255,255,255,.04) 55%,transparent 75%),
   radial-gradient(ellipse 120% 90% at 50% 40%,transparent 40%,rgba(0,0,0,.75) 100%)}
+/* keep the wall dark even when a browser tries to force its own colors */
+.hero-x,.brick,.hero-mark{forced-color-adjust:none}
+.hero-x{color-scheme:dark}
 .hero-x::before{display:none}
 .hero-x.has-photo .brick{display:none}
 
@@ -782,7 +786,7 @@ html{font-synthesis-weight:none}
   .hero-anim .hero-mark{animation:markInSm 1.2s var(--ease) both .1s}
   @keyframes markInSm{from{opacity:0;transform:translateX(-50%) rotate(-12deg) scale(1.06)}to{opacity:.2;transform:translateX(-50%) rotate(-6deg)}}
   .hero-x h1,.hero-x .lede{text-shadow:0 2px 0 #000,0 0 24px rgba(0,0,0,.85)}
-  .brick::after{background:radial-gradient(ellipse 80% 40% at 50% 22%,rgba(255,255,255,.2),rgba(255,255,255,.05) 60%,transparent 80%),radial-gradient(ellipse 140% 90% at 50% 40%,transparent 40%,rgba(0,0,0,.75) 100%)}
+  .brick::after{background:linear-gradient(180deg,rgba(12,12,14,.55),rgba(12,12,14,.8) 70%),radial-gradient(ellipse 80% 40% at 50% 22%,rgba(255,255,255,.12),rgba(255,255,255,.03) 60%,transparent 80%),radial-gradient(ellipse 140% 90% at 50% 40%,transparent 40%,rgba(0,0,0,.75) 100%)}
 }
 @media (prefers-reduced-motion:reduce){.hero-anim .hero-mark{animation:none}}
 
