@@ -32,7 +32,12 @@ const hasTiers = g => svcs().some(s => (s.group || 'him') === g && s.kind === 'b
 const tierNames = t => (info().barbers || []).filter(b => (b.tiers || []).includes(t)).map(b => b.name);
 const listNames = a => a.length > 1 ? a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1] : (a[0] || '');
 const barber = id => (info().barbers || []).find(b => b.id === id);
-const galAll = () => info().gallery || [];
+// Gallery = newest photos from the Facebook page (synced every few hours, when connected) + the shop's own uploads
+const galAll = () => { const I = info(), fb = I.fbShow === false ? [] : (I.fbPhotos || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0));
+  const own = I.gallery || [], seen = new Set(); return [...fb, ...own].filter(g => g.url && !seen.has(g.url) && seen.add(g.url)); };
+// Promos & events the shop posts in the dashboard; ended ones hide themselves
+const happenings = () => { const t = phNow().date; return (info().happenings || []).filter(h => h.title && (!h.end || h.end >= t) && (h.kind === 'event' || !h.start || h.start <= t))
+  .sort((a, b) => (a.kind === 'promo' ? 0 : 1) - (b.kind === 'promo' ? 0 : 1) || String(a.start || a.end || '').localeCompare(String(b.start || b.end || ''))); };
 const gallery = () => galAll().filter(g => S.galTag === 'all' || g.style === S.galTag).slice(0, 12);
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 try { S.last = JSON.parse(localStorage.getItem('lastBooking') || 'null'); } catch (_) {}
@@ -49,6 +54,7 @@ const ICON = {
   user: '<circle cx="10" cy="6.5" r="3.2"/><path d="M3.5 17.5a6.5 6.5 0 0113 0"/>',
   chat: '<path d="M10 2.8c-4.3 0-7.5 3-7.5 6.9 0 2.1 1 4 2.6 5.2V18l3-1.6c.6.2 1.3.2 1.9.2 4.3 0 7.5-3 7.5-6.9S14.3 2.8 10 2.8z"/><path d="M6 11.2l2.7-2.8 1.8 1.8 3-2.9" />',
   plus: '<path d="M10 4v12M4 10h12"/>',
+  calendar: '<rect x="3" y="4.5" width="14" height="12.5" rx="2"/><path d="M3 8.5h14M7 2.5v4M13 2.5v4"/>',
   close: '<path d="M5 5l10 10M15 5L5 15"/>', left: '<path d="M12.5 4.5L7 10l5.5 5.5"/>', right: '<path d="M7.5 4.5L13 10l-5.5 5.5"/>'
 };
 const ic = (n, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
@@ -69,7 +75,9 @@ function renderAll() {
   revealOnScroll();
   syncHeader();
 }
-function renderBooker() { const el = $('#booker'); if (el) morph(el, L(booker())); syncStickyBar(); }
+function renderBooker() { const el = $('#booker'); if (el) morph(el, L(booker())); syncStickyBar(); maybeApplyPromo(); }
+// A promo picked from Promos & events is applied as soon as there's a service to price it against
+function maybeApplyPromo() { const P = S.promo; if (P.pending && !P.busy && !P.applied && chosen().length) { P.pending = ''; ACT.promoApply(); } }
 function renderMenu() { const el = $('#menu-board'); if (el) el.innerHTML = menuBoard(S.menuTab); document.querySelectorAll('[data-act=menuTab]').forEach(b => b.setAttribute('aria-selected', b.dataset.v === S.menuTab)); }
 
 function hoursSummary(hrs) {
@@ -99,6 +107,7 @@ function page() {
     <a class="wordmark" href="#top" data-act="top" aria-label="${esc(shop.name)} home">${brand(shop.wordmark || shop.name)}</a>
     <nav class="site-nav" aria-label="Sections">
       <button class="lnk" data-act="scroll" data-to="services">Services</button>
+      ${happenings().length ? '<button class="lnk" data-act="scroll" data-to="promos">Promos</button>' : ''}
       ${galAll().length || demo ? '<button class="lnk" data-act="scroll" data-to="gallery">Gallery</button>' : ''}
       <button class="lnk" data-act="scroll" data-to="team">Team</button>
       <button class="lnk" data-act="scroll" data-to="visit">Visit</button>
@@ -145,9 +154,13 @@ function page() {
     <div id="menu-board" class="reveal">${menuBoard(S.menuTab)}</div>
   </div></section>
 
+  ${happenings().length ? `<section id="promos" class="sec"><div class="wrap">
+    <div class="sec-head reveal"><div><p class="eyebrow">What’s on</p><h2 class="sec-title">Promos &amp; events</h2></div>${shop.facebook ? `<a class="btn btn-ghost" href="${esc(shop.facebook)}" target="_blank" rel="noopener">Follow for new promos ${ic('arrow')}</a>` : ''}</div>
+    <div class="happen-grid">${happenings().map(h => happenCard(h)).join('')}</div>
+  </div></section>` : ''}
   ${galAll().length || demo ? `<section id="gallery" class="sec dark-sec"><div class="wrap">
     <div class="sec-head reveal"><div><p class="eyebrow">Style gallery</p><h2 class="sec-title">Fresh from the chair</h2></div><div class="row">${shop.instagram ? `<a class="btn btn-ghost" href="${esc(shop.instagram)}" target="_blank" rel="noopener">${ic('camera')} Instagram</a>` : ''}${shop.facebook ? `<a class="btn btn-ghost" href="${esc(shop.facebook)}" target="_blank" rel="noopener">More on Facebook ${ic('arrow')}</a>` : ''}</div></div>
-    ${galAll().length ? `${galTags()}<div id="gal-wrap">${galleryGrid()}</div>`
+    ${galAll().length ? `${galTags()}<div id="gal-wrap">${galleryGrid()}</div>${shop.facebook ? `<p class="gal-more"><a href="${esc(shop.facebook)}" target="_blank" rel="noopener">See more on our Facebook page ${ic('arrow')}</a></p>` : ''}`
       : `<div class="gallery placeholder">${Array.from({ length: 8 }, (_, i) => `<div class="g-item g-ph reveal" style="--d:${(i % 4) * 70}ms">${ic('scissors')}<span>${i === 0 ? 'Add photos in Dashboard → Website' : ''}</span></div>`).join('')}</div>`}
   </div></section>` : ''}
 
@@ -202,6 +215,17 @@ function page() {
   <div class="mbar" id="mbar" hidden><div><b id="mbar-t">Book a chair</b><small id="mbar-s">${policyOf(I).onlineBooking ? m(policyOf(I).deposit) + ' deposit secures your slot' : 'Call or message us to book'}</small></div><button class="btn btn-accent" data-act="mbar">Book now</button></div>
   ${messengerLink(shop) ? `<a class="msgr" href="${esc(messengerLink(shop))}" target="_blank" rel="noopener" aria-label="Message us on Messenger">${ic('chat')}<span>Message us</span></a>` : ''}
   <div id="lightbox" hidden></div><div id="profile" hidden></div>`;
+}
+function happenCard(h) {
+  const when = h.kind === 'event' ? (h.start && h.end && h.start !== h.end ? `${fmtDate(h.start)} – ${fmtDate(h.end)}` : h.start ? fmtDate(h.start) : h.end ? `Until ${fmtDate(h.end)}` : '') : h.end ? `Until ${fmtDate(h.end)}` : 'Ongoing';
+  const cta = h.code ? `<button type="button" class="btn btn-accent btn-sm" data-act="usePromo" data-code="${esc(h.code)}">Book with this code ${ic('arrow')}</button>`
+    : h.link ? `<a class="btn btn-sm" href="${esc(h.link)}" target="_blank" rel="noopener">${esc(h.linkLabel || 'Learn more')} ${ic('arrow')}</a>`
+    : `<button type="button" class="btn btn-sm" data-act="scroll" data-to="book">Book now ${ic('arrow')}</button>`;
+  return `<article class="happen reveal ${h.kind === 'event' ? 'ev' : 'pr'}">${h.image ? `<img class="happen-img" src="${esc(h.image)}" alt="" loading="lazy">` : ''}
+    <div class="happen-b"><div class="happen-top"><span class="happen-kind">${h.kind === 'event' ? ic('calendar') + ' Event' : '% Promo'}</span>${when ? `<span class="happen-when">${esc(when)}</span>` : ''}${h.sample && demo ? '<span class="happen-when">Sample</span>' : ''}</div>
+    <h3>${esc(h.title)}</h3>${h.text ? `<p>${esc(h.text)}</p>` : ''}
+    ${h.code ? `<div class="happen-code"><span>Code</span><b>${esc(h.code)}</b><button type="button" class="link-btn" data-act="copyCode" data-code="${esc(h.code)}">Copy</button></div>` : ''}
+    <div class="happen-cta">${cta}</div></div></article>`;
 }
 const langToggle = () => `<div class="lang" role="group" aria-label="Language"><button type="button" data-act="lang" data-v="en" aria-pressed="${lang() === 'en'}">EN</button><button type="button" data-act="lang" data-v="tl" aria-pressed="${lang() === 'tl'}">TL</button></div>`;
 const faqList = () => (Array.isArray(info().faq) && info().faq.length ? info().faq : defaultFaq(info()));
@@ -268,17 +292,30 @@ function policyCards() {
 
 function menuBoard(group) {
   const list = svcs().filter(s => (s.group || 'him') === group);
-  const cats = [...new Set(list.map(s => s.cat || 'Services'))];
   if (!list.length) return '<p class="empty">Menu coming soon.</p>';
+  const cats = [...new Set(list.map(s => s.cat || 'Services'))], inCat = c => list.filter(s => (s.cat || 'Services') === c);
+  // Each category gets a layout by what's in it: haircut tiers side by side, bundles as cards, add-ons as a compact list
+  const role = c => { const it = inCat(c); if (/promo|bundle/i.test(c)) return 'bundle'; if (it.every(s => s.kind === 'extra')) return 'extra'; if (it.every(s => s.kind === 'base' && s.tier) && new Set(it.map(s => s.tier)).size === 1) return 'tier'; return 'rest'; };
   const note = c => {
-    const items = list.filter(s => (s.cat || 'Services') === c), t = items[0].tier;
+    const items = inCat(c), t = items[0].tier;
     if (t && items.every(s => s.tier === t) && tierNames(t).length) return `<p class="tier-note">${ic('user')} With ${esc(listNames(tierNames(t)))}</p>`;
     if (items.every(s => s.kind === 'extra')) return `<p class="tier-note">${ic('check')} Add to any Deluxe or Regular haircut</p>`;
     return '';
   };
-  return `<div class="board tab-in">${cats.map(c => `<div class="${/promo/i.test(c) ? 'promo' : ''}"><h3>${esc(c)}</h3>${note(c)}<ul>${list.filter(s => (s.cat || 'Services') === c).map(s => `
-    <li><div class="mi"><span class="mi-name">${esc(s.name)}</span><span class="leader" aria-hidden="true"></span><span class="mi-price">${esc(priceLabel(s, cur()))}</span></div>
-    <div class="mi-row"><p class="mi-meta"><span class="mi-time">${ic('clock')}${dur(s.mins)}</span>${s.desc ? ' · ' + esc(s.desc) : ''}</p><button class="mi-book" data-act="bookSvc" data-id="${esc(s.id)}">Book ${ic('arrow')}</button></div></li>`).join('')}</ul></div>`).join('')}</div>`;
+  const item = s => `<li><div class="mi"><span class="mi-name">${esc(s.name)}</span><span class="leader" aria-hidden="true"></span><span class="mi-price">${esc(priceLabel(s, cur()))}</span></div>
+    <div class="mi-row"><p class="mi-meta"><span class="mi-time">${ic('clock')}${dur(s.mins)}</span>${s.desc ? ' · ' + esc(s.desc) : ''}</p><button class="mi-book" data-act="bookSvc" data-id="${esc(s.id)}">Book ${ic('arrow')}</button></div></li>`;
+  const group_ = c => `<div class="mgroup"><h3>${esc(c)}</h3>${note(c)}<ul>${inCat(c).map(item).join('')}</ul></div>`;
+  const bundle = s => { const m = /^([A-Z]{1,4}\d+)\s*·\s*(.+)$/.exec(s.name) || [, '', s.name];
+    return `<article class="bundle"><div>${m[1] ? `<p class="b-code">${esc(m[1])}</p>` : ''}<h4>${esc(m[2])}</h4><p class="mi-meta"><span class="mi-time">${ic('clock')}${dur(s.mins)}</span>${s.desc ? ' · ' + esc(s.desc) : ''}</p></div>
+      <div class="b-foot"><b class="mi-price">${esc(priceLabel(s, cur()))}</b><button class="btn btn-sm" data-act="bookSvc" data-id="${esc(s.id)}">Book</button></div></article>`; };
+  const by = r => cats.filter(c => role(c) === r);
+  const tiers = by('tier'), bundles = by('bundle'), extras = by('extra'), rest = by('rest');
+  return `<div class="board2 tab-in">
+    ${tiers.length ? `<div class="m-tiers${tiers.length === 1 ? ' one' : ''}">${tiers.map(c => `<section class="tier-box">${group_(c)}</section>`).join('')}</div>` : ''}
+    ${bundles.map(c => `<section class="m-bundles"><div class="mb-h"><h3>${esc(c)}</h3>${note(c)}</div><div class="bundle-grid">${inCat(c).map(bundle).join('')}</div></section>`).join('')}
+    ${extras.map(c => `<section class="m-extras">${group_(c)}</section>`).join('')}
+    ${rest.length ? `<div class="m-rest">${rest.map(group_).join('')}</div>` : ''}
+  </div>`;
 }
 
 // ---------- booking ----------
@@ -665,6 +702,8 @@ const ACT = {
   menuTab(el) { S.menuTab = el.dataset.v; renderMenu(); },
   lang(el) { if (lang() === el.dataset.v) return; setLang(el.dataset.v); renderAll(); },
   galTag(el) { S.galTag = el.dataset.v; renderGallery(); },
+  usePromo(el) { S.promo = { open: true, code: el.dataset.code, applied: null, err: '', busy: false, pending: el.dataset.code }; toast(`Code ${el.dataset.code} will be applied when you pick your service`); goStep(chosen().length ? 3 : 1); maybeApplyPromo(); },
+  async copyCode(el) { try { await navigator.clipboard.writeText(el.dataset.code); toast('Code copied'); } catch (_) { toast(el.dataset.code); } },
   lookBook(el) { const g = gallery()[+el.dataset.i]; if (!g) return; S.lb = -1; lightbox(); S.bk.notes = `I’d like this look: ${g.caption || g.style || 'photo from your gallery'}`; ACT.bookWith({ dataset: { id: g.barberId } }); },
   profile(el) { S.profile = el.dataset.id; profile(); },
   pfClose(el, e) { if (e && el.classList.contains('pf-scrim') && e.target !== el) return; S.profile = ''; profile(); },

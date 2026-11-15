@@ -112,7 +112,14 @@ export const STARTER = {
     currency: '₱', loyaltyEvery: 10, heroPhoto: '', googleRating: 5.0, googleCount: 45, ratingSource: 'Setmore'
   },
   announcement: { active: false, text: '', link: '' },
-  gallery: [],
+  gallery: [
+    { id: 'cut1', url: 'assets/gallery/cut1.jpg', style: 'Color', caption: 'Textured crop and burgundy color' },
+    { id: 'cut2', url: 'assets/gallery/cut2.jpg', style: 'Crop', caption: 'Textured crop, low taper' },
+    { id: 'cut3', url: 'assets/gallery/cut3.jpg', style: 'Fade', caption: 'Short crop, mid fade' },
+    { id: 'cut4', url: 'assets/gallery/cut4.jpg', style: 'Fade', caption: 'Crop with drop fade' },
+    { id: 'cut5', url: 'assets/gallery/cut5.jpg', style: 'Crop', caption: 'Textured fringe' },
+    { id: 'cut6', url: 'assets/gallery/cut6.jpg', style: 'Taper', caption: 'Crop with low taper' }
+  ],
   // Real reviews from REAL Barbers' two Setmore pages (5.0 from 30 + 15 reviews)
   reviews: [
     { id: 'rv1', name: 'Miguel A.', rating: 5, source: 'Setmore', text: 'Excellent service! Barber Lyndon is very professional and gives suggestions for better hairstyle. Will book again for future haircuts!' },
