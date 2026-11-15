@@ -30,7 +30,11 @@ function seed() {
   const m = new Map(), T = phNow().date, day = n => addDays(T, n);
   let r = 11; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
   const pick = a => a[Math.floor(rnd() * a.length)];
-  m.set('public/info', { ...clone(STARTER), policy: { ...STARTER.policy, onlineBooking: true }, barbers: STARTER_STAFF.filter(isServiceStaff).map(publicBarber) });
+  m.set('public/info', { ...clone(STARTER), policy: { ...STARTER.policy, onlineBooking: true }, barbers: STARTER_STAFF.filter(isServiceStaff).map(publicBarber),
+    happenings: [ // samples so the demo shows the Promos & events section
+      { id: 'h_s1', kind: 'promo', title: 'First visit? ₱50 off your cut', text: 'New to REAL Barbers? Use the code when you book online and get ₱50 off your first haircut.', start: '', end: day(30), code: 'WELCOME50', sample: true },
+      { id: 'h_s2', kind: 'event', title: 'December: open every day', text: 'We’re open daily from 9 AM to 8 PM all December. Book early for the holidays, slots fill up fast.', start: '', end: day(45), sample: true }
+    ] });
   STARTER_STAFF.forEach(({ id, ...b }) => m.set('staff/' + id, { ...b, since: day(-40) }));
   m.set('admins/demo', { role: 'owner' });
   const svc = STARTER.services, him = svc.filter(s => s.group === 'him'), her = svc.filter(s => s.group === 'her');
@@ -281,6 +285,7 @@ const FUNCS = {
     for (const gid of a.guests || []) { const g = store.get('appointments/' + gid); if (g) { store.set('appointments/' + gid, { ...g, holdUntil: keep }); afterWrite('appointments/' + gid); } }
     return publicView(d.id);
   },
+  syncFacebookNow() { fail('failed-precondition', 'The demo can’t reach Facebook. This works once the site is live and the Page access token is saved.'); },
   joinQueue(d) {
     const I = info(), t = phNow(), h = I.hours.find(x => x.d === t.dow), toM = s => { const [a, b] = String(s).split(':').map(Number); return a * 60 + b; };
     if (!h || h.closed || t.min < toM(h.open) - 15 || t.min > toM(h.close) - 30) fail('failed-precondition', 'The walk-in queue is closed right now. Book online for another day.');

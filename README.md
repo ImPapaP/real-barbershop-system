@@ -225,6 +225,12 @@ Each barber earns a **guaranteed daily pay** for every day they work, plus a **c
 - **Booking Terms and Privacy Policy:** `terms.html` and `privacy.html`, linked from the checkbox and the footer. They fill in the deposit, late rule, reschedule window, address and contact from **Dashboard → Settings**, so they change when the policy does. They're a starting template: have them checked before going live.
 - **Cookies:** the site sets no tracking or advertising cookies and no analytics, so no cookie banner is needed. "Remember me" uses the customer's own browser storage, explained in the Privacy Policy.
 
+## Promos, events and the gallery
+
+- **Promos & events:** Website → **Promos & events**. Post a promo or an event with optional dates, a picture, a promo code (customers tap “Book with this code” and it's applied for them) or a link. Ended ones hide themselves. The section only shows when something is posted.
+- **Fresh from the chair from Facebook:** Website → **Facebook photos**. Paste a Page access token once; the newest photos from the Facebook page then lead the gallery, refreshed every 3 hours (Facebook photo links expire, so they're re-pulled each time). Your own uploads stay after them. Steps to get the token are in the Go-Live Checklist.
+- **Services menu:** haircut tiers side by side, bundles as cards (a swipe row on phones), add-ons and other groups as two- or three-column lists on computers.
+
 ## Payments, the day of the visit, and after
 
 - **Pay by GCash screenshot:** besides paying online (PayMongo), customers can send the down payment to the shop's GCash number and upload the screenshot on their booking page. The slot stays held while you check it. **Schedule** (and Overview) shows **GCash screenshots to check**: open one, match it with your GCash history, then **Approve** (the booking is confirmed and the client gets the usual confirmation text and email) or **Reject** (the slot opens again and the client is told to call). Screenshots are stored as small images in Firestore, so this works on the free plan. Turn it off in Shop setup → Online booking rules.
