@@ -32,9 +32,8 @@ const hasTiers = g => svcs().some(s => (s.group || 'him') === g && s.kind === 'b
 const tierNames = t => (info().barbers || []).filter(b => (b.tiers || []).includes(t)).map(b => b.name);
 const listNames = a => a.length > 1 ? a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1] : (a[0] || '');
 const barber = id => (info().barbers || []).find(b => b.id === id);
-// Gallery = newest photos from the Facebook page (synced every few hours, when connected) + the shop's own uploads
-const galAll = () => { const I = info(), fb = I.fbShow === false ? [] : (I.fbPhotos || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0));
-  const own = I.gallery || [], seen = new Set(); return [...fb, ...own].filter(g => g.url && !seen.has(g.url) && seen.add(g.url)); };
+// Fresh from the chair: the photos the shop adds in the dashboard, newest first
+const galAll = () => (info().gallery || []).filter(g => g.url);
 // Promos & events the shop posts in the dashboard; ended ones hide themselves
 const happenings = () => { const t = phNow().date; return (info().happenings || []).filter(h => h.title && (!h.end || h.end >= t) && (h.kind === 'event' || !h.start || h.start <= t))
   .sort((a, b) => (a.kind === 'promo' ? 0 : 1) - (b.kind === 'promo' ? 0 : 1) || String(a.start || a.end || '').localeCompare(String(b.start || b.end || ''))); };
@@ -284,7 +283,7 @@ function policyCards() {
     : `Down payment to confirm your booking${sh.gcashNumber ? `, sent by GCash to ${esc(sh.gcashNumber)}${sh.gcashName ? ` (${esc(sh.gcashName)})` : ''}` : ''}. Send the proof on our Facebook page. No down payment, no booking. It’s deducted from your bill.`;
   return `<div class="policy">
     <div class="reveal">${ic('check', 'pic')}<b>${m(p.deposit)}</b><span>${pay}</span></div>
-    <div class="reveal" style="--d:80ms">${ic('clock', 'pic')}<b>${p.lateMinutes} min</b><span>Arriving ${p.lateMinutes} minutes late or more cancels the booking, and the down payment isn’t refunded.</span></div>
+    <div class="reveal" style="--d:80ms">${ic('clock', 'pic')}<b>${p.lateMinutes} min</b><span>If you’re ${p.lateMinutes} minutes late or more, we may give your slot to a walk-in, and the down payment isn’t refunded.</span></div>
     <div class="reveal" style="--d:160ms">${ic('arrow', 'pic')}<b>${p.rescheduleHours} hrs</b><span>${on ? `Reschedule online up to ${p.rescheduleHours} hours before your appointment, using the link in your confirmation email.` : `Reschedule up to ${p.rescheduleHours} hours before your appointment by messaging us.`}</span></div>
     <div class="reveal" style="--d:240ms">${ic('user', 'pic')}<b>1 person</b><span>Each booking is for one person only. Booking for a friend too? Book a separate slot for them.</span></div>
   </div>`;

@@ -3,7 +3,7 @@
 import { db, demo, demoBar, resetDemo, login, logout, resetPassword, onAuth, uploadImage, deleteImage, call } from './fb.js';
 import { buildXlsx, xlDate, xlTime, colName } from './xlsx.js';
 import { qrSvg } from './qr.js';
-import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, publicBarber, DEFAULT_POLICY, startMs, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE, defaultFaq, cleanCode } from './shared.js';
+import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, publicBarber, DEFAULT_POLICY, startMs, canServe, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE, defaultFaq, cleanCode } from './shared.js';
 
 // ---------- constants ----------
 const METHODS = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer'];
@@ -93,7 +93,10 @@ function proofsPanel(compact) {
       </article>`; }).join('')}</div></section>`;
 }
 const ago = t => { const m = Math.max(0, Math.round((Date.now() - t) / 60000)); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} hr ago` : `${Math.round(m / 1440)} days ago`; };
-const lateChip = a => a.late && a.date === today() && ['booked', 'waiting'].includes(a.status) ? ' ' + chip({ kind: 'warn', icon: '⏱', label: `${a.late.mins} min late` }) : '';
+// 5-minute rule: a booked client who hasn't arrived this many minutes after their time can lose the slot to a walk-in
+const isLateNow = a => a.status === 'booked' && a.source !== 'walk-in' && a.date === today() && a.time && Date.now() >= startMs(a.date, a.time) + pol().lateMinutes * 60e3;
+const waitingWalkins = () => S.appointments.filter(x => x.source === 'walk-in' && x.status === 'waiting' && x.date === today()).sort((x, y) => (x.queueNo || 0) - (y.queueNo || 0));
+const lateChip = a => isLateNow(a) ? ' ' + chip({ kind: 'bad', icon: '⏱', label: `${Math.round((Date.now() - startMs(a.date, a.time)) / 60000)} min late` }) : a.late && a.date === today() && ['booked', 'waiting'].includes(a.status) ? ' ' + chip({ kind: 'warn', icon: '⏱', label: `${a.late.mins} min late` }) : '';
 function depositChip(a) {
   const d = a.deposit || {};
   if (a.status === 'pending_payment' && a.payMethod === 'gcash') return a.proof && a.proof.status === 'review' ? chip({ kind: 'warn', icon: '!', label: 'GCash screenshot to check' }) : chip({ kind: 'mute', icon: '◷', label: 'Waiting for GCash' });
@@ -309,7 +312,8 @@ const apptsOn = d => S.appointments.filter(a => a.date === d).sort((a, b) => (a.
 const visible = a => S.showExpired || a.status !== 'expired';
 function apptRow(a, compact) {
   const canCheckout = ['booked', 'waiting', 'inchair'].includes(a.status);
-  const actions = `${canCheckout ? `<button class="btn btn-sm btn-primary" data-act="checkoutAppt" data-id="${esc(a.id)}">Checkout</button>` : ''}${a.status === 'done' && a.saleId ? `<button class="btn btn-sm" data-act="showSale" data-id="${esc(a.saleId)}">Receipt</button>` : ''}`;
+  const giveAway = isLateNow(a) && waitingWalkins().length ? `<button class="btn btn-sm btn-danger" data-act="giveSlot" data-id="${esc(a.id)}">Give slot to walk-in</button>` : '';
+  const actions = `${giveAway}${canCheckout ? `<button class="btn btn-sm btn-primary" data-act="checkoutAppt" data-id="${esc(a.id)}">Checkout</button>` : ''}${a.status === 'done' && a.saleId ? `<button class="btn btn-sm" data-act="showSale" data-id="${esc(a.saleId)}">Receipt</button>` : ''}`;
   const flag = a.conflict && ['booked', 'pending_payment'].includes(a.status) ? ' ' + chip({ kind: 'bad', icon: '!', label: 'Overlaps another booking' }) : '';
   if (compact) return `<li>${a.barberId ? av(staffById(a.barberId)) : ''}<span class="t">${a.source === 'walk-in' ? `#${esc(a.queueNo || '')}` : fmtTime(a.time)}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${lateChip(a)}<div class="sub">${esc(svcNames(a.serviceIds))} · ${esc(staffName(a.barberId))}</div></div>${chip(APPT[a.status] || APPT.booked)}</li>`;
   const choices = STATUS_CHOICES.includes(a.status) ? STATUS_CHOICES : [a.status, ...STATUS_CHOICES];
@@ -761,7 +765,7 @@ function vSetup() {
         ${field('Deposit (' + cur() + ')', `<input id="po-dep" name="deposit" type="number" min="100" step="1" value="${esc(p.deposit)}">`, 'po-dep')}
         ${field('Hold slot while paying (min)', `<input id="po-hold" name="holdMinutes" type="number" min="5" max="60" value="${esc(p.holdMinutes)}">`, 'po-hold')}
         ${field('Reschedule up to (hours before)', `<input id="po-res" name="rescheduleHours" type="number" min="0" max="168" value="${esc(p.rescheduleHours)}">`, 'po-res')}
-        ${field('Late arrival cancels after (min)', `<input id="po-late" name="lateMinutes" type="number" min="0" max="120" value="${esc(p.lateMinutes)}">`, 'po-late')}
+        ${field('Late: slot can go to a walk-in after (min)', `<input id="po-late" name="lateMinutes" type="number" min="0" max="120" value="${esc(p.lateMinutes)}">`, 'po-late')}
         ${field('Earliest booking from now (min)', `<input id="po-lead" name="leadMinutes" type="number" min="0" max="1440" value="${esc(p.leadMinutes)}">`, 'po-lead')}
         ${field('Book up to (days ahead)', `<input id="po-ahead" name="bookAheadDays" type="number" min="1" max="90" value="${esc(p.bookAheadDays)}">`, 'po-ahead')}
         ${field('Last booking starts at', `<input id="po-last" name="lastBooking" type="time" step="3600" value="${esc(p.lastBooking ?? '19:00')}">`, 'po-last', 'Online bookings can’t start later than this. Leave empty to allow any time that finishes by closing.')}
@@ -782,22 +786,6 @@ function vSetup() {
 }
 
 const siteUrl = u => /^(https?:|data:|blob:|\/)/.test(u || '') ? u : '../' + u; // site images are relative to the website, one folder up
-// ---------- Facebook photos ----------
-function fbPanel() {
-  const I = info(), fb = I.fbPhotos || [], c = S.fbCfg;
-  if (c === undefined) { S.fbCfg = null; db.doc('private/facebook').get().then(d => { S.fbCfg = d.exists ? d.data() : {}; schedule(); }).catch(() => { S.fbCfg = {}; schedule(); }); }
-  const cfg = S.fbCfg || {}, on = !!cfg.token;
-  return `<section class="panel"><div class="panel-h"><h2>Facebook photos</h2>${on ? chip(cfg.lastError ? { kind: 'bad', icon: '!', label: 'Sync problem' } : { kind: 'good', icon: '✓', label: 'Connected' }) : chip({ kind: 'mute', icon: '–', label: 'Not connected' })}</div>
-    <p class="muted small" style="margin-bottom:10px">When connected, the newest photos from your Facebook page appear first in “Fresh from the chair”, refreshed every 3 hours. Your own uploads below stay too.</p>
-    ${on ? `<div class="totals" style="font-size:14px;margin-bottom:10px"><div><span>Last synced</span><b>${cfg.lastOk ? ago(cfg.lastOk) : 'Not yet'}</b></div><div><span>Photos pulled</span><b>${fb.length}</b></div>${cfg.lastError ? `<div><span>Problem</span><span class="err">${esc(cfg.lastError)}</span></div>` : ''}</div>` : ''}
-    ${fb.length ? `<div class="fb-strip">${fb.slice(0, 8).map(g => `<img src="${esc(g.url)}" alt="${esc(g.caption || 'Facebook photo')}" loading="lazy">`).join('')}</div>` : ''}
-    <form class="stack" data-form="fb">
-      <div class="fgrid">${field('Page access token', `<input id="fb-token" name="token" type="password" autocomplete="off" placeholder="${on ? 'Saved. Paste a new one to replace it' : 'Paste it from Meta for Developers'}">`, 'fb-token')}${field('Page ID (optional)', `<input id="fb-page" name="pageId" value="${esc(cfg.pageId || '')}" placeholder="Leave empty to use the token’s page">`, 'fb-page')}</div>
-      <label class="row small"><input type="checkbox" name="show" ${I.fbShow !== false ? 'checked' : ''}> Show Facebook photos on the website</label>
-      <div class="row"><button class="btn btn-primary btn-sm" type="submit">Save</button>${on ? '<button type="button" class="btn btn-sm" data-act="fbSync">Sync now</button>' : ''}</div>
-      <p class="muted small">How to get the token: see “Facebook photos” in your Go-Live Checklist. It takes about 10 minutes, once.</p>
-    </form></section>`;
-}
 // ---------- promos & events (shown on the website) ----------
 function happenPanel() {
   const list = info().happenings || [], t = today();
@@ -878,7 +866,7 @@ function vWebsite() {
         <div class="modal-f"><button class="btn btn-primary" type="submit">Save</button></div>
       </form></section>
   </div>
-  <section class="panel"><div class="panel-h"><h2>Gallery</h2><div class="row"><span class="muted small">${gal.length} photo${gal.length === 1 ? '' : 's'} · first 12 show on the website</span>${upBtn('gallery', '+ Add photos', true)}</div></div>
+  <section class="panel"><div class="panel-h"><h2>Fresh from the chair</h2><div class="row"><span class="muted small">${gal.length} photo${gal.length === 1 ? '' : 's'} · newest first, the first 12 show on the website</span>${upBtn('gallery', '+ Add photos', true)}</div></div>
     ${gal.length ? `<div class="gal-admin">${gal.map((g, i) => `<figure><img src="${esc(siteUrl(g.url))}" alt="${esc(g.caption || 'Gallery photo')}" loading="lazy"><figcaption>
       <input id="gc-${esc(g.id)}" data-caption="${esc(g.id)}" value="${esc(g.caption || '')}" placeholder="Caption, e.g. Mid fade by Reymart" aria-label="Caption">
       <span class="fgrid gal-meta"><select data-galfield="style" data-id="${esc(g.id)}" aria-label="Style">${opt('', 'Style…', !g.style)}${STYLES.map(x => opt(x, x, g.style === x)).join('')}</select><select data-galfield="barberId" data-id="${esc(g.id)}" aria-label="Barber">${opt('', 'Barber…', !g.barberId)}${serviceStaff().map(b => opt(b.id, b.name, g.barberId === b.id)).join('')}</select></span>
@@ -886,7 +874,6 @@ function vWebsite() {
       : '<p class="empty">No photos yet. Add finished cuts, color work and the shop itself. They’re resized automatically.</p>'}
     ${gal.length ? '<p class="muted small" style="margin-top:10px">Tag the style and barber: customers can filter the gallery by style, and tap “Book this look” to book that barber.</p>' : ''}</section>
   ${happenPanel()}
-  ${fbPanel()}
   ${ratingsPanel()}
   ${faqPanel()}
   <div class="grid2e">
@@ -959,7 +946,7 @@ async function handleUpload(input) {
     const done = [];
     for (const f of files.slice(0, 20)) { const blob = await resizeImage(f, small, demo ? 0.72 : 0.82); done.push(await uploadImage(blob, kind === 'hero' ? 'hero' : kind.startsWith('staff-') ? 'team' : 'gallery')); }
     if (kind === 'hero') { const old = info().shop.heroPhotoPath; await saveInfo({ shop: { ...info().shop, heroPhoto: done[0].url, heroPhotoPath: done[0].path } }); deleteImage(old); toast('Homepage photo updated'); }
-    else if (kind === 'gallery') { await saveInfo({ gallery: [...(info().gallery || []), ...done.map(d => ({ id: newId(), url: d.url, path: d.path, caption: '' }))] }); toast(`${done.length} photo${done.length > 1 ? 's' : ''} added`); }
+    else if (kind === 'gallery') { await saveInfo({ gallery: [...done.map(d => ({ id: newId(), url: d.url, path: d.path, caption: '' })), ...(info().gallery || [])] }); toast(`${done.length} photo${done.length > 1 ? 's' : ''} added`); }
     else { const id = kind.slice(6), b = staffById(id); if (b) { await patch('staff', id, { photo: done[0].url, photoPath: done[0].path }); deleteImage(b.photoPath); setTimeout(syncPublicBarbers, 400); toast(`${b.name}’s photo updated`); } }
   } catch (e) { console.error(e); toast(/quota|exceeded/i.test(e.message || e.name) ? 'The demo can’t store more photos in this browser. Remove some first.' : /^storage\//.test(e.code || '') ? 'Photo uploads need Firebase Storage, which comes with the Blaze plan (checklist part 2).' : (e.message || 'Upload failed. Try again.'), 'bad'); }
   S.uploading = ''; input.value = ''; render();
@@ -1150,6 +1137,19 @@ const ACT = {
     closeModal(); toast('Rejected. The slot is open again and the client is told to call the shop.');
   },
   walkinQr() { qrModal(); },
+  giveSlot(el) {
+    const a = S.appointments.find(x => x.id === el.dataset.id), q = waitingWalkins(); if (!a) return;
+    const svcOk = w => { const b = staffById(a.barberId); return !b || !(w.serviceIds || []).length || canServe(b, (w.serviceIds || []).map(svcById).filter(Boolean)); };
+    openModal('Give the slot to a walk-in', `<div class="stack"><p><b>${esc(a.name)}</b> was booked at ${fmtTime(a.time)} with ${esc(staffName(a.barberId))} and is ${Math.round((Date.now() - startMs(a.date, a.time)) / 60000)} minutes late. Pick who takes the chair:</p>
+      <ul class="list">${q.map((w, i) => `<li><div class="grow"><b>#${esc(w.queueNo || '')} ${esc(w.name || 'Walk-in')}</b><div class="sub">${esc(svcNames(w.serviceIds) || 'Not sure yet')} · waiting ${Math.max(0, Math.round((Date.now() - (w.createdAt || Date.now())) / 60000))} min${svcOk(w) ? '' : ' · ' + esc(staffName(a.barberId)) + ' doesn’t do this service'}</div></div><button class="btn btn-sm ${i === 0 ? 'btn-primary' : ''}" data-act="giveSlotTo" data-id="${esc(a.id)}" data-w="${esc(w.id)}" ${svcOk(w) ? '' : 'disabled'}>Give to ${esc((w.name || 'walk-in').split(' ')[0])}</button></li>`).join('')}</ul>
+      <p class="muted small">${esc(a.name)}’s booking is marked as missed${a.deposit && a.deposit.status === 'paid' ? ` and the ${money(a.deposit.amount)} down payment is kept` : ''}. If they still come, you can fit them in later as a walk-in.</p></div>`);
+  },
+  async giveSlotTo(el) {
+    const a = S.appointments.find(x => x.id === el.dataset.id), w = S.appointments.find(x => x.id === el.dataset.w); if (!a || !w) return;
+    const dep = a.deposit && a.deposit.status === 'paid' ? { deposit: { ...a.deposit, status: 'kept' } } : {};
+    const ok = await patch('appointments', a.id, { status: 'noshow', gaveToWalkin: w.id, ...dep }) && await patch('appointments', w.id, { barberId: a.barberId, status: 'inchair', tookSlotOf: a.id });
+    if (ok) { closeModal(); toast(`${w.name || 'The walk-in'} is in ${staffName(a.barberId)}’s chair`); }
+  },
   printQr() { printPoster(); },
   async copyQrLink() { try { await navigator.clipboard.writeText(walkinUrl()); toast('Link copied'); } catch (_) { toast(walkinUrl()); } },
   newPromo() { promoModal(null); },
@@ -1167,19 +1167,14 @@ const ACT = {
   editHappen(el) { happenModal(+el.dataset.i); },
   async delHappen(el) { if (!armed(el)) return; const list = [...(info().happenings || [])]; list.splice(+el.dataset.i, 1); if (await saveInfo({ happenings: list })) { closeModal(); toast('Removed from the website'); } },
   happenImgOff() { S.happenImg = ''; const w = document.getElementById('hp-img'); if (w) w.innerHTML = '<label class="btn btn-sm upload">Add picture<input type="file" accept="image/*" data-upload="happen" hidden></label>'; },
-  async fbSync(el) {
-    el.disabled = true; el.innerHTML = '<span class="spinner"></span> Syncing…';
-    try { const r = await call('syncFacebookNow', {}); toast(r.ok ? `${r.count} photos pulled from Facebook` : 'Save the Page access token first.'); }
-    catch (e) { toast(e.message || 'Couldn’t reach Facebook.', 'bad'); }
-    S.fbCfg = undefined; render();
-  },
+
   editFaq(el) { faqModal(+el.dataset.i); },
   async delFaq(el) { if (!armed(el)) return; const list = faqOwn(); list.splice(+el.dataset.i, 1); if (await saveInfo({ faq: list })) { closeModal(); toast('Question removed'); } },
   async faqMove(el) { const list = faqOwn(), i = +el.dataset.i, j = i + (+el.dataset.d); if (j < 0 || j >= list.length) return; [list[i], list[j]] = [list[j], list[i]]; await saveInfo({ faq: list }); },
   async cutToGallery(el) {
     const img = S.cutImgs[el.dataset.id]; if (!img || img === 'none') return;
     try { const blob = await (await fetch(img)).blob(), up = await uploadImage(blob, 'gallery'), a = S.appointments.find(x => x.id === el.dataset.id);
-      await saveInfo({ gallery: [...(info().gallery || []), { id: newId(), url: up.url, path: up.path, caption: '', barberId: a ? a.barberId || '' : '' }] }); toast('Added to the gallery. Tag the style in Website.'); }
+      await saveInfo({ gallery: [{ id: newId(), url: up.url, path: up.path, caption: '', barberId: a ? a.barberId || '' : '' }, ...(info().gallery || [])] }); toast('Added to the gallery. Tag the style in Website.'); }
     catch (e) { toast(/^storage\//.test(e.code || '') ? 'Gallery uploads need Firebase Storage (Blaze plan, checklist part 2).' : 'Couldn’t add it. Try again.', 'bad'); }
   },
   editAppt(el) { const a = S.appointments.find(x => x.id === el.dataset.id); if (a) apptModal(a, 'edit'); },
@@ -1334,13 +1329,7 @@ const FORM = {
     if (i >= 0) list[i] = h; else list.unshift(h);
     if (await saveInfo({ happenings: list })) { closeModal(); toast(i >= 0 ? 'Saved' : 'Posted on the website'); }
   },
-  async fb(f) {
-    const fd = new FormData(f), token = String(fd.get('token') || '').trim(), pageId = String(fd.get('pageId') || '').trim();
-    const show = fd.has('show'); let ok = true;
-    if (token || pageId !== ((S.fbCfg || {}).pageId || '')) ok = await put('private', 'facebook', { ...(S.fbCfg || {}), ...(token ? { token } : {}), pageId, lastError: '' });
-    if (ok && show !== (info().fbShow !== false)) ok = await saveInfo({ fbShow: show });
-    if (ok) { S.fbCfg = undefined; toast(token ? 'Token saved. Tap “Sync now” to pull photos.' : 'Saved'); render(); }
-  },
+
   async promo(f) {
     const fd = new FormData(f), code = f.dataset.id || cleanCode(fd.get('code')), kind = String(fd.get('kind')), value = Math.max(0, num(fd.get('value')));
     if (!code || code.length < 3) return modalErr(f, 'Use at least 3 letters or numbers for the code.');

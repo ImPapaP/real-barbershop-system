@@ -186,7 +186,7 @@ function publicView(id) {
     policy: { deposit: pol.deposit, rescheduleHours: pol.rescheduleHours, lateMinutes: pol.lateMinutes, holdMinutes: pol.holdMinutes },
     payMethod: a.payMethod || 'online', proof: a.proof ? { status: a.proof.status, at: a.proof.at, note: a.proof.note || '' } : null,
     gcash: a.payMethod === 'gcash' ? { number: I.shop.gcashNumber || '', name: I.shop.gcashName || '' } : null,
-    promo: a.promo || null, late: a.late || null, rating: a.rating || null, groupOf: a.groupOf || '', source: a.source || 'online'
+    promo: a.promo || null, late: a.late || null, rating: a.rating || null, groupOf: a.groupOf || '', source: a.source || 'online', gaveToWalkin: !!a.gaveToWalkin
   };
 }
 function queueFor(a) {
@@ -285,7 +285,6 @@ const FUNCS = {
     for (const gid of a.guests || []) { const g = store.get('appointments/' + gid); if (g) { store.set('appointments/' + gid, { ...g, holdUntil: keep }); afterWrite('appointments/' + gid); } }
     return publicView(d.id);
   },
-  syncFacebookNow() { fail('failed-precondition', 'The demo can’t reach Facebook. This works once the site is live and the Page access token is saved.'); },
   joinQueue(d) {
     const I = info(), t = phNow(), h = I.hours.find(x => x.d === t.dow), toM = s => { const [a, b] = String(s).split(':').map(Number); return a * 60 + b; };
     if (!h || h.closed || t.min < toM(h.open) - 15 || t.min > toM(h.close) - 30) fail('failed-precondition', 'The walk-in queue is closed right now. Book online for another day.');
@@ -303,8 +302,8 @@ const FUNCS = {
   },
   runningLate(d) {
     const a = byToken(d), pol = policyOf(info()), now = Date.now(), startAt = startMs(a.date, a.time);
-    const mins = Math.max(5, Math.min(pol.lateMinutes ? pol.lateMinutes - 1 : 30, parseInt(d.mins, 10) || 10));
-    if (a.status !== 'booked' || now > startAt + pol.lateMinutes * 60e3 || startAt - now > 3 * 3600e3) fail('failed-precondition', 'You can only tell us this on the day, close to your time.');
+    const mins = Math.max(5, Math.min(30, parseInt(d.mins, 10) || 10));
+    if (a.status !== 'booked' || now > startAt + 30 * 60e3 || startAt - now > 3 * 3600e3) fail('failed-precondition', 'You can only tell us this on the day, close to your time.');
     store.set('appointments/' + d.id, { ...a, late: { mins, at: now } }); afterWrite('appointments/' + d.id);
     return publicView(d.id);
   },
