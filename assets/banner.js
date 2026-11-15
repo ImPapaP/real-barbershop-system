@@ -53,36 +53,36 @@ export async function drawBanner(canvas, h, shop = {}) {
   const when = ev ? (h.start && h.end && h.start !== h.end ? `${fmtDate(h.start)} – ${fmtDate(h.end)}` : h.start ? fmtDate(h.start) : h.end ? `Until ${fmtDate(h.end)}` : '') : h.end ? `Until ${fmtDate(h.end)}` : '';
   if (when) { ctx.font = `600 24px ${BODY}`; ctx.fillStyle = 'rgba(243,245,250,.8)'; ctx.fillText(when, L + kw + 18, y + 22); }
   ctx.textBaseline = 'alphabetic';
-  // headline: the discount, or the title
-  const big = bannerBadge(h) || h.title || '', maxW = 640;
-  y = 150;
-  // biggest size where the headline fits in two lines
-  let bs = bannerBadge(h) ? 150 : 104, bigLines;
-  for (; ; bs -= 4) {
+  // headline (the discount, or the title), then the title or details, then the code.
+  // Everything is measured first; the headline shrinks until the whole block fits above the footer.
+  const badge = bannerBadge(h), big = (badge || h.title || '').toUpperCase(), maxW = 620, top = 148, bottom = H - 104;
+  const sub = badge ? h.title : h.text, subFont = badge ? `700 38px ${BODY}` : `500 28px ${BODY}`, subLH = badge ? 48 : 38;
+  const codeH = h.code ? 30 + 62 : 0;
+  let bs = badge ? 150 : 104, bigLines = [], subLines = [];
+  for (; bs >= 40; bs -= 4) {
     ctx.font = `400 ${bs}px ${SLAB}`;
-    const words = big.toUpperCase().split(/\s+/), lines = []; let line = '';
-    for (const w of words) { const t = line ? line + ' ' + w : w; if (ctx.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t; }
-    if (line) lines.push(line);
-    if ((lines.length <= 2 && lines.every(l => ctx.measureText(l).width <= maxW)) || bs <= 44) { bigLines = lines.slice(0, 2); break; }
+    const all = wrap(ctx, big, maxW, 9), lines = all.slice(0, badge ? 1 : bs > 56 ? 2 : 3);
+    const fitsWide = all.length === lines.length && lines.every(l => ctx.measureText(l).width <= maxW);
+    ctx.font = subFont; let sl = sub ? wrap(ctx, sub, maxW, 2) : [];
+    let total = lines.length * bs * 0.95 + (sl.length ? 14 : 0) + sl.length * subLH + codeH;
+    if (fitsWide && top + total > bottom && sl.length > 1) { sl = sl.slice(0, 1); total -= subLH; }
+    if (fitsWide && top + total <= bottom) { bigLines = lines; subLines = sl; break; }
+    bigLines = lines; subLines = sl.slice(0, 1);
   }
-  ctx.fillStyle = '#f3f5fa'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 24;
+  y = top;
+  ctx.font = `400 ${bs}px ${SLAB}`; ctx.fillStyle = '#f3f5fa'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 24;
   for (const l of bigLines) { y += bs * 0.95; ctx.fillText(l, L, y); }
-  ctx.shadowBlur = 0;
-  // title under a discount
-  if (bannerBadge(h) && h.title) {
-    ctx.font = `700 40px ${BODY}`; ctx.fillStyle = '#f3f5fa';
-    for (const l of wrap(ctx, h.title, maxW, 2)) { y += 52; ctx.fillText(l, L, y); }
-  } else if (h.text) {
-    ctx.font = `500 30px ${BODY}`; ctx.fillStyle = 'rgba(243,245,250,.85)';
-    for (const l of wrap(ctx, h.text, maxW, 2)) { y += 42; ctx.fillText(l, L, y); }
-  }
+  ctx.shadowBlur = 0; if (subLines.length) y += 14;
+  ctx.font = subFont; ctx.fillStyle = badge ? '#f3f5fa' : 'rgba(243,245,250,.85)';
+  for (const l of subLines) { y += subLH; ctx.fillText(l, L, y); }
   // code
   if (h.code) {
-    y += 34;
-    ctx.font = `800 30px ${MARK}`; const cw = ctx.measureText(h.code).width, lw = 92, bx = L, by = y, bwid = cw + lw + 48;
-    ctx.setLineDash([10, 8]); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(243,245,250,.75)'; roundRect(ctx, bx, by, bwid, 64, 12); ctx.stroke(); ctx.setLineDash([]);
-    ctx.font = `700 18px ${BODY}`; ctx.fillStyle = 'rgba(243,245,250,.7)'; ctx.textBaseline = 'middle'; ctx.fillText('CODE', bx + 24, by + 33);
-    ctx.font = `800 30px ${MARK}`; ctx.fillStyle = '#f3f5fa'; ctx.fillText(h.code, bx + 24 + lw - 12, by + 33); ctx.textBaseline = 'alphabetic';
+    y += 30;
+    ctx.font = `800 30px ${MARK}`; const cw = ctx.measureText(h.code).width;
+    ctx.font = `700 18px ${BODY}`; const lw = ctx.measureText('CODE').width + 22, bx = L, by = y, bwid = cw + lw + 48;
+    ctx.setLineDash([10, 8]); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(243,245,250,.75)'; roundRect(ctx, bx, by, bwid, 62, 12); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(243,245,250,.7)'; ctx.textBaseline = 'middle'; ctx.fillText('CODE', bx + 24, by + 32);
+    ctx.font = `800 30px ${MARK}`; ctx.fillStyle = '#f3f5fa'; ctx.fillText(h.code, bx + 24 + lw, by + 32); ctx.textBaseline = 'alphabetic';
   }
   // footer
   ctx.font = `800 24px ${MARK}`; ctx.fillStyle = '#f3f5fa';
