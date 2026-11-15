@@ -139,7 +139,7 @@ export const STARTER = {
     S60('p2', 'BL2 · Deluxe Haircut + Hair Spa', 900, 'him', 'Deluxe promos', 'Save ₱49', { usesProduct: true, mins: 90, kind: 'base', tier: 'deluxe', includes: ['h2'] }),
     S60('p3', 'BL3 · Deluxe Haircut + Dandruff Control', 1000, 'him', 'Deluxe promos', 'Save ₱49', { usesProduct: true, mins: 90, kind: 'base', tier: 'deluxe', includes: ['h3'] }),
     S60('p4', 'BL4 · Deluxe Haircut + L’Oréal Hair Color', 1100, 'him', 'Deluxe promos', 'Save ₱49', { usesProduct: true, mins: 120, kind: 'base', tier: 'deluxe', includes: ['h4'] }),
-    S60('h8', 'Signature Haircut', 299, 'him', 'Regular', 'Any style, shampoo and rinse, hot towel, and grooming with exclusive hair products', { mins: 45, kind: 'base', tier: 'regular' }),
+    S60('h8', 'Signature Haircut', 299, 'him', 'Regular', 'Any style, hot towel, and grooming with exclusive hair products', { mins: 45, kind: 'base', tier: 'regular', perks: ['Shampoo and rinse included'] }),
     S60('h9', 'Regular Haircut', 249, 'him', 'Regular', 'Any style, with grooming using exclusive hair products', { mins: 45, kind: 'base', tier: 'regular' }),
     S60('h2', 'Hair Spa', 550, 'him', 'Add-ons', '', { usesProduct: true, mins: 30, kind: 'extra' }),
     S60('h3', 'Dandruff Control', 650, 'him', 'Add-ons', '', { usesProduct: true, mins: 30, kind: 'extra' }),

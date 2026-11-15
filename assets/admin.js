@@ -1078,6 +1078,7 @@ function serviceModal(s) {
     <div class="fgrid three">${field('For', `<select id="m-vgroup" name="group">${opt('him', 'Him', !c.group || c.group === 'him')}${opt('her', 'Her', c.group === 'her')}${opt('nails', 'Nails', c.group === 'nails')}</select>`, 'm-vgroup')}${field('Price (' + cur() + ')', `<input id="m-vprice" name="price" inputmode="decimal" value="${esc(c.price ?? '')}" required>`, 'm-vprice')}${field('Minutes', `<input id="m-vmins" name="mins" type="number" min="30" step="30" value="${esc(c.mins)}">`, 'm-vmins')}</div>
     <div class="fgrid">${field('Booking type (men)', `<select id="m-vkind" name="kind">${opt('', 'Regular service', !c.kind)}${opt('base', 'Haircut (client picks one)', c.kind === 'base')}${opt('extra', 'Add-on to a haircut', c.kind === 'extra')}</select>`, 'm-vkind')}${field('Haircut level', `<select id="m-vtier" name="tier">${opt('', 'Any barber', !c.tier)}${opt('deluxe', 'Deluxe (senior barbers)', c.tier === 'deluxe')}${opt('regular', 'Regular barbers', c.tier === 'regular')}</select>`, 'm-vtier')}</div>
     ${field('Description', `<input id="m-vdesc" name="desc" value="${esc(c.desc || '')}">`, 'm-vdesc')}
+    ${field('Included tags (optional, separate with commas)', `<input id="m-vperks" name="perks" value="${esc((c.perks || []).join(', '))}" placeholder="e.g. Shampoo and rinse included">`, 'm-vperks')}
     <label class="row small"><input type="checkbox" name="usesProduct" ${c.usesProduct ? 'checked' : ''}> Uses salon products (color, rebond, treatments): staff with a product fee give the shop that amount first</label>
     <label class="row small"><input type="checkbox" name="priceFrom" ${c.priceFrom ? 'checked' : ''}> Show as “from” price (final price depends on hair length)</label>
     <label class="row small"><input type="checkbox" name="active" ${c.active !== false ? 'checked' : ''}> Show on website and at checkout</label>
@@ -1483,7 +1484,7 @@ const FORM = {
     if (!name) return modalErr(f, 'Enter the service name.');
     if (price < 0) return modalErr(f, 'Enter a price.');
     const mins = Math.max(pol().step, Math.round((parseInt(fd.get('mins'), 10) || 60) / pol().step) * pol().step);
-    const data = { name, cat: String(fd.get('cat') || '').trim() || 'Services', group: String(fd.get('group')), price: round2(price), mins, desc: String(fd.get('desc') || '').trim(), usesProduct: fd.has('usesProduct'), kind: String(fd.get('kind') || ''), tier: String(fd.get('tier') || ''), priceFrom: fd.has('priceFrom'), active: fd.has('active') };
+    const data = { name, cat: String(fd.get('cat') || '').trim() || 'Services', group: String(fd.get('group')), price: round2(price), mins, desc: String(fd.get('desc') || '').trim(), perks: String(fd.get('perks') || '').split(',').map(x => x.trim()).filter(Boolean).slice(0, 4), usesProduct: fd.has('usesProduct'), kind: String(fd.get('kind') || ''), tier: String(fd.get('tier') || ''), priceFrom: fd.has('priceFrom'), active: fd.has('active') };
     const list = services().map(s => ({ ...s }));
     if (f.dataset.id) { const k = list.findIndex(s => s.id === f.dataset.id); if (k >= 0) list[k] = { ...list[k], ...data }; } else list.push({ id: newId(), ...data });
     if (await saveInfo({ services: list })) { closeModal(); toast(f.dataset.id ? 'Service updated' : `${name} added`); }
