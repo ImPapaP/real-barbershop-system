@@ -7,7 +7,7 @@ export const DEFAULT_POLICY = {
   deposit: 200,          // pesos, paid online to confirm a booking
   holdMinutes: 15,       // how long a slot is held while the customer pays
   rescheduleHours: 48,   // customers can reschedule up to this many hours before
-  lateMinutes: 20,       // shown to customers: this late = cancelled, deposit kept
+  lateMinutes: 5,        // this late = the slot can go to a walk-in, deposit kept
   leadMinutes: 60,       // earliest booking is this far from now
   bookAheadDays: 30,     // how far ahead customers can book
   step: 60,              // bookings start on the hour; also the slot grid in minutes
@@ -165,7 +165,7 @@ export const firstName = n => String(n || '').trim().split(/\s+/)[0] || 'there';
 export function smsText(kind, b, info) {
   const pol = policyOf(info), when = `${fmtDate(b.date)}, ${fmtTime(b.time)}`, who = b.barberName || 'your barber', shop = shopName(info);
   switch (kind) {
-    case 'confirmed': return `${shop}: You're booked with ${who} on ${when}. P${pol.deposit} deposit received. Code ${b.code}. Arriving ${pol.lateMinutes}+ min late cancels the booking. Details sent to your email.`;
+    case 'confirmed': return `${shop}: You're booked with ${who} on ${when}. P${pol.deposit} deposit received. Code ${b.code}. Arriving ${pol.lateMinutes}+ min late, your slot may go to a walk-in. Details sent to your email.`;
     case 'reminder': return `${shop}: Reminder, your appointment with ${who} is tomorrow, ${when}. Code ${b.code}. Need to change it? Use the link in your email.`;
     case 'soon': return `${shop}: See you at ${fmtTime(b.time)} today with ${who}. Please arrive on time. Code ${b.code}.`;
     case 'rescheduled': return `${shop}: Your booking ${b.code} is moved to ${when} with ${who}.`;
@@ -217,7 +217,7 @@ export function emailContent(kind, b, info, link) {
   const rows = kind === 'rebook' ? [] : kind === 'slot_open' ? [['When', when], ['Barber', b.barberName || 'Any barber']]
     : [['Booking code', b.code], ['When', when], ['Barber', b.barberName || 'Any barber'], ['Services', (b.serviceNames || []).join(', ')]];
   const button = forShopKind(kind) ? 'Open the dashboard' : kind === 'rate' ? 'Rate your visit' : ['rebook', 'slot_open'].includes(kind) ? 'Book now' : 'View or change your booking';
-  const policy = forShop || ['rebook', 'slot_open', 'rate'].includes(kind) ? '' : `<p style="color:#555;font-size:13px">Arriving ${pol.lateMinutes} minutes late or more cancels the booking and the deposit is kept. You can reschedule up to ${pol.rescheduleHours} hours before your appointment.</p>`;
+  const policy = forShop || ['rebook', 'slot_open', 'rate'].includes(kind) ? '' : `<p style="color:#555;font-size:13px">If you're ${pol.lateMinutes} minutes late or more, your slot may go to a walk-in and the deposit is kept. You can reschedule up to ${pol.rescheduleHours} hours before your appointment.</p>`;
   const html = `<div style="font-family:Arial,sans-serif;max-width:520px;color:#111">
 <h2 style="margin:0 0 12px">${esc(shop)}</h2>
 ${lines[kind].map(l => `<p>${esc(l)}</p>`).join('')}

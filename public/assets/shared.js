@@ -2,7 +2,7 @@
 export const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 20, leadMinutes: 60, bookAheadDays: 30, step: 60, maxReschedules: 2, rebookDays: 28, onlineBooking: true, lastBooking: '19:00' };
+export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 5, leadMinutes: 60, bookAheadDays: 30, step: 60, maxReschedules: 2, rebookDays: 28, onlineBooking: true, lastBooking: '19:00' };
 
 export const $ = (s, r = document) => r.querySelector(s);
 export const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -342,7 +342,7 @@ export function defaultFaq(info) {
     { q: 'Can I walk in without a booking?', a: 'Yes, walk-ins are welcome when a chair is free. At the shop, scan the QR code at the front desk to join the queue. Clients with a booking go first at their time.' },
     { q: 'How do I pay the down payment?', a: `Online with GCash, Maya, card or QR Ph${sh.gcashNumber ? `, or send it to our GCash (${sh.gcashNumber}) and upload the screenshot` : ''}. It’s deducted from your bill at the shop.` },
     { q: 'What’s the difference between Deluxe and Regular?', a: `Deluxe haircuts are with our senior barbers${deluxe.length ? ` (${deluxe.join(', ')})` : ''} and include shampoo, hot towel and massage. Regular haircuts are with our junior barbers.` },
-    { q: 'What if I’m running late?', a: `Arriving ${p.lateMinutes} minutes late or more cancels the booking, and the down payment isn’t refunded. Running a little late? Tap “Running late” on your booking page so we know.` },
+    { q: 'What if I’m running late?', a: `Please come on time. If you’re ${p.lateMinutes} minutes late or more, we may give your slot to a walk-in, and the down payment isn’t refunded. Running late? Tap “Running late” on your booking page so we know, and we’ll fit you in at the next free time if we can.` },
     { q: 'Can I reschedule or cancel?', a: `You can reschedule online up to ${p.rescheduleHours} hours before your appointment, using the link in your confirmation. If you cancel, the down payment isn’t refunded.` },
     { q: 'Can I book for someone else too?', a: 'Yes. In “Your details”, add a second person. They can have the same or different services, at the same time with another barber, right after you, or any time you pick. Each person needs the down payment.' },
     { q: 'Do you have promo codes?', a: 'When we run a promo, we post the code on our Facebook and Instagram. Type it in “Have a promo code?” when you book. It comes off your bill at the shop.' }

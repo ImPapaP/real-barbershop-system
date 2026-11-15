@@ -16,8 +16,6 @@
 //   runningLate        booking link -> tell the shop you're running a few minutes late
 //   rateVisit          booking link -> rate the visit after checkout
 //   joinQueue          walk-in QR poster in the shop -> join today's walk-in queue (no deposit)
-//   syncFacebookPhotos every 3 hours -> newest Facebook page photos into the website gallery
-//   syncFacebookNow    dashboard -> the same, right away
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
@@ -290,7 +288,7 @@ function publicView(id, a, info) {
     policy: { deposit: pol.deposit, rescheduleHours: pol.rescheduleHours, lateMinutes: pol.lateMinutes, holdMinutes: pol.holdMinutes },
     payMethod: a.payMethod || 'online', proof: a.proof ? { status: a.proof.status, at: a.proof.at, note: a.proof.note || '' } : null,
     gcash: a.payMethod === 'gcash' ? { number: (info.shop && info.shop.gcashNumber) || '', name: (info.shop && info.shop.gcashName) || '' } : null,
-    promo: a.promo || null, late: a.late || null, rating: a.rating || null, groupOf: a.groupOf || '', source: a.source || 'online'
+    promo: a.promo || null, late: a.late || null, rating: a.rating || null, groupOf: a.groupOf || '', source: a.source || 'online', gaveToWalkin: !!a.gaveToWalkin
   };
 }
 // Live queue on the day: clients still ahead of you with the same barber (or, for walk-ins, in the queue).
@@ -378,9 +376,9 @@ export const joinQueue = onCall(async req => {
 export const runningLate = onCall(async req => {
   const { id, a } = await bookingFromToken(req.data);
   const info = await loadInfo(), pol = policyOf(info), now = Date.now();
-  const mins = Math.max(5, Math.min(pol.lateMinutes ? pol.lateMinutes - 1 : 30, parseInt(req.data && req.data.mins, 10) || 10));
+  const mins = Math.max(5, Math.min(30, parseInt(req.data && req.data.mins, 10) || 10));
   const startAt = a.startAt || startMs(a.date, a.time);
-  if (a.status !== 'booked' || now > startAt + pol.lateMinutes * 60e3 || startAt - now > 3 * 3600e3) throw new HttpsError('failed-precondition', 'You can only tell us this on the day, close to your time.');
+  if (a.status !== 'booked' || now > startAt + 30 * 60e3 || startAt - now > 3 * 3600e3) throw new HttpsError('failed-precondition', 'You can only tell us this on the day, close to your time.');
   await apptRef(id).update({ late: { mins, at: now } });
   return publicView(id, { ...a, late: { mins, at: now } }, info);
 });
@@ -610,34 +608,4 @@ export const syncSlots = onDocumentWritten({ document: 'appointments/{id}', secr
     else if (after.proof && after.proof.status === 'rejected' && !(before.proof && before.proof.status === 'rejected')) await say('proof_rejected');
     else if (was !== 'done' && now === 'done' && !after.rating) await say('rate'); // "How was your cut?"
   }
-});
-
-// =============== Facebook page photos -> website gallery ===============
-// The owner pastes a Page access token in Dashboard → Website → Facebook photos (stored in private/facebook,
-// which only admins and this server can read). Photo links from Facebook expire after a while, so they are
-// refreshed on every run.
-async function pullFacebookPhotos() {
-  const ref = db.doc('private/facebook'), cfg = (await ref.get()).data() || {};
-  if (!cfg.token) return { ok: false, reason: 'not-connected' };
-  const url = `https://graph.facebook.com/v21.0/${encodeURIComponent(cfg.pageId || 'me')}/photos?type=uploaded&fields=images,name,created_time,link&limit=24&access_token=${encodeURIComponent(cfg.token)}`;
-  const r = await fetch(url), j = await r.json().catch(() => ({}));
-  if (!r.ok || j.error) {
-    const msg = (j.error && j.error.message) || `Facebook answered ${r.status}`;
-    await ref.set({ lastError: msg, lastTry: Date.now() }, { merge: true });
-    throw new HttpsError('failed-precondition', `Facebook: ${msg}`);
-  }
-  const photos = (j.data || []).map(p => {
-    const imgs = (p.images || []).slice().sort((a, b) => b.width - a.width), img = imgs.find(i => i.width <= 1080) || imgs[0];
-    return img && { id: `fb_${p.id}`, url: img.source, caption: String(p.name || '').split('\n')[0].slice(0, 120), at: Date.parse(p.created_time) || 0, link: p.link || '' };
-  }).filter(Boolean);
-  await db.doc('public/info').set({ fbPhotos: photos, fbSyncedAt: Date.now() }, { merge: true });
-  await ref.set({ lastOk: Date.now(), lastError: '', count: photos.length }, { merge: true });
-  return { ok: true, count: photos.length };
-}
-export const syncFacebookPhotos = onSchedule({ schedule: 'every 3 hours', timeZone: 'Asia/Manila' }, async () => {
-  await pullFacebookPhotos().catch(e => logger.error('Facebook photo sync failed', e.message));
-});
-export const syncFacebookNow = onCall(async req => {
-  if (!(await isAdmin(req))) throw new HttpsError('permission-denied', 'Only the shop can do this.');
-  return pullFacebookPhotos();
 });

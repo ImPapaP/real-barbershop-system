@@ -79,10 +79,10 @@ function todayCards(b) {
   const Q = b.queue, pol = b.policy, mins = Math.round((b.startAt - Date.now()) / 60000);
   const queue = Q ? `<section class="panel live"><div class="panel-h"><h2>${Q.ahead ? `${Q.ahead} ahead of you` : 'You’re next'}</h2><span class="live-dot">Live</span></div>
     <p class="muted small">${Q.ahead ? `${esc(b.barberName)} has ${Q.ahead} client${Q.ahead === 1 ? '' : 's'} before you today${Q.inChair ? ', one in the chair now' : ''}.` : `${esc(b.barberName)} has no one else booked before you.`} Updated ${new Date(Q.at).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })}.</p></section>` : '';
-  const canLate = mins <= 180 && mins > -pol.lateMinutes;
-  const late = !canLate ? '' : b.late ? `<section class="panel"><div class="panel-h"><h2>We know you’re running late</h2></div><p class="muted small">You told us about ${b.late.mins} minutes. Please be here before ${fmtTime(addMin(b.time, pol.lateMinutes))}: ${pol.lateMinutes} minutes late or more cancels the booking.</p></section>`
-    : `<section class="panel"><div class="panel-h"><h2>Running late?</h2></div><p class="muted small" style="margin-bottom:10px">Let us know so we can plan. ${pol.lateMinutes} minutes late or more cancels the booking.</p>
-      <div class="row">${[5, 10, 15].filter(n => n < pol.lateMinutes).map(n => `<button type="button" class="btn" data-act="late" data-v="${n}" ${S.late.busy ? 'disabled' : ''}>${n} min late</button>`).join('')}</div>${S.late.err ? `<p class="err">${esc(S.late.err)}</p>` : ''}</section>`;
+  const canLate = mins <= 180 && mins > -30;
+  const late = !canLate ? '' : b.late ? `<section class="panel"><div class="panel-h"><h2>We know you’re running late</h2></div><p class="muted small">You told us about ${b.late.mins} minutes. If you’re ${pol.lateMinutes} minutes late or more, your slot may go to a walk-in. We’ll fit you in at the next free time if we can.</p></section>`
+    : `<section class="panel"><div class="panel-h"><h2>Running late?</h2></div><p class="muted small" style="margin-bottom:10px">Let us know so we can plan. If you’re ${pol.lateMinutes} minutes late or more, your slot may go to a walk-in.</p>
+      <div class="row">${[5, 10, 15].map(n => `<button type="button" class="btn" data-act="late" data-v="${n}" ${S.late.busy ? 'disabled' : ''}>${n} min late</button>`).join('')}</div>${S.late.err ? `<p class="err">${esc(S.late.err)}</p>` : ''}</section>`;
   return queue + late;
 }
 const addMin = (t, n) => { const [h, mm] = t.split(':').map(Number), x = h * 60 + mm + n; return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`; };
@@ -130,7 +130,7 @@ function body() {
         ${b.checkoutUrl ? `<a class="btn btn-accent btn-lg" href="${esc(b.checkoutUrl)}">Pay ${m(pol.deposit * ppl)} deposit${ppl > 1 ? 's' : ''}</a>` : ''}</div>${details(b)}${guestsCard(b)}`;
     }
     case 'booked': return `<div class="status-hero">${S.justPaid ? '<span class="success-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>' : chipHTML('good', '✓', 'Confirmed')}<h1>${S.justPaid ? 'You’re booked!' : 'See you ' + fmtDate(b.date)}</h1>
-        <p class="muted">${fmtTime(b.time)} with ${esc(b.barberName || 'your barber')}. Please arrive on time: ${pol.lateMinutes} minutes late or more cancels the booking and the deposit is kept.</p></div>
+        <p class="muted">${fmtTime(b.time)} with ${esc(b.barberName || 'your barber')}. Please arrive on time: if you’re ${pol.lateMinutes} minutes late or more, your slot may go to a walk-in and the deposit is kept.</p></div>
         ${todayCards(b)}
         ${details(b)}
         ${guestsCard(b)}
@@ -143,7 +143,7 @@ function body() {
     case 'cancelled': return `<div class="status-hero">${chipHTML('mute', '–', 'Cancelled')}<h1>${b.proof && b.proof.status === 'rejected' ? 'We couldn’t confirm your payment' : 'Booking cancelled'}</h1><p class="muted">${b.proof && b.proof.status === 'rejected' ? `We couldn’t match your GCash screenshot to a payment, so this booking for ${fmtDate(b.date)}, ${fmtTime(b.time)} isn’t confirmed. If you did pay, call <b>${esc(info().shop.phone)}</b> and we’ll fix it.` : `This booking for ${fmtDate(b.date)}, ${fmtTime(b.time)} is cancelled.`}</p><a class="btn btn-accent" href="${esc(b.rebook || './#book')}">Make a new booking</a></div>${details(b)}`;
     case 'needs_attention': return `<div class="status-hero">${chipHTML('warn', '!', 'We’ll call you')}<h1>We got your deposit</h1><p class="muted">Someone confirmed the same time while you were paying. The shop will call you to pick a new time or refund your deposit. You can also call <b>${esc(info().shop.phone)}</b>.</p></div>${details(b)}`;
     case 'done': return `<div class="status-hero">${chipHTML('good', '✓', 'Completed')}<h1>Thanks for visiting</h1><p class="muted">See you on your next cut.</p><a class="btn btn-accent" href="${esc(b.rebook || './#book')}">Book the same again</a><p class="muted small" style="margin-top:8px">Same service and barber, you just pick the day.</p></div>${rateCard(b)}${cutCard(b)}${loyaltyCard(b)}`;
-    case 'noshow': return `<div class="status-hero">${chipHTML('bad', '✕', 'Missed')}<h1>We missed you</h1><p class="muted">This appointment was marked as missed and the deposit was kept, per the booking policy.</p><a class="btn btn-accent" href="${esc(b.rebook || './#book')}">Book again</a></div>`;
+    case 'noshow': return `<div class="status-hero">${chipHTML('bad', '✕', 'Missed')}<h1>We missed you</h1><p class="muted">${b.gaveToWalkin ? `You were more than ${b.policy.lateMinutes} minutes late, so your slot went to a walk-in and the deposit was kept, per the booking policy. Still on your way? Call <b>${esc(info().shop.phone)}</b> and we’ll fit you in if we can.` : 'This appointment was marked as missed and the deposit was kept, per the booking policy.'}</p><a class="btn btn-accent" href="${esc(b.rebook || './#book')}">Book again</a></div>`;
     default: return `<div class="status-hero">${chipHTML('info', '◷', 'In progress')}<h1>${fmtDate(b.date)}, ${fmtTime(b.time)}</h1></div>${details(b)}`;
   }
 }
@@ -214,7 +214,7 @@ const ACT = {
   },
   ics() {
     const b = S.b, shop = info().shop;
-    const data = icsFor({ title: `${shop.name}: ${b.services.map(s => s.name).join(', ')}`, date: b.date, time: b.time, mins: b.mins, location: shop.address, description: `With ${b.barberName}. Booking code ${b.code}. Arrive on time; ${b.policy.lateMinutes}+ minutes late cancels the booking.` });
+    const data = icsFor({ title: `${shop.name}: ${b.services.map(s => s.name).join(', ')}`, date: b.date, time: b.time, mins: b.mins, location: shop.address, description: `With ${b.barberName}. Booking code ${b.code}. Arrive on time: ${b.policy.lateMinutes}+ minutes late and your slot may go to a walk-in.` });
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type: 'text/calendar' })); a.download = `booking-${b.code}.ics`;
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   },
