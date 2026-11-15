@@ -1090,3 +1090,7 @@ body:has(#mbar[hidden]) .msgr{bottom:max(18px,env(safe-area-inset-bottom,0px))}
 .dark-sec .btn-ghost:hover{background:rgba(255,255,255,.12);color:var(--hero-ink);border-color:rgba(255,255,255,.5)}
 canvas.happen-img{width:100%;height:auto;aspect-ratio:1200/630;background:#0b0b0d}
 .banner-prev{width:100%;height:auto;aspect-ratio:1200/630;border-radius:10px;background:#0b0b0d;display:block}
+.perks{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 2px}
+.perk{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;padding:3px 9px 3px 7px;border-radius:999px;background:color-mix(in srgb,var(--good) 13%,transparent);color:var(--good-ink)}
+.perk .ic{width:13px;height:13px}
+.pickcard .perks{grid-column:1/-1;margin:2px 0 0}

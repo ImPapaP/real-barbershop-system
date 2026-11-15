@@ -304,7 +304,7 @@ function menuBoard(group) {
     if (items.every(s => s.kind === 'extra')) return `<p class="tier-note">${ic('check')} Add to any Deluxe or Regular haircut</p>`;
     return '';
   };
-  const item = s => `<li><div class="mi"><span class="mi-name">${esc(s.name)}</span><span class="leader" aria-hidden="true"></span><span class="mi-price">${esc(priceLabel(s, cur()))}</span></div>
+  const item = s => `<li><div class="mi"><span class="mi-name">${esc(s.name)}</span><span class="leader" aria-hidden="true"></span><span class="mi-price">${esc(priceLabel(s, cur()))}</span></div>${perks(s)}
     <div class="mi-row"><p class="mi-meta"><span class="mi-time">${ic('clock')}${dur(s.mins)}</span>${s.desc ? ' · ' + esc(s.desc) : ''}</p><button class="mi-book" data-act="bookSvc" data-id="${esc(s.id)}">Book ${ic('arrow')}</button></div></li>`;
   const group_ = c => `<div class="mgroup"><h3>${esc(c)}</h3>${note(c)}<ul>${inCat(c).map(item).join('')}</ul></div>`;
   const bundle = s => { const m = /^([A-Z]{1,4}\d+)\s*·\s*(.+)$/.exec(s.name) || [, '', s.name];
@@ -591,8 +591,10 @@ function nextFreeCard() {
   return `<button type="button" class="next-free${same ? ' on' : ''}" data-act="bkNext" data-date="${n.date}" data-time="${n.time}">
     <span class="nf-ic" aria-hidden="true">${ic('clock')}</span><span><small>Next available</small><b>${esc(dayWord(n.date))}, ${fmtTime(n.time)}${who ? ` with ${esc(who)}` : ''}</b></span><span class="nf-go">${same ? 'Selected' : 'Book this'}</span></button>`;
 }
+// "Included" tags on a service (e.g. Signature Haircut: shampoo and rinse included)
+const perks = s => (s.perks || []).length ? `<span class="perks">${s.perks.map(p => `<span class="perk">${ic('check')}${esc(p)}</span>`).join('')}</span>` : '';
 function svcCard(s, act = 'bkSvc', extra = {}) {
-  return `<button type="button" class="pickcard${extra.radio ? ' radio' : ''}" data-act="${act}" data-id="${esc(s.id)}" aria-pressed="${!!S.bk.svc[s.id]}" ${extra.disabled ? 'disabled' : ''}><span class="tick" aria-hidden="true">${ic('check')}</span><b>${esc(s.name)}</b><small>${extra.note ? esc(extra.note) : `${dur(s.mins)}${s.desc && s.kind === 'base' && /^Save/.test(s.desc) ? ' · ' + esc(s.desc) : ''}`}</small><span class="p">${esc(priceLabel(s, cur()))}</span></button>`;
+  return `<button type="button" class="pickcard${extra.radio ? ' radio' : ''}" data-act="${act}" data-id="${esc(s.id)}" aria-pressed="${!!S.bk.svc[s.id]}" ${extra.disabled ? 'disabled' : ''}><span class="tick" aria-hidden="true">${ic('check')}</span><b>${esc(s.name)}</b><small>${extra.note ? esc(extra.note) : `${dur(s.mins)}${s.desc && s.kind === 'base' && /^Save/.test(s.desc) ? ' · ' + esc(s.desc) : ''}`}</small>${perks(s)}<span class="p">${esc(priceLabel(s, cur()))}</span></button>`;
 }
 // Men's step 1: one haircut (Deluxe or Regular), then optional add-ons.
 // Men's step 1: A) Deluxe or Regular, B) one haircut from that level only, C) optional add-ons.
