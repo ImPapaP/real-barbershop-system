@@ -3,6 +3,7 @@
 import { db, demo, demoBar, resetDemo, login, logout, resetPassword, onAuth, uploadImage, deleteImage, call } from './fb.js';
 import { buildXlsx, xlDate, xlTime, colName } from './xlsx.js';
 import { qrSvg } from './qr.js';
+import { drawBanner, bannerBlob } from './banner.js';
 import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, publicBarber, DEFAULT_POLICY, startMs, canServe, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE, defaultFaq, cleanCode } from './shared.js';
 
 // ---------- constants ----------
@@ -786,13 +787,29 @@ function vSetup() {
 }
 
 const siteUrl = u => /^(https?:|data:|blob:|\/)/.test(u || '') ? u : '../' + u; // site images are relative to the website, one folder up
+// ---------- Facebook photos ----------
+function fbPanel() {
+  const I = info(), fb = I.fbPhotos || [], c = S.fbCfg;
+  if (c === undefined) { S.fbCfg = null; db.doc('private/facebook').get().then(d => { S.fbCfg = d.exists ? d.data() : {}; schedule(); }).catch(() => { S.fbCfg = {}; schedule(); }); }
+  const cfg = S.fbCfg || {}, on = !!cfg.token;
+  return `<section class="panel"><div class="panel-h"><h2>Facebook photos</h2>${on ? chip(cfg.lastError ? { kind: 'bad', icon: '!', label: 'Sync problem' } : { kind: 'good', icon: '✓', label: 'Connected' }) : chip({ kind: 'mute', icon: '–', label: 'Not connected' })}</div>
+    <p class="muted small" style="margin-bottom:10px">When connected, the newest photos from your Facebook page appear first in “Fresh from the chair”, refreshed every 3 hours. Your own uploads below stay too.</p>
+    ${on ? `<div class="totals" style="font-size:14px;margin-bottom:10px"><div><span>Last synced</span><b>${cfg.lastOk ? ago(cfg.lastOk) : 'Not yet'}</b></div><div><span>Photos pulled</span><b>${fb.length}</b></div>${cfg.lastError ? `<div><span>Problem</span><span class="err">${esc(cfg.lastError)}</span></div>` : ''}</div>` : ''}
+    ${fb.length ? `<div class="fb-strip">${fb.slice(0, 8).map(g => `<img src="${esc(g.url)}" alt="${esc(g.caption || 'Facebook photo')}" loading="lazy">`).join('')}</div>` : ''}
+    <form class="stack" data-form="fb">
+      <div class="fgrid">${field('Page access token', `<input id="fb-token" name="token" type="password" autocomplete="off" placeholder="${on ? 'Saved. Paste a new one to replace it' : 'Paste it from Meta for Developers'}">`, 'fb-token')}${field('Page ID (optional)', `<input id="fb-page" name="pageId" value="${esc(cfg.pageId || '')}" placeholder="Leave empty to use the token’s page">`, 'fb-page')}</div>
+      <label class="row small"><input type="checkbox" name="show" ${I.fbShow !== false ? 'checked' : ''}> Show Facebook photos on the website</label>
+      <div class="row"><button class="btn btn-primary btn-sm" type="submit">Save</button>${on ? '<button type="button" class="btn btn-sm" data-act="fbSync">Sync now</button>' : ''}</div>
+      <p class="muted small">How to get the token: see “Facebook photos” in your Go-Live Checklist. It takes about 10 minutes, once.</p>
+    </form></section>`;
+}
 // ---------- promos & events (shown on the website) ----------
 function happenPanel() {
   const list = info().happenings || [], t = today();
   return `<section class="panel"><div class="panel-h"><h2>Promos &amp; events</h2><button class="btn btn-sm btn-primary" data-act="newHappen">+ Add</button></div>
     <p class="muted small" style="margin-bottom:10px">Shown on the website under “Promos &amp; events”. They hide by themselves after the end date. Link a promo code so customers can book with it in one tap.</p>
     ${list.length ? `<ul class="list">${list.map((h, i) => { const over = h.end && h.end < t; return `<li><div class="grow"><b>${esc(h.title)}</b> ${chip(h.kind === 'event' ? { kind: 'info', icon: '◷', label: 'Event' } : { kind: 'good', icon: '%', label: 'Promo' })}${over ? ' ' + chip({ kind: 'mute', icon: '–', label: 'Ended' }) : ''}${h.sample ? ' <span class="muted small">(sample)</span>' : ''}
-      <div class="sub">${h.start && h.end ? `${fmtDate(h.start)} – ${fmtDate(h.end)}` : h.start ? `From ${fmtDate(h.start)}` : h.end ? `Until ${fmtDate(h.end)}` : 'No end date'}${h.code ? ` · Code ${esc(h.code)}` : ''}</div></div><div class="acts"><button class="btn btn-sm btn-ghost" data-act="editHappen" data-i="${i}">Edit</button></div></li>`; }).join('')}</ul>`
+      <div class="sub">${h.start && h.end ? `${fmtDate(h.start)} – ${fmtDate(h.end)}` : h.start ? `From ${fmtDate(h.start)}` : h.end ? `Until ${fmtDate(h.end)}` : 'No end date'}${h.code ? ` · Code ${esc(h.code)}` : ''}</div></div><div class="acts"><button class="btn btn-sm btn-ghost" data-act="dlBanner" data-i="${i}" ${h.image ? 'disabled title="Uses your own picture"' : ''}>Download banner</button><button class="btn btn-sm btn-ghost" data-act="editHappen" data-i="${i}">Edit</button></div></li>`; }).join('')}</ul>`
       : '<p class="empty">Nothing posted yet. Add a holiday promo, a new service or an event.</p>'}</section>`;
 }
 function happenModal(i) {
@@ -803,9 +820,11 @@ function happenModal(i) {
     ${field('Title', `<input id="hp-title" name="title" value="${esc(h.title || '')}" maxlength="80" required placeholder="e.g. Back-to-school cuts ₱199">`, 'hp-title')}
     ${field('Details', `<textarea id="hp-text" name="text" rows="3" maxlength="300" placeholder="What it is, who it’s for, any rules">${esc(h.text || '')}</textarea>`, 'hp-text')}
     <div class="fgrid">${field('Starts (optional)', `<input id="hp-start" name="start" type="date" value="${esc(h.start || '')}">`, 'hp-start')}${field('Ends (optional)', `<input id="hp-end" name="end" type="date" value="${esc(h.end || '')}">`, 'hp-end')}</div>
+    ${field('Big text on the banner (optional)', `<input id="hp-badge" name="badge" value="${esc(h.badge || '')}" maxlength="14" placeholder="e.g. ₱50 OFF, 10% OFF, FREE">`, 'hp-badge')}
     ${field('Promo code (optional)', `<select id="hp-code" name="code">${opt('', 'None', !h.code)}${S.promos.filter(p => p.active !== false).map(p => opt(p.id, `${p.id} · ${p.kind === 'amount' ? money(p.value) : p.value + '%'} off`, h.code === p.id)).join('')}</select>`, 'hp-code')}
     <div class="fgrid">${field('Or a link (optional)', `<input id="hp-link" name="link" value="${esc(h.link || '')}" placeholder="e.g. your Facebook post">`, 'hp-link')}${field('Link button text', `<input id="hp-ll" name="linkLabel" value="${esc(h.linkLabel || '')}" placeholder="Learn more">`, 'hp-ll')}</div>
     <div class="field"><label>Picture (optional)</label><div class="row" id="hp-img">${S.happenImg ? `<img class="cut-thumb" src="${esc(siteUrl(S.happenImg))}" alt="">` : ''}<label class="btn btn-sm upload">${S.happenImg ? 'Replace' : 'Add picture'}<input type="file" accept="image/*" data-upload="happen" hidden></label>${S.happenImg ? '<button type="button" class="btn btn-sm btn-ghost" data-act="happenImgOff">Remove</button>' : ''}</div></div>
+    <div class="field"><label>Banner</label><canvas id="hp-banner" class="banner-prev" width="1200" height="630" aria-label="Banner preview"></canvas><p class="muted small">Made for you from the details above. With your own picture added, the picture shows instead.</p></div>
     <p class="err" id="m-err" hidden></p>${mFoot(i >= 0 ? 'Save' : 'Post it', i >= 0 ? `<button type="button" class="btn btn-danger" data-act="delHappen" data-i="${i}" style="margin-right:auto">Delete</button>` : '')}</form>`);
 }
 
@@ -874,6 +893,7 @@ function vWebsite() {
       : '<p class="empty">No photos yet. Add finished cuts, color work and the shop itself. They’re resized automatically.</p>'}
     ${gal.length ? '<p class="muted small" style="margin-top:10px">Tag the style and barber: customers can filter the gallery by style, and tap “Book this look” to book that barber.</p>' : ''}</section>
   ${happenPanel()}
+  ${fbPanel()}
   ${ratingsPanel()}
   ${faqPanel()}
   <div class="grid2e">
@@ -921,6 +941,19 @@ function reviewModal(r) {
     <div class="fgrid three">${field('Customer name', `<input id="rv-name" name="name" value="${esc(c.name || '')}" required>`, 'rv-name')}${field('Stars', `<select id="rv-r" name="rating">${[5, 4, 3, 2, 1].map(n => opt(n, `${n} ★`, +c.rating === n)).join('')}</select>`, 'rv-r')}${field('Where it was posted', `<select id="rv-s" name="source">${['Google', 'Facebook', 'In person'].map(x => opt(x, x, x === c.source)).join('')}</select>`, 'rv-s')}</div>
     ${field('Review', `<textarea id="rv-t" name="text" rows="4" maxlength="400" required>${esc(c.text || '')}</textarea>`, 'rv-t')}
     <p class="err" id="m-err" hidden></p>${mFoot(r ? 'Save changes' : 'Add review', r ? `<button type="button" class="btn btn-danger" data-act="delReview" data-id="${esc(c.id)}" style="margin-right:auto">Delete</button>` : '')}</form>`);
+}
+// Promo/event banner preview: redrawn as the owner types
+function happenPreview() {
+  const f = document.querySelector('form[data-form=happen]'), c = document.getElementById('hp-banner'); if (!f || !c) return;
+  const fd = new FormData(f), g = k => String(fd.get(k) || '').trim();
+  drawBanner(c, { kind: g('kind') || 'promo', title: g('title') || 'Your title here', text: g('text'), start: g('start'), end: g('end'), code: g('code'), badge: g('badge') }, info().shop);
+}
+document.addEventListener('input', e => { if (e.target.closest('form[data-form=happen]')) { if (e.target.id === 'hp-code') autoBadge(); happenPreview(); } });
+document.addEventListener('change', e => { if (e.target.closest('form[data-form=happen]')) { if (e.target.id === 'hp-code') autoBadge(); happenPreview(); } });
+// Picking a promo code fills the banner's big text with its discount
+function autoBadge() {
+  const code = document.getElementById('hp-code'), b = document.getElementById('hp-badge'); if (!code || !b || (b.value && !b.dataset.auto)) return;
+  const p = S.promos.find(x => x.id === code.value); b.value = p ? (p.kind === 'amount' ? `₱${p.value} OFF` : `${p.value}% OFF`) : ''; b.dataset.auto = '1';
 }
 async function handleUpload(input) {
   const kind = input.dataset.upload, files = [...input.files]; if (!files.length) return;
@@ -1163,9 +1196,21 @@ const ACT = {
   },
   async syncRatings() { await syncPublicBarbers(); toast('Barber ratings updated on the website'); },
   newFaq() { faqModal(-1); },
-  newHappen() { happenModal(-1); },
-  editHappen(el) { happenModal(+el.dataset.i); },
+  newHappen() { happenModal(-1); setTimeout(happenPreview, 30); },
+  editHappen(el) { happenModal(+el.dataset.i); setTimeout(happenPreview, 30); },
   async delHappen(el) { if (!armed(el)) return; const list = [...(info().happenings || [])]; list.splice(+el.dataset.i, 1); if (await saveInfo({ happenings: list })) { closeModal(); toast('Removed from the website'); } },
+  async fbSync(el) {
+    el.disabled = true; el.innerHTML = '<span class="spinner"></span> Syncing…';
+    try { const r = await call('syncFacebookNow', {}); toast(r.ok ? `${r.count} photos pulled from Facebook` : 'Save the Page access token first.'); }
+    catch (e) { toast(e.message || 'Couldn’t reach Facebook.', 'bad'); }
+    S.fbCfg = undefined; render();
+  },
+  async dlBanner(el) {
+    const h = (info().happenings || [])[+el.dataset.i]; if (!h) return;
+    const blob = await bannerBlob(h, info().shop), a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = `${(h.title || 'promo').replace(/[^\w]+/g, '-').toLowerCase()}-banner.png`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000); toast('Banner downloaded. Post it on Facebook or Instagram.');
+  },
   happenImgOff() { S.happenImg = ''; const w = document.getElementById('hp-img'); if (w) w.innerHTML = '<label class="btn btn-sm upload">Add picture<input type="file" accept="image/*" data-upload="happen" hidden></label>'; },
 
   editFaq(el) { faqModal(+el.dataset.i); },
@@ -1319,13 +1364,20 @@ async function syncPublicBarbers() {
   }) });
 }
 const FORM = {
+  async fb(f) {
+    const fd = new FormData(f), token = String(fd.get('token') || '').trim(), pageId = String(fd.get('pageId') || '').trim();
+    const show = fd.has('show'); let ok = true;
+    if (token || pageId !== ((S.fbCfg || {}).pageId || '')) ok = await put('private', 'facebook', { ...(S.fbCfg || {}), ...(token ? { token } : {}), pageId, lastError: '' });
+    if (ok && show !== (info().fbShow !== false)) ok = await saveInfo({ fbShow: show });
+    if (ok) { S.fbCfg = undefined; toast(token ? 'Token saved. Tap “Sync now” to pull photos.' : 'Saved'); render(); }
+  },
   async happen(f) {
     const fd = new FormData(f), i = +f.dataset.i, g = k => String(fd.get(k) || '').trim();
     if (!g('title')) return modalErr(f, 'Give it a title.');
     if (g('start') && g('end') && g('end') < g('start')) return modalErr(f, 'The end date is before the start date.');
     const link = g('link'); if (link && !/^https?:\/\//.test(link)) return modalErr(f, 'The link should start with https://');
     const list = [...(info().happenings || [])], old = i >= 0 ? list[i] : {};
-    const h = { id: old.id || newId(), kind: g('kind') === 'event' ? 'event' : 'promo', title: g('title'), text: g('text'), start: g('start'), end: g('end'), code: g('code'), link, linkLabel: g('linkLabel'), image: S.happenImg || '' };
+    const h = { id: old.id || newId(), kind: g('kind') === 'event' ? 'event' : 'promo', title: g('title'), text: g('text'), start: g('start'), end: g('end'), code: g('code'), badge: g('badge'), link, linkLabel: g('linkLabel'), image: S.happenImg || '' };
     if (i >= 0) list[i] = h; else list.unshift(h);
     if (await saveInfo({ happenings: list })) { closeModal(); toast(i >= 0 ? 'Saved' : 'Posted on the website'); }
   },

@@ -1088,3 +1088,5 @@ body:has(#mbar[hidden]) .msgr{bottom:max(18px,env(safe-area-inset-bottom,0px))}
 
 .dark-sec .btn-accent{background:#f3f5fa;color:#0b0d12;border-color:#f3f5fa}
 .dark-sec .btn-ghost:hover{background:rgba(255,255,255,.12);color:var(--hero-ink);border-color:rgba(255,255,255,.5)}
+canvas.happen-img{width:100%;height:auto;aspect-ratio:1200/630;background:#0b0b0d}
+.banner-prev{width:100%;height:auto;aspect-ratio:1200/630;border-radius:10px;background:#0b0b0d;display:block}

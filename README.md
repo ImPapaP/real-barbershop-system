@@ -227,8 +227,8 @@ Each barber earns a **guaranteed daily pay** for every day they work, plus a **c
 
 ## Promos, events and the gallery
 
-- **Promos & events:** Website → **Promos & events**. Post a promo or an event with optional dates, a picture, a promo code (customers tap “Book with this code” and it's applied for them) or a link. Ended ones hide themselves. The section only shows when something is posted.
-- **Fresh from the chair:** Website → **Fresh from the chair** → **+ Add photos**. New photos go first; the first 12 show on the website. Tag the style and barber on each.
+- **Promos & events:** Website → **Promos & events**. Post a promo or an event with optional dates, a picture, a promo code (customers tap “Book with this code” and it's applied for them) or a link. Ended ones hide themselves. The section only shows when something is posted. Each one gets a **generated banner** in the shop's look (brick wall, lit badge, the discount in big slab letters, the code); add your own picture to use that instead. **Download banner** saves it as a 1200 × 630 PNG for Facebook or Instagram.
+- **Fresh from the chair:** add photos yourself in Website → **Fresh from the chair** (newest first), and/or connect the Facebook page in Website → **Facebook photos**: paste a Page access token once and the page's newest photos lead the gallery, refreshed every 3 hours. Steps to get the token are in the Go-Live Checklist.
 - **Services menu:** haircut tiers side by side, bundles as cards (a swipe row on phones), add-ons and other groups as two- or three-column lists on computers.
 
 ## Payments, the day of the visit, and after

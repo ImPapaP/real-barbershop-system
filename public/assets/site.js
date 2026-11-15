@@ -6,6 +6,7 @@ import {
   availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph, brand, LOGO_LG, dur, isServiceStaff, toMin, fromMin, addDays, blockTimes, slotId, messengerLink, defaultFaq
 } from './shared.js';
 import { L, lang, setLang } from './i18n.js';
+import { paintBanners } from './banner.js';
 
 const S = {
   info: null, loaded: false, slow: false, menuTab: 'him', painted: false,
@@ -32,8 +33,9 @@ const hasTiers = g => svcs().some(s => (s.group || 'him') === g && s.kind === 'b
 const tierNames = t => (info().barbers || []).filter(b => (b.tiers || []).includes(t)).map(b => b.name);
 const listNames = a => a.length > 1 ? a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1] : (a[0] || '');
 const barber = id => (info().barbers || []).find(b => b.id === id);
-// Fresh from the chair: the photos the shop adds in the dashboard, newest first
-const galAll = () => (info().gallery || []).filter(g => g.url);
+// Fresh from the chair: newest photos from the Facebook page (synced every 3 hours, when connected) + the shop's own uploads
+const galAll = () => { const I = info(), fb = I.fbShow === false ? [] : (I.fbPhotos || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0));
+  const own = (I.gallery || []).filter(g => g.url), seen = new Set(); return [...fb, ...own].filter(g => g.url && !seen.has(g.url) && seen.add(g.url)); };
 // Promos & events the shop posts in the dashboard; ended ones hide themselves
 const happenings = () => { const t = phNow().date; return (info().happenings || []).filter(h => h.title && (!h.end || h.end >= t) && (h.kind === 'event' || !h.start || h.start <= t))
   .sort((a, b) => (a.kind === 'promo' ? 0 : 1) - (b.kind === 'promo' ? 0 : 1) || String(a.start || a.end || '').localeCompare(String(b.start || b.end || ''))); };
@@ -69,6 +71,7 @@ function keepFocus(fn) {
 }
 function renderAll() {
   keepFocus(() => { $('#app').innerHTML = L(page()); });
+  paintBanners(happenings(), info().shop);
   document.documentElement.lang = lang() === 'tl' ? 'fil' : 'en';
   S.painted = true;
   revealOnScroll();
@@ -220,7 +223,7 @@ function happenCard(h) {
   const cta = h.code ? `<button type="button" class="btn btn-accent btn-sm" data-act="usePromo" data-code="${esc(h.code)}">Book with this code ${ic('arrow')}</button>`
     : h.link ? `<a class="btn btn-sm" href="${esc(h.link)}" target="_blank" rel="noopener">${esc(h.linkLabel || 'Learn more')} ${ic('arrow')}</a>`
     : `<button type="button" class="btn btn-sm" data-act="scroll" data-to="book">Book now ${ic('arrow')}</button>`;
-  return `<article class="happen reveal ${h.kind === 'event' ? 'ev' : 'pr'}">${h.image ? `<img class="happen-img" src="${esc(h.image)}" alt="" loading="lazy">` : ''}
+  return `<article class="happen reveal ${h.kind === 'event' ? 'ev' : 'pr'}">${h.image ? `<img class="happen-img" src="${esc(h.image)}" alt="" loading="lazy">` : `<canvas class="happen-img" data-banner="${esc(h.id)}" width="1200" height="630" role="img" aria-label="${esc(h.title)}"></canvas>`}
     <div class="happen-b"><div class="happen-top"><span class="happen-kind">${h.kind === 'event' ? ic('calendar') + ' Event' : '% Promo'}</span>${when ? `<span class="happen-when">${esc(when)}</span>` : ''}${h.sample && demo ? '<span class="happen-when">Sample</span>' : ''}</div>
     <h3>${esc(h.title)}</h3>${h.text ? `<p>${esc(h.text)}</p>` : ''}
     ${h.code ? `<div class="happen-code"><span>Code</span><b>${esc(h.code)}</b><button type="button" class="link-btn" data-act="copyCode" data-code="${esc(h.code)}">Copy</button></div>` : ''}
