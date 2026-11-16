@@ -129,6 +129,8 @@ export const createBooking = onCall({ secrets: [PAYMONGO_SECRET_KEY] }, async re
     if (!vg.ok) throw new HttpsError('invalid-argument', `Second person: ${vg.error}`);
   }
 
+  // Same client adding a service of another kind (e.g. nails with a haircut): one person, one down payment
+  const sameClient = !!(vg && req.data.guest && req.data.guest.sameClient);
   // Pay online (PayMongo checkout) or send to the shop's GCash and upload a screenshot for the shop to check.
   const manual = req.data && req.data.payMethod === 'gcash' && !!(info.shop && info.shop.gcashNumber) && pol.manualGcash !== false;
   // Promo code: checked here again (the website check is only a preview). Comes off the bill at the shop.
@@ -175,11 +177,11 @@ export const createBooking = onCall({ secrets: [PAYMONGO_SECRET_KEY] }, async re
       const gb = vg.barbers[gpick];
       grefs[gpick].forEach((r, i) => tx.set(r, { barberId: gb, date: vg.date, time: vg.times[i], state: 'held', holdUntil, bookingId: gid }));
       tx.set(apptRef(gid), {
-        code: bookingCode(), token: newToken(), source: 'online', status: 'pending_payment', notify: false, groupOf: id, bookedBy: v.name, payMethod: manual ? 'gcash' : 'online',
+        code: bookingCode(), token: newToken(), source: 'online', status: 'pending_payment', notify: false, groupOf: id, bookedBy: v.name, payMethod: manual ? 'gcash' : 'online', ...(sameClient ? { addOnOf: id } : {}),
         name: vg.name, phone: v.phone, email: v.email, notes: v.notes, customerId: '',
         serviceIds: vg.serviceIds, mins: vg.mins, date: vg.date, time: vg.time, startAt: vg.at, barberId: gb,
         blocks: grefs[gpick].map(r => r.id), holdUntil,
-        deposit: { amount: pol.deposit, status: 'unpaid' }, reminders: {}, reschedules: 0, createdAt: now
+        deposit: { amount: sameClient ? 0 : pol.deposit, status: 'unpaid' }, reminders: {}, reschedules: 0, createdAt: now
       });
     }
     if (promo) tx.set(db.doc(`promos/${promo.code}`), { uses: FieldValue.increment(1) }, { merge: true });
@@ -187,7 +189,7 @@ export const createBooking = onCall({ secrets: [PAYMONGO_SECRET_KEY] }, async re
   });
   if (result.taken === 'main') throw new HttpsError('already-exists', 'Sorry, that time was just taken. Please pick another time.');
   if (result.taken === 'guest') throw new HttpsError('already-exists', 'Sorry, the second person’s slot was just taken. Pick another option for them.');
-  const barberId = result.barberId, people = vg ? 2 : 1;
+  const barberId = result.barberId, people = vg && !sameClient ? 2 : 1; // an add-on for the same client is covered by one down payment
   if (manual) return { id, token, checkoutUrl: `booking.html?id=${encodeURIComponent(id)}&t=${encodeURIComponent(token)}` };
 
   try {
