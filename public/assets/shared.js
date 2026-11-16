@@ -167,7 +167,7 @@ export const STARTER = {
   barbers: []
 };
 export const STARTER_STAFF = [
-  { id: 'lyndon', name: 'Lyndon', role: 'barber', title: 'Senior barber', specialty: 'Classic cuts and beard sculpting', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 1 },
+  { id: 'lyndon', photo: 'assets/staff/lyndon.jpg', name: 'Lyndon', role: 'barber', title: 'Senior barber', specialty: 'Classic cuts and beard sculpting', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 1 },
   { id: 'rod', photo: 'assets/staff/rod.jpg', name: 'Roderick', role: 'barber', title: 'Senior barber', specialty: 'Hair art and designs', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 2 },
   { id: 'reymart', photo: 'assets/staff/reymart.jpg', name: 'Reymart', role: 'barber', title: 'Senior barber', specialty: 'Fades and deluxe cuts', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 3 },
   { id: 'angelo', photo: 'assets/staff/angelo.jpg', name: 'Angelo', role: 'barber', title: 'Senior barber', specialty: 'Haircuts and hair spa', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 4 },
