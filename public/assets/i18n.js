@@ -20,6 +20,7 @@ const TL = {
   'Book a chair': 'Mag-book ng upuan', 'Days in': 'Mga araw na pasok', 'Recent work': 'Mga gawa niya', 'Close': 'Isara',
   'The shop picks your barber': 'Ang shop ang pipili ng barber mo', 'Any available (the shop picks)': 'Kahit sino (ang shop ang pipili)',
   'A chair is free now': 'May bakanteng upuan ngayon', 'Right now:': 'Ngayon:',
+  'No down payment': 'Walang down payment', 'Confirm booking': 'Kumpirmahin ang booking',
   // birthday
   'Get a free haircut on your birthday': 'Libreng gupit sa birthday mo', '(optional)': '(opsyonal)', 'Month': 'Buwan', 'Day': 'Araw',
   'Tell us your birthday (just the month and day) and your haircut is on us when it comes around.': 'Sabihin ang birthday mo (buwan at araw lang) at libre ang gupit mo pagdating nito.',

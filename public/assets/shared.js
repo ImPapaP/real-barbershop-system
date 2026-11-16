@@ -186,18 +186,18 @@ export const STARTER_STAFF = [
   { id: 'rod', photo: 'assets/staff/rod.jpg', name: 'Roderick', role: 'barber', title: 'Senior barber', specialty: 'Hair art and designs', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 2 },
   { id: 'reymart', photo: 'assets/staff/reymart.jpg', name: 'Reymart', role: 'barber', title: 'Senior barber', specialty: 'Fades and deluxe cuts', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 3 },
   { id: 'angelo', photo: 'assets/staff/angelo.jpg', name: 'Angelo', role: 'barber', title: 'Senior barber', specialty: 'Haircuts and hair spa', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 4 },
-  { id: 'ed', photo: 'assets/staff/ed.jpg', name: 'Joe Ed', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 5 },
-  { id: 'renz', photo: 'assets/staff/renz.jpg', name: 'Renz', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 6 },
-  { id: 'jay', photo: 'assets/staff/jay.jpg', name: 'Jay', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 7 },
-  { id: 'vince', photo: 'assets/staff/vince.jpg', name: 'Vince', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 8 },
-  { id: 'mac', photo: 'assets/staff/mac.jpg', name: 'Mac', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 9 },
+  { id: 'ed', photo: 'assets/staff/ed.jpg', name: 'Joe Ed', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, noDeposit: true, chair: 5 },
+  { id: 'renz', photo: 'assets/staff/renz.jpg', name: 'Renz', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, noDeposit: true, chair: 6 },
+  { id: 'jay', photo: 'assets/staff/jay.jpg', name: 'Jay', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, noDeposit: true, chair: 7 },
+  { id: 'vince', photo: 'assets/staff/vince.jpg', name: 'Vince', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, noDeposit: true, chair: 8 },
+  { id: 'mac', photo: 'assets/staff/mac.jpg', name: 'Mac', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, noDeposit: true, chair: 9 },
   { id: 'dave', photo: 'assets/staff/dave.jpg', name: 'Dave', role: 'stylist', title: 'Stylist', specialty: 'Color, rebond and styling', groups: ['her'], rate: 55, dailyPay: 1000, productFee: { threshold: 1500, low: 50, high: 100 }, chair: 10 },
   { id: 'luz', photo: 'assets/staff/luz.jpg', name: 'Luz', role: 'nails', title: 'Nail technician', specialty: 'Nail care', groups: ['nails'], rate: 60, dailyPay: 0, chair: 11 },
   { id: 'liza', photo: 'assets/staff/liza.jpg', name: 'Liza', role: 'maintenance', title: 'Maintenance', specialty: '', groups: [], rate: 0, dailyPay: 0 },
   { id: 'alex', name: 'Alex', role: 'reception', title: 'Receptionist', specialty: '', groups: [], rate: 0, dailyPay: 700 },
   { id: 'airyl', name: 'Airyl', role: 'reception', title: 'Receptionist', specialty: '', groups: [], rate: 0, dailyPay: 700 },
 ].map(b => ({ ...b, phone: '', days: [0, 1, 2, 3, 4, 5, 6], active: true }));
-export const publicBarber = b => ({ id: b.id, name: b.name, role: b.role || 'barber', title: b.title || '', specialty: b.specialty || '', groups: b.groups || ['him'], tiers: b.tiers || [], days: b.days || [], chair: b.chair || '', photo: b.photo || '', bio: b.bio || '', rating: b.rating || 0, ratingCount: b.ratingCount || 0 });
+export const publicBarber = b => ({ id: b.id, name: b.name, noDeposit: !!b.noDeposit, role: b.role || 'barber', title: b.title || '', specialty: b.specialty || '', groups: b.groups || ['him'], tiers: b.tiers || [], days: b.days || [], chair: b.chair || '', photo: b.photo || '', bio: b.bio || '', rating: b.rating || 0, ratingCount: b.ratingCount || 0 });
 
 // Shrinks a photo in the browser before upload: longest side `max` px, JPEG. Returns a Blob.
 export async function resizeImage(file, max = 1600, quality = 0.82) {
@@ -471,4 +471,13 @@ export function accountView({ phone, customers = [], appts = [], sales = [], inf
     loyalty: every ? { every, visits: paid.length, nextFree: (paid.length + 1) % every === 0 } : null,
     again: last ? { svc: (last.lines || []).filter(l => l.kind === 'service').map(l => l.ref).filter(id => (info.services || []).some(s => s.id === id && s.active !== false)), barber: (info.barbers || []).some(b => b.id === last.barberId) ? last.barberId : '' } : null
   };
+}
+
+// Down payment for one person's booking: none when their barber is set to "no down payment" (junior barbers),
+// or, for "any available", when every barber who could take it is. Same rule as the server.
+export function depositFor(info, barberId, services) {
+  const pol = policyOf(info), bs = info.barbers || [];
+  if (barberId) { const b = bs.find(x => x.id === barberId); return b && b.noDeposit ? 0 : pol.deposit; }
+  const can = bs.filter(b => b.active !== false && canServe(b, services || []));
+  return can.length && can.every(b => b.noDeposit) ? 0 : pol.deposit;
 }

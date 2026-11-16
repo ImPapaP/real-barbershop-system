@@ -230,3 +230,13 @@ test('client account shows bookings, paid visits with receipts, loyalty and book
   const q = queueItems([{ date: '2026-11-16', status: 'waiting', time: '09:40', serviceIds: ['h1'], name: 'Secret' }, { date: '2026-11-16', status: 'done', time: '09:00' }], info, '2026-11-16');
   assert.equal(q.items.length, 1); assert.equal(q.items[0].m, 60); assert.equal(JSON.stringify(q).includes('Secret'), false);
 });
+
+test('no down payment for junior barbers, including "any available" when only juniors can do it', async () => {
+  const { depositFor } = await import('../src/core.js');
+  const info = { policy: { deposit: 200 }, barbers: [{ id: 'rey', tiers: ['deluxe'], groups: ['him'] }, { id: 'jay', tiers: ['regular'], groups: ['him'], noDeposit: true }] };
+  const regular = [{ id: 'h9', group: 'him', tier: 'regular' }], deluxe = [{ id: 'h1', group: 'him', tier: 'deluxe' }];
+  assert.equal(depositFor(info, 'jay', regular), 0);
+  assert.equal(depositFor(info, 'rey', deluxe), 200);
+  assert.equal(depositFor(info, '', regular), 0);
+  assert.equal(depositFor(info, '', deluxe), 200);
+});

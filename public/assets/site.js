@@ -3,7 +3,7 @@
 import { db, call, demo, demoBar, resetDemo } from './fb.js';
 import {
   $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, DAYS_LONG, MONTHS, sum, phNow, dowOf, policyOf, openStatus,
-  availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph, brand, LOGO_LG, dur, isServiceStaff, toMin, fromMin, addDays, blockTimes, slotId, messengerLink, defaultFaq, monthGrid, shiftMonth, BACK_IC, bdaySelects, cleanBday, BDAY_TITLE, BDAY_HINT, queueEstimate, resizeImage
+  availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph, brand, LOGO_LG, dur, isServiceStaff, toMin, fromMin, addDays, blockTimes, slotId, messengerLink, defaultFaq, monthGrid, shiftMonth, BACK_IC, bdaySelects, cleanBday, BDAY_TITLE, BDAY_HINT, queueEstimate, resizeImage, depositFor
 } from './shared.js';
 import { L, lang, setLang } from './i18n.js';
 import { paintBanners } from './banner.js';
@@ -346,7 +346,8 @@ function walkinBox() {
 
 function policyCards() {
   const p = policyOf(info()), sh = info().shop, on = p.onlineBooking;
-  const pay = on ? 'Down payment to confirm your booking, paid online by GCash, Maya or card. It’s deducted from your bill.'
+  const juniors = (info().barbers || []).some(b => b.noDeposit && b.active !== false) ? ' No down payment when you book a junior barber.' : '';
+  const pay = on ? `Down payment to confirm your booking, paid online by GCash, Maya or card. It’s deducted from your bill.${juniors}`
     : `Down payment to confirm your booking${sh.gcashNumber ? `, sent by GCash to ${esc(sh.gcashNumber)}${sh.gcashName ? ` (${esc(sh.gcashName)})` : ''}` : ''}. Send the proof on our Facebook page. No down payment, no booking. It’s deducted from your bill.`;
   return `<div class="policy">
     <div class="reveal">${ic('check', 'pic')}<b>${m(p.deposit)}</b><span>${pay}</span></div>
@@ -589,7 +590,7 @@ function booker() {
   const dates = bookableDates(I).map(d => ({ ...d, off: !d.closed && b.barber && !(barber(b.barber)?.days || []).includes(dowOf(d.date)) }));
   const times = b.date && picked.length ? availableTimes(I, { services: picked, date: b.date, barberId: b.barber }, S.slots) : [];
   const total = sum(picked, s => s.price), from = picked.some(s => s.priceFrom), mins = sum(picked, s => s.mins);
-  const gpk = st.when ? guestPick(times) : null, people = gpk && !b.guest.self ? 2 : 1;
+  const gpk = st.when ? guestPick(times) : null, people = gpk && !b.guest.self ? 2 : 1, due = dueFor(gpk);
   const labels = ['Services', staffWord(b.group, true), 'Date & time', 'Details'];
   const done = [st.picked, st.picked && b.date, st.when, st.details];
   return `<div class="progress" aria-label="Booking progress"><div class="bar-track"><i style="width:${st.n * 25}%"></i></div><ol>${labels.map((l, i) => `<li class="${done[i] ? 'done' : ''}"><span>${done[i] ? ic('check') : i + 1}</span>${l}</li>`).join('')}</ol></div>
@@ -604,7 +605,7 @@ function booker() {
     <section class="step" id="st-2" ${st.picked ? '' : 'aria-disabled="true"'}><div class="step-h"><span class="n ${st.picked ? 'ok' : ''}">${st.picked ? ic('check') : 2}</span><h3>Choose your ${staffWord(b.group)}</h3></div>
       <div class="pick barbers-pick">
         <button type="button" class="pickcard" data-act="bkBarber" data-id="" aria-pressed="${!b.barber}" ${st.picked ? '' : 'disabled'}><span class="av any">${ic('scissors')}</span><b>Any available</b><small>The shop picks your barber</small></button>
-        ${bars.map(x => `<button type="button" class="pickcard" data-act="bkBarber" data-id="${esc(x.id)}" aria-pressed="${b.barber === x.id}" ${st.picked ? '' : 'disabled'}><span class="av">${x.photo ? `<img src="${esc(x.photo)}" alt="">` : esc(initials(x.name))}</span><b>${esc(x.name)}</b><small>${esc(x.title || '')}</small></button>`).join('')}
+        ${bars.map(x => `<button type="button" class="pickcard" data-act="bkBarber" data-id="${esc(x.id)}" aria-pressed="${b.barber === x.id}" ${st.picked ? '' : 'disabled'}><span class="av">${x.photo ? `<img src="${esc(x.photo)}" alt="">` : esc(initials(x.name))}</span><b>${esc(x.name)}</b><small>${esc(x.title || '')}</small>${x.noDeposit ? '<small class="nodep">No down payment</small>' : ''}</button>`).join('')}
       </div>
     </section>
     <section class="step" id="st-3" ${st.picked ? '' : 'aria-disabled="true"'}><div class="step-h"><span class="n ${st.when ? 'ok' : ''}">${st.when ? ic('check') : 3}</span><h3>Pick a date and time</h3>${st.when ? `<span class="done">${fmtDate(b.date)}, ${fmtTime(b.time)}</span>` : ''}</div>
@@ -623,7 +624,7 @@ function booker() {
       ${refBox('bk')}
       <div class="field"><label for="bk-notes">Notes (optional)</label><textarea id="bk-notes" data-bind="bk.notes" rows="2" placeholder="Style, reference photo on Facebook, anything we should know">${esc(b.notes)}</textarea></div>
       <label class="consent remember"><input type="checkbox" id="bk-remember" data-bind="bk.remember" ${b.remember ? 'checked' : ''}><span>Remember my details on this phone for next time</span></label>
-      <label class="consent${showErr('consent') && !b.consent ? ' has-err' : ''}"><input type="checkbox" id="bk-consent" data-bind="bk.consent" data-touch="consent" data-live required aria-required="true" ${b.consent ? 'checked' : ''}><span>I have read and agree to the <a href="terms.html" target="_blank" rel="noopener">Booking Terms</a> and the <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>: the ${m(pol.deposit)} down payment isn’t refunded if I cancel or arrive ${pol.lateMinutes}+ minutes late, and ${esc(I.shop.name)} may use my name, number and email to manage this booking and send reminders. <span class="req" aria-hidden="true">*</span></span></label>
+      <label class="consent${showErr('consent') && !b.consent ? ' has-err' : ''}"><input type="checkbox" id="bk-consent" data-bind="bk.consent" data-touch="consent" data-live required aria-required="true" ${b.consent ? 'checked' : ''}><span>I have read and agree to the <a href="terms.html" target="_blank" rel="noopener">Booking Terms</a> and the <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>: ${due ? `the ${m(pol.deposit)} down payment isn’t refunded if I cancel or arrive ${pol.lateMinutes}+ minutes late` : `I’ll cancel or move my booking if I can’t come, and my slot may go to a walk-in if I’m ${pol.lateMinutes}+ minutes late`}, and ${esc(I.shop.name)} may use my name, number and email to manage this booking and send reminders. <span class="req" aria-hidden="true">*</span></span></label>
       ${showErr('consent') && !b.consent ? '<p class="field-err">Please agree to the Booking Terms and Privacy Policy.</p>' : ''}
     </section>
   </div>
@@ -633,13 +634,13 @@ function booker() {
       <div class="sumrow"><span>${staffWord(b.group, true)}</span><b>${b.barber ? esc(barber(b.barber)?.name || '') : 'Any available (the shop picks)'}</b></div>
       <div class="sumrow"><span>When</span><b>${st.when ? `${fmtDate(b.date)}<br>${fmtTime(b.time)}` : '—'}</b></div>
       ${gpk ? `<div class="sumrow"><span>${b.guest.self ? 'Also' : 'Second person'}</span><b>${b.guest.self ? guestSvcs().map(x => esc(x.name)).join('<br>') : esc(b.guest.name.trim() || 'Guest') + (b.guest.own ? `<br>${guestSvcs().map(x => esc(x.name)).join('<br>')}` : '')}<br>${gpk.date && gpk.date !== b.date ? `${fmtDate(gpk.date)}, ` : ''}${fmtTime(gpk.time)}${guestWho(gpk)}</b></div>` : ''}
-      ${bill(picked, gpk, people)}
-      ${payChoice()}
-      <p class="muted small">${S.pay === 'gcash' ? 'Your slot is held for 30 minutes while you send the payment and upload the screenshot.' : `Your slot is held for ${pol.holdMinutes} minutes while you pay.`}</p>
+      ${bill(picked, gpk, people, due)}
+      ${due ? payChoice() : ''}
+      <p class="muted small">${!due ? 'No down payment needed with this barber. You pay at the shop after your cut.' : S.pay === 'gcash' ? 'Your slot is held for 30 minutes while you send the payment and upload the screenshot.' : `Your slot is held for ${pol.holdMinutes} minutes while you pay.`}</p>
       ${S.err ? `<p class="err shake" role="alert">${esc(S.err)}</p>` : ''}
       ${st.when && !st.details ? `<p class="muted small" id="pay-missing">${S.tried ? `Still needed: ${esc(Object.keys(detailErrors()).map(k => ({ name: 'your name', phone: 'mobile number', email: 'email', consent: 'agreeing to the terms', gname: 'second person’s name', gsvc: 'their services', gmode: 'when they come' }[k])).join(', '))}.` : 'Fill in your details to continue.'}</p>` : ''}
-      <button type="button" class="btn btn-accent btn-lg pay-btn" data-act="pay" ${st.when && !S.busy ? '' : 'disabled'} ${st.details ? '' : 'aria-describedby="pay-missing"'}>${S.busy ? '<span class="spinner"></span> Securing your slot…' : S.pay === 'gcash' ? `Book and pay ${m(pol.deposit * people)} by GCash ${ic('arrow')}` : `Pay ${m(pol.deposit * people)} deposit${people > 1 ? 's' : ''} ${ic('arrow')}`}</button>
-      <p class="paynote">${ic('check')} ${S.pay === 'gcash' ? `Next: send ${m(pol.deposit * people)} to our GCash and upload the screenshot. We confirm it as soon as we see it.` : 'Secure payment by PayMongo: GCash, Maya, card or QR Ph'}</p>
+      <button type="button" class="btn btn-accent btn-lg pay-btn" data-act="pay" ${st.when && !S.busy ? '' : 'disabled'} ${st.details ? '' : 'aria-describedby="pay-missing"'}>${S.busy ? '<span class="spinner"></span> Securing your slot…' : !due ? `Confirm booking ${ic('arrow')}` : S.pay === 'gcash' ? `Book and pay ${m(due)} by GCash ${ic('arrow')}` : `Pay ${m(due)} deposit${due > pol.deposit ? 's' : ''} ${ic('arrow')}`}</button>
+      <p class="paynote">${ic('check')} ${!due ? 'Confirmed right away. We send your booking link by email.' : S.pay === 'gcash' ? `Next: send ${m(due)} to our GCash and upload the screenshot. We confirm it as soon as we see it.` : 'Secure payment by PayMongo: GCash, Maya, card or QR Ph'}</p>
     </div>
   </aside></div>`;
 }
@@ -649,12 +650,19 @@ function promoOff(total) {
   const v = parseFloat(String(p.label).replace(/[^\d.]/g, '')) || 0;
   return Math.min(total, /%/.test(p.label) ? Math.floor(total * v / 100) : v);
 }
-function bill(picked, gpk, people) {
+// Down payment due now: none for junior barbers. An add-on for the same client rides on the main payment.
+function dueFor(gpk) {
+  const I = info(), b = S.bk, main = depositFor(I, b.barber, chosen());
+  if (!gpk) return main;
+  const g = depositFor(I, gpk.barberId || '', guestSvcs());
+  return main + (b.guest.self ? (main ? 0 : g) : g);
+}
+function bill(picked, gpk, people, due = dueFor(gpk)) {
   const pol = policyOf(info()), gs = gpk ? guestSvcs() : [], all = [...picked, ...gs];
-  const svcTotal = sum(all, x => x.price), from = all.some(x => x.priceFrom), off = promoOff(svcTotal), dep = pol.deposit * people;
+  const svcTotal = sum(all, x => x.price), from = all.some(x => x.priceFrom), off = promoOff(svcTotal), dep = due;
   const prodList = (S.bk.prods || '').split('; ').filter(Boolean).map(n => products().find(x => x.name === n)).filter(Boolean), total = svcTotal + sum(prodList, p => p.price);
   const line = (l, r, cls = '') => `<div class="bill-row ${cls}"><span>${l}</span><b>${r}</b></div>`;
-  if (!picked.length) return `<div class="bill"><p class="muted small">Pick a service to see the price breakdown.</p></div><div class="due"><span>Down payment now</span><b>${m(dep)}</b></div>`;
+  if (!picked.length) return `<div class="bill"><p class="muted small">Pick a service to see the price breakdown.</p></div><div class="due"><span>Down payment now</span><b>${dep ? m(dep) : 'None'}</b></div>`;
   return `<div class="bill" aria-label="Price breakdown"><p class="bill-h">Price breakdown</p>
     ${gpk ? `<p class="bill-sub">${esc(S.bk.name.trim().split(' ')[0] || 'You')}</p>` : ''}
     ${picked.map(x => line(esc(x.name), esc(priceLabel(x, cur())))).join('')}
@@ -663,7 +671,7 @@ function bill(picked, gpk, people) {
     ${prodList.length ? `<p class="bill-sub">Set aside for you (pay at the shop)</p>${prodList.map(p => line(esc(p.name), p.price ? m(p.price) : 'price at the shop')).join('')}` : ''}
     ${line('Estimated total', (from ? 'from ' : '') + m(total - off), 'tot')}</div>
     ${promoBox()}
-    <div class="due"><span>Down payment now${people > 1 ? ' (2 people)' : ''}</span><b>${m(dep)}</b></div>
+    <div class="due"><span>Down payment now${dep > policyOf(info()).deposit ? ' (2 people)' : ''}</span><b>${dep ? m(dep) : 'None, pay at the shop'}</b></div>
     ${line('Pay at the shop', (from ? 'from ' : '') + m(Math.max(0, total - off - dep)), 'rest')}
     ${from ? '<p class="muted small">Prices marked “from” depend on hair length and products. Your barber or stylist confirms the price first.</p>' : ''}`;
 }

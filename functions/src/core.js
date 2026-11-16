@@ -166,7 +166,7 @@ export const firstName = n => String(n || '').trim().split(/\s+/)[0] || 'there';
 export function smsText(kind, b, info) {
   const pol = policyOf(info), when = `${fmtDate(b.date)}, ${fmtTime(b.time)}`, who = b.barberName || 'your barber', shop = shopName(info);
   switch (kind) {
-    case 'confirmed': return `${shop}: You're booked with ${who} on ${when}. P${pol.deposit} deposit received. Code ${b.code}. Arriving ${pol.lateMinutes}+ min late, your slot may go to a walk-in. Details sent to your email.`;
+    case 'confirmed': return `${shop}: You're booked with ${who} on ${when}. ${b.depositNone ? 'No down payment needed, pay at the shop.' : `P${pol.deposit} deposit received.`} Code ${b.code}. Arriving ${pol.lateMinutes}+ min late, your slot may go to a walk-in. Details sent to your email.`;
     case 'reminder': return `${shop}: Reminder, your appointment with ${who} is tomorrow, ${when}. Code ${b.code}. Need to change it? Use the link in your email.`;
     case 'soon': return `${shop}: See you at ${fmtTime(b.time)} today with ${who}. Please arrive on time. Code ${b.code}.`;
     case 'rescheduled': return `${shop}: Your booking ${b.code} is moved to ${when} with ${who}.`;
@@ -200,7 +200,7 @@ export function emailContent(kind, b, info, link) {
     shop_proof: `GCash screenshot to check: ${b.name}, ${when}`
   };
   const lines = {
-    confirmed: [`Hi ${b.name}, you're booked.`, `We received your ₱${pol.deposit} deposit${b.depositMethod ? ' via ' + b.depositMethod : ''}. It goes toward your bill.`],
+    confirmed: [`Hi ${b.name}, you're booked.`, b.depositNone ? 'No down payment needed. You pay the full price at the shop.' : `We received your ₱${pol.deposit} deposit${b.depositMethod ? ' via ' + b.depositMethod : ''}. It goes toward your bill.`],
     reminder: [`Hi ${b.name}, this is a reminder of your appointment tomorrow.`],
     rescheduled: [`Hi ${b.name}, your booking has a new time.`],
     cancelled: [`Hi ${b.name}, your booking is cancelled.`, `The ₱${pol.deposit} deposit isn't refunded for cancellations.`],
@@ -338,4 +338,13 @@ export function accountView({ phone, customers = [], appts = [], sales = [], inf
     loyalty: every ? { every, visits: paid.length, nextFree: (paid.length + 1) % every === 0 } : null,
     again: last ? { svc: (last.lines || []).filter(l => l.kind === 'service').map(l => l.ref).filter(id => (info.services || []).some(s => s.id === id && s.active !== false)), barber: (info.barbers || []).some(b => b.id === last.barberId) ? last.barberId : '' } : null
   };
+}
+
+// Down payment for one person's booking: none when their barber is set to "no down payment" (junior barbers),
+// or, for "any available", when every barber who could take it is. Same rule as the website.
+export function depositFor(info, barberId, services) {
+  const pol = policyOf(info), bs = info.barbers || [];
+  if (barberId) { const b = bs.find(x => x.id === barberId); return b && b.noDeposit ? 0 : pol.deposit; }
+  const can = bs.filter(b => b.active !== false && canServe(b, services || []));
+  return can.length && can.every(b => b.noDeposit) ? 0 : pol.deposit;
 }

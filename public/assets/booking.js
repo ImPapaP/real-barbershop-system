@@ -9,7 +9,7 @@ const ID = q.get('id') || '', TOKEN = q.get('t') || '';
 const S = {
   b: null, info: null, err: '', loading: true, rc: null, rcFor: '', ref: { busy: false, preview: '', err: '' }, polls: 0, mode: 'view', busy: false,
   rs: { date: '', time: '', barber: '' }, slots: {}, slotsDate: '', slotsLoaded: false, unsub: null,
-  justPaid: q.get('paid') === '1', paymentCancelled: q.get('cancelled') === '1',
+  justPaid: q.get('paid') === '1' || q.get('booked') === '1', paymentCancelled: q.get('cancelled') === '1',
   proof: { file: null, preview: '', ref: '', err: '', busy: false }, late: { busy: false, err: '' }, rate: { stars: 0, text: '', busy: false, err: '' }
 };
 const info = () => S.info || STARTER;
@@ -31,7 +31,7 @@ function details(b) {
       <div><span class="muted">When</span><b>${fmtDate(b.date, true)}, ${fmtTime(b.time)}</b></div>
       <div><span class="muted">${b.services.some(s => /hair and makeup|balayage|rebond/i.test(s.name)) ? 'Stylist' : 'Barber'}</span><b>${esc(b.barberName || 'Any available · the shop will assign')}</b></div>
       <div><span class="muted">Services</span><b style="text-align:right">${b.services.map(s => `${esc(s.name)} · ${esc(priceLabel(s, info().shop.currency || '₱'))}`).join('<br>')}</b></div>
-      <div><span class="muted">Deposit</span><b>${b.deposit.status === 'paid' ? `${m(b.deposit.amount)} paid${b.deposit.method ? ' via ' + esc(methodName(b.deposit.method)) : ''}` : b.deposit.status === 'kept' ? `${m(b.deposit.amount)} kept` : b.deposit.status === 'refunded' ? 'Refunded' : b.proof && b.proof.status === 'review' ? 'GCash screenshot sent · checking' : 'Not paid'}</b></div>
+      <div><span class="muted">Deposit</span><b>${b.deposit.status === 'paid' ? `${m(b.deposit.amount)} paid${b.deposit.method ? ' via ' + esc(methodName(b.deposit.method)) : ''}` : b.deposit.status === 'kept' ? `${m(b.deposit.amount)} kept` : b.deposit.status === 'refunded' ? 'Refunded' : b.deposit.status === 'none' ? 'None needed · pay at the shop' : b.proof && b.proof.status === 'review' ? 'GCash screenshot sent · checking' : 'Not paid'}</b></div>
     </div>
     ${b.promo ? `<div class="tc-body totals" style="font-family:var(--f-body);font-size:15px;padding-top:0"><div><span class="muted">Promo ${esc(b.promo.code)}</span><b>−${m(b.promo.off)} at the shop</b></div></div>` : ''}
     ${b.deposit.status === 'paid' ? `<div class="tc-cut" aria-hidden="true"></div><div class="tc-body totals" style="font-family:var(--f-body)"><div><span>Pay at the shop</span><b style="font:800 26px/1 var(--f-display)">${from ? 'from ' : ''}${m(Math.max(0, total - (b.promo ? b.promo.off : 0) - (b.deposit.amount || 0)))}</b></div></div>` : ''}
@@ -149,7 +149,7 @@ function body() {
         ${b.checkoutUrl ? `<a class="btn btn-accent btn-lg" href="${esc(b.checkoutUrl)}">Pay ${m(pol.deposit * ppl)} deposit${ppl > 1 ? 's' : ''}</a>` : ''}</div>${details(b)}${guestsCard(b)}`;
     }
     case 'booked': return `<div class="status-hero">${S.justPaid ? '<span class="success-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>' : chipHTML('good', '✓', 'Confirmed')}<h1>${S.justPaid ? 'You’re booked!' : 'See you ' + fmtDate(b.date)}</h1>
-        <p class="muted">${fmtTime(b.time)} with ${esc(b.barberName || 'your barber')}. Please arrive on time: if you’re ${pol.lateMinutes} minutes late or more, your slot may go to a walk-in and the deposit is kept.</p></div>
+        <p class="muted">${fmtTime(b.time)} with ${esc(b.barberName || 'your barber')}. Please arrive on time: if you’re ${pol.lateMinutes} minutes late or more, your slot may go to a walk-in${b.deposit && b.deposit.status === 'none' ? '' : ' and the deposit is kept'}.</p></div>
         ${todayCards(b)}
         ${refCard(b)}
         ${details(b)}
