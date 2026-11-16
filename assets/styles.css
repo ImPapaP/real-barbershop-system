@@ -1295,3 +1295,18 @@ input[data-cust][aria-expanded="true"]{background-image:url("data:image/svg+xml,
 @media (max-width:380px){.head-in .wordmark{font-size:16px;gap:7px}.head-in .wordmark .logo-mark{width:32px;height:32px}}
 
 .pickcard .nodep{color:var(--good);font-weight:700}
+
+/* product quantity on the website */
+.prod-qty{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.prod-added{display:inline-flex;align-items:center;gap:4px;font-weight:700;font-size:13px;color:var(--good)}
+.prod-added .ic{width:16px;height:16px}
+.stepper{display:inline-flex;align-items:center;border:1px solid var(--line-2);border-radius:999px;overflow:hidden}
+.stepper button{width:38px;height:36px;border:0;background:none;color:var(--ink);font-size:18px;cursor:pointer}
+.stepper button:hover:not(:disabled){background:var(--accent-soft)}
+.stepper button:disabled{opacity:.35;cursor:default}
+.stepper b{min-width:26px;text-align:center;font-variant-numeric:tabular-nums}
+.prod-qty{flex-direction:column;align-items:stretch;gap:6px}
+.prod-qty .stepper{display:flex;width:100%}
+.prod-qty .stepper button{flex:1;min-width:0}
+.prod-qty .prod-added{justify-content:center}
+.prod-b{min-width:0}
