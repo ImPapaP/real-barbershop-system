@@ -28,6 +28,8 @@ const m = n => money(n, cur());
 const svcs = () => (info().services || []).filter(s => s.active !== false);
 const chosen = () => svcs().filter(s => S.bk.svc[s.id]);
 // Menu and booking tabs: For him, For her, and Nails once nail services are on the menu
+// What to call the person doing the service
+const staffWord = (g, cap) => { const w = g === 'her' ? 'stylist' : g === 'nails' ? 'nail technician' : 'barber'; return cap ? w[0].toUpperCase() + w.slice(1) : w; };
 const groupTabs = () => [['him', 'For him'], ['her', 'For her'], ['nails', 'Nails']].filter(([k]) => k !== 'nails' || svcs().some(x => x.group === 'nails'));
 const hasTiers = g => svcs().some(s => (s.group || 'him') === g && s.kind === 'base');
 const tierNames = t => (info().barbers || []).filter(b => (b.tiers || []).includes(t)).map(b => b.name);
@@ -281,7 +283,7 @@ function walkinBox() {
   const q = S.q, I = info(), t = phNow(), inToday = (I.barbers || []).filter(b => (b.days || []).includes(t.dow));
   if (q.done) return `<div class="walkin done-wl">${ic('check')}<div><p class="eyebrow">Walk-in queue</p><h3>You’re number ${esc(q.done.queueNo)}</h3><p class="muted">We’ll call your name in order. Keep this page open to see how many are ahead of you.</p>
     <a class="btn btn-accent" href="booking.html?id=${encodeURIComponent(q.done.id)}&t=${encodeURIComponent(q.done.token)}">See my place in line ${ic('arrow')}</a></div></div>`;
-  const picks = [['deluxe', 'Deluxe haircut'], ['regular', 'Regular haircut'], ['her', 'For her'], ['other', 'Not sure yet']].filter(([k]) => k === 'other' || (k === 'her' ? svcs().some(x => x.group === 'her') : svcs().some(x => x.tier === k)));
+  const picks = [['deluxe', 'Deluxe haircut'], ['regular', 'Regular haircut'], ['her', 'For her'], ['nails', 'Nails'], ['other', 'Not sure yet']].filter(([k]) => k === 'other' || (k === 'her' || k === 'nails' ? svcs().some(x => x.group === k) : svcs().some(x => x.tier === k)));
   return `<div class="walkin"><div class="walkin-h"><p class="eyebrow">At the shop now?</p><h2 class="sec-title" style="font-size:clamp(26px,4vw,36px)">Join the walk-in queue</h2><p class="muted">No down payment. We call names in order, and clients with a booking go first at their time.</p></div>
     <div class="walkin-f">
       <div class="fgrid"><div class="field"><label for="q-name">Your name <span class="req" aria-hidden="true">*</span></label><input id="q-name" data-bind="q.name" value="${esc(q.name)}" autocomplete="name" required></div>
@@ -371,7 +373,7 @@ const guestValid = () => { const l = guestSvcs(); return l.length > 0 && !comboE
 function guestOptions(times) {
   const b = S.bk, pol = policyOf(info()), mins = sum(chosen(), x => x.mins), t = times.find(x => x.time === b.time);
   if (!t || !guestValid()) return [];
-  const gs = guestSvcs(), out = [], who = gs[0] && gs[0].group === 'her' ? 'stylist' : 'barber';
+  const gs = guestSvcs(), out = [], who = staffWord(gs[0] && gs[0].group);
   const gt = availableTimes(info(), { services: gs, date: b.date, barberId: '' }, S.slots).find(x => x.time === b.time);
   const mainPick = b.barber || t.barbers[0];
   const others = gt ? gt.barbers.filter(id => id !== mainPick) : [];
@@ -404,7 +406,7 @@ function guestWhen() {
   const b = S.bk, g = b.guest, gs = guestSvcs(), date = g.date || b.date;
   const bars = (info().barbers || []).filter(x => isServiceStaff(x) && x.active !== false && canServe(x, gs));
   const dates = bookableDates(info());
-  const times = guestTimes(), who = gs[0] && gs[0].group === 'her' ? 'stylist' : 'barber';
+  const times = guestTimes(), who = staffWord(gs[0] && gs[0].group);
   return `<div class="guest-when">
     <p class="bf-label">Their ${who}</p><div class="bf-row"><button type="button" class="bf-chip" data-act="guestBarber" data-id="" aria-pressed="${!g.barber}"><span class="av any">${ic('scissors')}</span><span>Any</span></button>${bars.map(x => `<button type="button" class="bf-chip" data-act="guestBarber" data-id="${esc(x.id)}" aria-pressed="${g.barber === x.id}">${avatarOf(x)}<span>${esc(x.name)}</span></button>`).join('')}</div>
     <p class="bf-label">Day</p>${monthGrid({ dates: dates.map(d => ({ ...d, off: !!(g.barber && !((barber(g.barber) || {}).days || []).includes(dowOf(d.date))) })), selected: date, act: 'guestDate', month: g.calM || date.slice(0, 7), navAct: 'guestCal', label: 'Their day' })}
@@ -510,7 +512,7 @@ function booker() {
   const times = b.date && picked.length ? availableTimes(I, { services: picked, date: b.date, barberId: b.barber }, S.slots) : [];
   const total = sum(picked, s => s.price), from = picked.some(s => s.priceFrom), mins = sum(picked, s => s.mins);
   const gpk = st.when ? guestPick(times) : null, people = gpk ? 2 : 1;
-  const labels = ['Services', b.group === 'her' ? 'Stylist' : 'Barber', 'Date & time', 'Details'];
+  const labels = ['Services', staffWord(b.group, true), 'Date & time', 'Details'];
   const done = [st.picked, st.picked && b.date, st.when, st.details];
   return `<div class="progress" aria-label="Booking progress"><div class="bar-track"><i style="width:${st.n * 25}%"></i></div><ol>${labels.map((l, i) => `<li class="${done[i] ? 'done' : ''}"><span>${done[i] ? ic('check') : i + 1}</span>${l}</li>`).join('')}</ol></div>
   <div class="booker"><div class="steps">
@@ -520,7 +522,7 @@ function booker() {
       <div class="tabs" role="tablist">${groupTabs().map(([k, l]) => `<button role="tab" type="button" aria-selected="${b.group === k}" data-act="bkGroup" data-v="${k}">${l}</button>`).join('')}</div>
       ${hasTiers(b.group) ? tierPicker() : `<div class="pick">${svcs().filter(s => (s.group || 'him') === b.group).map(s => svcCard(s)).join('')}</div>`}
     </section>
-    <section class="step" id="st-2" ${st.picked ? '' : 'aria-disabled="true"'}><div class="step-h"><span class="n ${st.picked ? 'ok' : ''}">${st.picked ? ic('check') : 2}</span><h3>Choose your ${b.group === 'her' ? 'stylist' : 'barber'}</h3></div>
+    <section class="step" id="st-2" ${st.picked ? '' : 'aria-disabled="true"'}><div class="step-h"><span class="n ${st.picked ? 'ok' : ''}">${st.picked ? ic('check') : 2}</span><h3>Choose your ${staffWord(b.group)}</h3></div>
       <div class="pick barbers-pick">
         <button type="button" class="pickcard" data-act="bkBarber" data-id="" aria-pressed="${!b.barber}" ${st.picked ? '' : 'disabled'}><span class="av any">${ic('scissors')}</span><b>Any available</b><small>Earliest free chair</small></button>
         ${bars.map(x => `<button type="button" class="pickcard" data-act="bkBarber" data-id="${esc(x.id)}" aria-pressed="${b.barber === x.id}" ${st.picked ? '' : 'disabled'}><span class="av">${x.photo ? `<img src="${esc(x.photo)}" alt="">` : esc(initials(x.name))}</span><b>${esc(x.name)}</b><small>${esc(x.title || '')}</small></button>`).join('')}
@@ -547,7 +549,7 @@ function booker() {
   <aside class="summary" id="summary" aria-label="Booking summary">
     <div class="summary-top"><h3>Your booking</h3>${picked.length ? `<span class="chip">${ic('clock')}${dur(mins)}</span>` : ''}</div>
     <div class="summary-b">
-      <div class="sumrow"><span>${b.group === 'her' ? 'Stylist' : 'Barber'}</span><b>${b.barber ? esc(barber(b.barber)?.name || '') : 'Any available'}</b></div>
+      <div class="sumrow"><span>${staffWord(b.group, true)}</span><b>${b.barber ? esc(barber(b.barber)?.name || '') : 'Any available'}</b></div>
       <div class="sumrow"><span>When</span><b>${st.when ? `${fmtDate(b.date)}<br>${fmtTime(b.time)}` : '—'}</b></div>
       ${gpk ? `<div class="sumrow"><span>Second person</span><b>${esc(b.guest.name.trim() || 'Guest')}${b.guest.own ? `<br>${guestSvcs().map(x => esc(x.name)).join('<br>')}` : ''}<br>${gpk.date && gpk.date !== b.date ? `${fmtDate(gpk.date)}, ` : ''}${fmtTime(gpk.time)}${gpk.barberId ? ` with ${esc(barber(gpk.barberId)?.name || '')}` : ', another barber'}</b></div>` : ''}
       ${bill(picked, gpk, people)}
@@ -765,7 +767,7 @@ const ACT = {
     const q = S.q; q.err = '';
     if (q.name.trim().length < 2) q.err = 'Enter your name.'; else if (!validPhone(q.phone)) q.err = 'Enter an 11-digit mobile number, like 0917 123 4567.';
     if (q.err) { schedule(); return; }
-    const base = svcs().filter(x => x.kind === 'base' && x.tier === q.pick).sort((a, b) => a.price - b.price)[0];
+    const base = q.pick === 'nails' ? svcs().find(x => x.group === 'nails') : svcs().filter(x => x.kind === 'base' && x.tier === q.pick).sort((a, b) => a.price - b.price)[0];
     q.busy = true; schedule();
     try {
       q.done = await call('joinQueue', { name: q.name.trim(), phone: q.phone, serviceIds: base ? [base.id] : [], barberId: q.barber });

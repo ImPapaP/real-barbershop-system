@@ -1131,3 +1131,13 @@ canvas.happen-img{width:100%;height:auto;aspect-ratio:1200/630;background:#0b0b0
 form[data-form=item]:has(select[name=cat] option[value=Supply]:checked) .web-only{display:none}
 .board2{grid-template-columns:minmax(0,1fr)}.board2>*,.m-tiers>*,.tier-box,.m-bundles,.m-extras,.m-rest,.mgroup{min-width:0}
 .cal-w,.cal-g{grid-template-columns:repeat(7,minmax(0,1fr))}@media (max-width:420px){.cal{padding:10px}.cal-w,.cal-g{gap:3px}.cal-d{font-size:14px;border-radius:8px}}
+
+/* ---------- day check (dashboard) ---------- */
+.dc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:12px}
+.dc-box{border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:grid;gap:6px;align-content:start}
+.dc-box h3,.dc-h{font-size:13px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0}
+.dc-h{margin:18px 0 8px}
+.daycheck .totals .tot{border-top:1px solid var(--line);padding-top:6px;margin-top:2px}
+.daycheck .totals .ok b{color:var(--good-ink)}
+.daycheck .totals .bad b,.daycheck .totals .bad span{color:var(--bad, #b42318)}
+.dc-cash{display:grid;gap:12px}

@@ -23,7 +23,7 @@ const APPT = {
 };
 const STATUS_CHOICES = ['booked', 'waiting', 'inchair', 'done', 'noshow', 'cancelled'];
 const PERIODS = [['today', 'Today'], ['week', 'This week'], ['month', 'This month'], ['lastmonth', 'Last month'], ['30d', 'Last 30 days'], ['year', 'This year'], ['custom', 'Custom']];
-const COLS = ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts', 'waitlist', 'attendance', 'promos'];
+const COLS = ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts', 'waitlist', 'attendance', 'promos', 'closings'];
 const STYLES = ['Fade', 'Taper', 'Crop', 'Mullet', 'Buzz cut', 'Pompadour', 'Perm', 'Color', 'Women’s cut', 'Beard', 'Shop'];
 const METHOD_NAMES = { gcash: 'GCash', paymaya: 'Maya', card: 'Card', qrph: 'QR Ph', grab_pay: 'GrabPay' };
 
@@ -31,7 +31,7 @@ const METHOD_NAMES = { gcash: 'GCash', paymaya: 'Maya', card: 'Card', qrph: 'QR 
 const S = {
   ready: false, user: null, canAdmin: false, loginErr: '', loginBusy: false, loginMsg: '',
   info: null, infoMissing: false, slow: false,
-  staff: [], appointments: [], sales: [], expenses: [], customers: [], inventory: [], payouts: [], waitlist: [], attendance: [], promos: [], loaded: {}, reminding: '',
+  staff: [], appointments: [], sales: [], expenses: [], customers: [], inventory: [], payouts: [], waitlist: [], attendance: [], promos: [], closings: [], loaded: {}, reminding: '',
   proofImgs: {}, cutImgs: {},
   schedDate: '', schedBarber: '', showExpired: false, period: 'month', from: '', to: '',
   clientQ: '', clientSort: 'recent', stockFilter: 'all', showArchived: false, pos: null, busy: false, uploading: ''
@@ -419,9 +419,41 @@ function vSchedule() {
     </div>
     ${counts.length ? `<div class="row" style="margin-bottom:12px">${counts.map(([k, n]) => chip({ ...APPT[k], label: `${n} ${APPT[k].label.toLowerCase()}` })).join('')}</div>` : ''}
     ${appts.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Time</th><th>Client</th><th>Services</th><th>Barber</th><th>Source</th><th>Status</th><th></th></tr></thead><tbody>${appts.map(a => apptRow(a)).join('')}</tbody></table></div>` : `<p class="empty">Nothing scheduled ${isToday ? 'today' : 'on this day'}. Online bookings appear here as soon as the deposit is paid.</p>`}
-  </section>`;
+  </section>
+  ${d <= today() ? dayCheck(d) : ''}`;
 }
 
+// ---------- end-of-day check: every visit paid, and the cash drawer matches ----------
+function dayCheck(d) {
+  const visits = apptsOn(d).filter(a => !['expired', 'pending_payment', 'needs_attention'].includes(a.status));
+  const saleOf = a => a.saleId && S.sales.find(s => s.id === a.saleId);
+  const walk = visits.filter(a => a.source === 'walk-in'), booked = visits.filter(a => a.source !== 'walk-in');
+  const paid = visits.filter(a => a.status === 'done' && saleOf(a));
+  const unpaid = visits.filter(a => a.status === 'done' && !saleOf(a));
+  const inChair = visits.filter(a => a.status === 'inchair'), waiting = visits.filter(a => a.status === 'waiting');
+  const left = walk.filter(a => ['cancelled', 'noshow'].includes(a.status));
+  const sales = S.sales.filter(s => s.date === d), loose = sales.filter(s => !s.apptId);
+  const byMethod = METHODS.map(m => [m, sum(sales.filter(s => (s.method || 'Cash') === m), s => (s.total || 0) - (s.depositCredit || 0))]).filter(x => x[1]);
+  const cashIn = sum(sales.filter(s => (s.method || 'Cash') === 'Cash'), s => (s.total || 0) - (s.depositCredit || 0));
+  const cashOut = sum(S.expenses.filter(e => e.date === d && e.method === 'Cash'), e => e.amount || 0);
+  const c = S.closings.find(x => x.id === d) || {}, expected = round2((c.float || 0) + cashIn - cashOut), diff = c.counted == null ? null : round2(c.counted - expected);
+  const flagged = [...unpaid.map(a => [a, 'Marked done, no payment recorded']), ...(d < today() ? inChair.map(a => [a, 'Still “in chair”: was it paid?']) : [])];
+  const row = (l, v, cls = '') => `<div class="${cls}"><span>${l}</span><b>${v}</b></div>`;
+  return `<section class="panel daycheck"><div class="panel-h"><h2>Day check: ${d === today() ? 'today' : fmtDate(d)}</h2>${flagged.length ? chip({ kind: 'bad', icon: '!', label: `${flagged.length} to check` }) : chip({ kind: 'good', icon: '✓', label: 'Every finished visit is paid' })}</div>
+    <p class="muted small" style="margin-bottom:12px">A visit is only “Done” after it’s rung up in Checkout, so every finished visit has a payment. Anything that slipped through shows here.</p>
+    <div class="dc-grid">
+      <div class="dc-box"><h3>Walk-ins</h3><div class="totals">${row('Came in', walk.length)}${row('Served and paid', walk.filter(a => paid.includes(a)).length)}${row('Waiting or in the chair', walk.filter(a => ['waiting', 'inchair'].includes(a.status)).length)}${row('Left without a cut', left.length)}${row('Rung up without the queue', loose.length)}</div></div>
+      <div class="dc-box"><h3>Bookings</h3><div class="totals">${row('Booked', booked.length)}${row('Served and paid', booked.filter(a => paid.includes(a)).length)}${row('Missed or cancelled', booked.filter(a => ['noshow', 'cancelled'].includes(a.status)).length)}${row('Still to come', booked.filter(a => a.status === 'booked').length)}</div></div>
+      <div class="dc-box"><h3>Money in</h3><div class="totals">${byMethod.length ? byMethod.map(([m, v]) => row(m, money(v))).join('') : row('No sales yet', '—')}${row('Total', money(sum(byMethod, x => x[1])), 'tot')}</div><p class="muted small">Down payments made online are not counted again here.</p></div>
+    </div>
+    ${flagged.length ? `<h3 class="dc-h">To check</h3><ul class="list">${flagged.map(([a, why]) => `<li><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${a.queueNo ? ` <span class="muted small">#${esc(a.queueNo)}</span>` : ''}<div class="sub">${fmtTime(a.time)} · ${esc(svcNames(a.serviceIds) || 'Service not set')} · ${esc(staffName(a.barberId))} · ${why}</div></div><button class="btn btn-sm btn-primary" data-act="checkoutAppt" data-id="${esc(a.id)}">Ring up payment</button></li>`).join('')}</ul>` : ''}
+    <h3 class="dc-h">Cash drawer</h3>
+    <form class="dc-cash" data-form="closing" data-date="${d}">
+      <div class="fgrid three">${field('Starting cash (float)', `<input id="cl-float" name="float" inputmode="decimal" value="${esc(c.float ?? '')}" placeholder="0">`, 'cl-float')}${field('Cash counted at closing', `<input id="cl-count" name="counted" inputmode="decimal" value="${esc(c.counted ?? '')}" placeholder="Count the drawer">`, 'cl-count')}${field('Note', `<input id="cl-note" name="note" value="${esc(c.note || '')}" placeholder="e.g. ₱500 change from the bank">`, 'cl-note')}</div>
+      <div class="totals" style="font-size:14px">${row('Starting cash', money(c.float || 0))}${row('+ Cash sales', money(cashIn))}${row('− Cash expenses', money(cashOut))}${row('Should be in the drawer', money(expected), 'tot')}${diff == null ? '' : row(diff === 0 ? 'Matches' : diff > 0 ? 'Extra cash' : 'Short', diff === 0 ? '✓' : money(Math.abs(diff)), diff === 0 ? 'ok' : 'bad')}</div>
+      <div class="row"><button class="btn btn-primary btn-sm" type="submit">${c.at ? 'Update the count' : 'Save the count'}</button>${c.at ? `<span class="muted small">Saved ${ago(c.at)}${c.by ? ' by ' + esc(c.by) : ''}</span>` : ''}</div>
+    </form></section>`;
+}
 function waitlistPanel(d) {
   const list = S.waitlist.filter(w => w.date === d).sort((a, b) => a.createdAt - b.createdAt);
   if (!list.length) return '';
@@ -1357,6 +1389,8 @@ const ACT = {
 const CHG = {
   async apptStatus(el) {
     const a = S.appointments.find(x => x.id === el.dataset.id); const st = el.value; const upd = { status: st };
+    // A visit only becomes "Done" through checkout, so every finished visit has a payment on record
+    if (a && st === 'done' && !a.saleId) { el.value = a.status; toast('Ring up the payment to finish this visit.'); ACT.checkoutAppt({ dataset: { id: a.id } }); return; }
     if (a && a.deposit && ['noshow', 'cancelled'].includes(st) && a.deposit.status === 'paid') { upd['deposit.status'] = 'kept'; toast(`Deposit of ${money(a.deposit.amount)} marked as kept.`); }
     if (a && a.deposit && ['booked', 'waiting', 'inchair'].includes(st) && a.deposit.status === 'kept') upd['deposit.status'] = 'paid';
     await patch('appointments', el.dataset.id, upd);
@@ -1379,6 +1413,10 @@ async function syncPublicBarbers() {
   }) });
 }
 const FORM = {
+  async closing(f) {
+    const fd = new FormData(f), d = f.dataset.date, v = k => { const x = String(fd.get(k) || '').trim(); return x === '' ? null : round2(num(x)); };
+    if (await put('closings', d, { date: d, float: v('float') || 0, counted: v('counted'), note: String(fd.get('note') || '').trim(), at: Date.now(), by: (S.user && S.user.email) || '' })) toast('Cash count saved');
+  },
   async fb(f) {
     const fd = new FormData(f), token = String(fd.get('token') || '').trim(), pageId = String(fd.get('pageId') || '').trim();
     const show = fd.has('show'); let ok = true;
@@ -1597,6 +1635,7 @@ function startWatches() {
   watchCol('payouts', db.collection('payouts'));
   watchCol('attendance', db.collection('attendance'));
   watchCol('promos', db.collection('promos'));
+  watchCol('closings', db.collection('closings'));
   watchCol('waitlist', db.collection('waitlist').where('date', '>=', addDays(today(), -7)));
 }
 setInterval(() => { if (S.canAdmin && $('#modal').hidden && !document.activeElement.matches('input,select,textarea')) schedule(); }, 60000);
