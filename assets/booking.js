@@ -25,16 +25,19 @@ function shell(inner) {
 const chipHTML = (kind, icon, label) => `<span class="chip chip-${kind}"><b aria-hidden="true">${icon}</b>${esc(label)}</span>`;
 
 function details(b) {
-  const total = sum(b.services, s => s.price), from = b.services.some(s => s.priceFrom);
+  // an add-on for the same client (e.g. nails with a hair visit) is paid together at the shop
+  const addOns = (b.guests || []).filter(g => g.addOn && !['cancelled', 'expired'].includes(g.status)).flatMap(g => g.prices || []);
+  const total = sum(b.services, s => s.price) + sum(addOns, s => s.price), from = [...b.services, ...addOns].some(s => s.priceFrom);
   return `<section class="ticket-card"><div class="tc-top"><b>${fmtDate(b.date)} · ${fmtTime(b.time)}</b><span class="code" aria-label="Booking code">${esc(b.code)}</span></div>
     <div class="tc-body totals" style="font-family:var(--f-body);font-size:15px;gap:10px">
       <div><span class="muted">When</span><b>${fmtDate(b.date, true)}, ${fmtTime(b.time)}</b></div>
       <div><span class="muted">${b.services.some(s => /hair and makeup|balayage|rebond/i.test(s.name)) ? 'Stylist' : 'Barber'}</span><b>${esc(b.barberName || 'Any available · the shop will assign')}</b></div>
       <div><span class="muted">Services</span><b style="text-align:right">${b.services.map(s => `${esc(s.name)} · ${esc(priceLabel(s, info().shop.currency || '₱'))}`).join('<br>')}</b></div>
+      ${addOns.length ? `<div><span class="muted">Also in this visit</span><b style="text-align:right">${addOns.map(s => `${esc(s.name)} · ${esc(priceLabel(s, info().shop.currency || '₱'))}`).join('<br>')}</b></div>` : ''}
       <div><span class="muted">Deposit</span><b>${b.deposit.status === 'paid' ? `${m(b.deposit.amount)} paid${b.deposit.method ? ' via ' + esc(methodName(b.deposit.method)) : ''}` : b.deposit.status === 'kept' ? `${m(b.deposit.amount)} kept` : b.deposit.status === 'refunded' ? 'Refunded' : b.deposit.status === 'none' ? 'None needed · pay at the shop' : b.deposit.status === 'refund_due' ? `${m(b.deposit.amount)} · being sent back` : b.proof && b.proof.status === 'review' ? 'GCash screenshot sent · checking' : 'Not paid'}</b></div>
     </div>
     ${b.promo ? `<div class="tc-body totals" style="font-family:var(--f-body);font-size:15px;padding-top:0"><div><span class="muted">Promo ${esc(b.promo.code)}</span><b>−${m(b.promo.off)} at the shop</b></div></div>` : ''}
-    ${b.deposit.status === 'paid' ? `<div class="tc-cut" aria-hidden="true"></div><div class="tc-body totals" style="font-family:var(--f-body)"><div><span>Pay at the shop</span><b style="font:800 26px/1 var(--f-display)">${from ? 'from ' : ''}${m(Math.max(0, total - (b.promo ? b.promo.off : 0) - (b.deposit.amount || 0)))}</b></div></div>` : ''}
+    ${['paid', 'none'].includes(b.deposit.status) && !['cancelled', 'expired', 'done', 'noshow'].includes(b.status) ? `<div class="tc-cut" aria-hidden="true"></div><div class="tc-body totals" style="font-family:var(--f-body)"><div><span>Pay at the shop</span><b style="font:800 26px/1 var(--f-display)">${from ? 'from ' : ''}${m(Math.max(0, total - (b.promo ? b.promo.off : 0) - (b.deposit.status === 'paid' ? b.deposit.amount || 0 : 0)))}</b></div></div>` : ''}
     </section>`;
 }
 // A second person booked in the same go (book for two): shown on the main booking, with their own link.
@@ -109,7 +112,7 @@ function receiptCard(b) {
 function rateCard(b) {
   const shop = info().shop;
   if (b.rating) return `<section class="panel"><div class="panel-h"><h2>Thanks for the rating!</h2><span class="stars" aria-label="${b.rating.stars} stars">${'★'.repeat(b.rating.stars)}<span>${'★'.repeat(5 - b.rating.stars)}</span></span></div>
-    ${b.rating.text ? `<p class="muted">“${esc(b.rating.text)}”</p>` : ''}${b.rating.stars >= 4 && shop.googleUrl ? `<p class="small" style="margin-top:10px">Would you post it on ${esc(shop.ratingSource || 'Google')} too? It helps other people find us. <a href="${esc(shop.googleUrl)}" target="_blank" rel="noopener">Leave a review</a></p>` : ''}</section>`;
+    ${b.rating.text ? `<p class="muted">“${esc(b.rating.text)}”</p>` : ''}${b.rating.stars >= 4 && shop.googleUrl ? `<p class="small" style="margin-top:10px">Would you post it on ${esc(shop.ratingSource || 'Google')} too? It helps other people find us. </p><a class="btn btn-accent" href="${esc(shop.googleUrl)}" target="_blank" rel="noopener" style="margin-top:8px">★ Leave a review</a>` : ''}</section>`;
   const R = S.rate;
   return `<section class="panel rate"><div class="panel-h"><h2>How was your cut?</h2></div>
     <div class="rate-stars" role="radiogroup" aria-label="Your rating">${[1, 2, 3, 4, 5].map(n => `<button type="button" role="radio" data-act="rateStar" data-v="${n}" aria-checked="${R.stars === n}" aria-label="${n} star${n > 1 ? 's' : ''}" class="${n <= R.stars ? 'on' : ''}">★</button>`).join('')}</div>

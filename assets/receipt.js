@@ -16,7 +16,7 @@ db.doc('public/info').get().then(s => { if (s.exists) shop = { ...shop, ...(s.da
     const r = await call('getReceipt', { id, t });
     shop = { ...shop, ...(r.shop || {}) };
     document.title = `Receipt · ${shop.name || 'REAL Barbers'}`;
-    page(`${receiptHTML(r, shop.currency || '₱')}<div class="rc-actions"><a class="btn btn-accent" href="./#book">Book your next visit</a><a class="btn" href="account.html">All my visits</a></div>
+    page(`${receiptHTML(r, shop.currency || '₱')}<div class="rc-actions"><a class="btn btn-accent" href="./#book">Book your next visit</a><a class="btn" href="account.html">All my visits</a>${shop.googleUrl ? `<a class="btn" href="${esc(shop.googleUrl)}" target="_blank" rel="noopener">★ Leave a review</a>` : ''}</div>
       <p class="muted small" style="text-align:center;max-width:420px">Keep this link to see your receipt again. Questions about it? Call or message ${esc(shop.name || 'the shop')}${shop.phone ? ` at ${esc(shop.phone)}` : ''}.</p>`);
   } catch (e) {
     page(`<div class="status-hero"><h1>Receipt not found</h1><p class="muted">${esc(e.message || 'Check the link and try again.')}</p></div>`);
