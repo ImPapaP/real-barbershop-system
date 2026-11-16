@@ -177,8 +177,8 @@ export const STARTER_STAFF = [
   { id: 'vince', photo: 'assets/staff/vince.jpg', name: 'Vince', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 8 },
   { id: 'mac', photo: 'assets/staff/mac.jpg', name: 'Mac', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, chair: 9 },
   { id: 'dave', photo: 'assets/staff/dave.jpg', name: 'Dave', role: 'stylist', title: 'Stylist', specialty: 'Color, rebond and styling', groups: ['her'], rate: 55, dailyPay: 1000, productFee: { threshold: 1500, low: 50, high: 100 }, chair: 10 },
-  { id: 'luz', photo: 'assets/staff/luz.jpg', name: 'Luz', role: 'stylist', title: 'Stylist', specialty: 'Hair treatments and styling', groups: ['her'], rate: 60, dailyPay: 0, productFee: { threshold: 1500, low: 50, high: 100 }, chair: 11 },
-  { id: 'liza', photo: 'assets/staff/liza.jpg', name: 'Liza', role: 'stylist', title: 'Stylist', specialty: 'Hair treatments and styling', groups: ['her'], rate: 60, dailyPay: 0, productFee: { threshold: 1500, low: 50, high: 100 }, chair: 12 },
+  { id: 'luz', photo: 'assets/staff/luz.jpg', name: 'Luz', role: 'nails', title: 'Nail technician', specialty: 'Nail care', groups: ['nails'], rate: 60, dailyPay: 0, chair: 11 },
+  { id: 'liza', photo: 'assets/staff/liza.jpg', name: 'Liza', role: 'maintenance', title: 'Maintenance', specialty: '', groups: [], rate: 0, dailyPay: 0 },
   { id: 'alex', name: 'Alex', role: 'reception', title: 'Receptionist', specialty: '', groups: [], rate: 0, dailyPay: 700 },
   { id: 'airyl', name: 'Airyl', role: 'reception', title: 'Receptionist', specialty: '', groups: [], rate: 0, dailyPay: 700 },
 ].map(b => ({ ...b, phone: '', days: [0, 1, 2, 3, 4, 5, 6], active: true }));

@@ -7,7 +7,7 @@ import {
 
 // The saved demo is keyed by a fingerprint of the starter data, so changing the menu or team
 // (or a browser briefly mixing old and new files) never leaves stale sample data behind.
-const SEED_REV = 18; // bump when seed() itself changes
+const SEED_REV = 20; // bump when seed() itself changes
 const fingerprint = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const KEY = `rb-demo-${SEED_REV}-${fingerprint(JSON.stringify([STARTER, STARTER_STAFF]))}`, USER_KEY = 'rb-demo-user';
 try { Object.keys(localStorage).filter(k => k.startsWith('rb-demo-') && k !== KEY && k !== USER_KEY).forEach(k => localStorage.removeItem(k)); } catch (_) {}
@@ -49,7 +49,7 @@ function seed() {
     const d = day(i), cnt = 26 + Math.floor(rnd() * 12); // a busy 10-chair day
     for (let k = 0; k < cnt; k++) {
       const forHer = rnd() < 0.18, regular = rnd() < 0.5, s = forHer ? pick(her) : regular ? pick(him.filter(x => x.tier === 'regular')) : (rnd() < 0.6 ? svc[0] : pick(him.filter(x => x.tier === 'deluxe')));
-      const b = forHer ? pick(['dave', 'dave', 'luz', 'liza']) : s.tier === 'regular' ? pick(['ed', 'renz', 'jay', 'vince', 'mac']) : pick(['reymart', 'lyndon', 'rod', 'angelo']);
+      const b = forHer ? 'dave' : s.tier === 'regular' ? pick(['ed', 'renz', 'jay', 'vince', 'mac']) : pick(['reymart', 'lyndon', 'rod', 'angelo']);
       const ci = rnd() < 0.35 && i > -26 ? Math.floor(rnd() * 6) : -1; // clients 6-9 last came 4-5 weeks ago (see below)
       const tip = rnd() < 0.2 ? pick([20, 50, 100]) : 0, dep = rnd() < 0.45 ? 200 : 0;
       const prod = rnd() < 0.08 ? { kind: 'product', ref: 'i1', name: 'Clay pomade', price: 450, qty: 1 } : null;
