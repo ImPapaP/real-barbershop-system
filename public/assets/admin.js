@@ -1452,6 +1452,12 @@ const ACT = {
     const p = blankPos(); p.apptId = a.id; p.name = a.name || ''; p.phone = a.phone || ''; p.barberId = a.barberId || '';
     p.deposit = depositPaid(a); p.depositMethod = a.deposit && a.deposit.method;
     p.lines = (a.serviceIds || []).map(svcById).filter(Boolean).map(s => ({ kind: 'service', ref: s.id, name: s.name, price: s.price, qty: 1 }));
+    // products the client asked us to set aside on the website ("Set aside for me: Liquid Pomade ×2; Sea Salt Spray")
+    const aside = /Set aside for me: ([^·]+)/.exec(a.notes || '');
+    if (aside) aside[1].split(';').map(x => x.trim()).filter(Boolean).forEach(x => {
+      const m2 = /^(.*?)(?: ×(\d+))?$/.exec(x), it = S.inventory.find(i => i.name.toLowerCase() === m2[1].trim().toLowerCase());
+      if (it) p.lines.push({ kind: 'product', ref: it.id, name: it.name, price: Number(it.price) || 0, qty: Math.max(1, Math.min(+(m2[2] || 1), it.stock > 0 ? it.stock : 1)) });
+    });
     if (a.promo) { p.discount = String(a.promo.off); p.discountNote = `Promo ${a.promo.code}`; }
     S.pos = p; closeModal(true); location.hash = '#checkout';
   },

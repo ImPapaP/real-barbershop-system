@@ -227,12 +227,17 @@ function page() {
   <div id="lightbox" hidden></div><div id="profile" hidden></div>`;
 }
 const products = () => (info().products || []).filter(p => p.name);
+// Products to set aside for the visit, with how many: { 'Liquid Pomade': 2 }
+const prodQ = () => (S.bk.prodQ = S.bk.prodQ || {});
+const prodNote = () => Object.entries(prodQ()).filter(([, n]) => n > 0).map(([name, n]) => n > 1 ? `${name} ×${n}` : name).join('; ');
+const MAX_PROD = 10;
 function productCard(p) {
-  const added = new RegExp(`(^|; )${p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|;)`).test(S.bk.prods || '');
+  const qty = prodQ()[p.name] || 0, added = qty > 0;
   return `<article class="prod reveal"><div class="prod-ph">${p.photo ? `<img src="${esc(p.photo)}" alt="${esc(p.name)}" loading="lazy">` : `<span class="prod-mono" aria-hidden="true">${esc(initials(p.name))}</span>`}${p.tag ? `<span class="prod-tag">${esc(p.tag)}</span>` : ''}</div>
     <div class="prod-b"><h3>${esc(p.name)}</h3>${p.desc ? `<p>${esc(p.desc)}</p>` : ''}
       <div class="prod-foot">${p.price ? `<b class="prod-price">${m(p.price)}</b>` : '<b class="prod-price ask">Ask for price</b>'}${p.inStock ? '<span class="prod-in">In stock</span>' : '<span class="prod-out">Out of stock</span>'}</div>
-      ${p.inStock ? `<button type="button" class="btn btn-sm ${added ? 'btn-accent' : ''}" data-act="addProd" data-name="${esc(p.name)}" aria-pressed="${added}">${added ? ic('check') + ' Added to your booking' : 'Add to my booking'}</button>` : ''}</div></article>`;
+      ${!p.inStock ? '' : added ? `<div class="prod-qty"><span class="prod-added">${ic('check')} Added</span><div class="stepper" role="group" aria-label="How many ${esc(p.name)}"><button type="button" data-act="prodQty" data-name="${esc(p.name)}" data-d="-1" aria-label="One less">−</button><b aria-live="polite">${qty}</b><button type="button" data-act="prodQty" data-name="${esc(p.name)}" data-d="1" aria-label="One more" ${qty >= MAX_PROD ? 'disabled' : ''}>+</button></div></div>`
+        : `<button type="button" class="btn btn-sm" data-act="prodQty" data-name="${esc(p.name)}" data-d="1">Add to my booking</button>`}</div></article>`;
 }
 function happenCard(h) {
   const when = h.kind === 'event' ? (h.start && h.end && h.start !== h.end ? `${fmtDate(h.start)} – ${fmtDate(h.end)}` : h.start ? fmtDate(h.start) : h.end ? `Until ${fmtDate(h.end)}` : '') : h.end ? `Until ${fmtDate(h.end)}` : 'Ongoing';
@@ -660,7 +665,7 @@ function dueFor(gpk) {
 function bill(picked, gpk, people, due = dueFor(gpk)) {
   const pol = policyOf(info()), gs = gpk ? guestSvcs() : [], all = [...picked, ...gs];
   const svcTotal = sum(all, x => x.price), from = all.some(x => x.priceFrom), off = promoOff(svcTotal), dep = due;
-  const prodList = (S.bk.prods || '').split('; ').filter(Boolean).map(n => products().find(x => x.name === n)).filter(Boolean), total = svcTotal + sum(prodList, p => p.price);
+  const prodList = Object.entries(prodQ()).filter(([, n]) => n > 0).map(([name, n]) => { const p = products().find(x => x.name === name); return p && { ...p, n }; }).filter(Boolean), total = svcTotal + sum(prodList, p => p.price * p.n);
   const line = (l, r, cls = '') => `<div class="bill-row ${cls}"><span>${l}</span><b>${r}</b></div>`;
   if (!picked.length) return `<div class="bill"><p class="muted small">Pick a service to see the price breakdown.</p></div><div class="due"><span>Down payment now</span><b>${dep ? m(dep) : 'None'}</b></div>`;
   return `<div class="bill" aria-label="Price breakdown"><p class="bill-h">Price breakdown</p>
@@ -668,7 +673,7 @@ function bill(picked, gpk, people, due = dueFor(gpk)) {
     ${picked.map(x => line(esc(x.name), esc(priceLabel(x, cur())))).join('')}
     ${gpk ? `<p class="bill-sub">${S.bk.guest.self ? 'Also for you' : esc(S.bk.guest.name.trim() || 'Second person')}</p>${gs.map(x => line(esc(x.name), esc(priceLabel(x, cur())))).join('')}` : ''}
     ${off ? line(`Promo ${esc(S.promo.applied.code)} (${esc(S.promo.applied.label)})`, '−' + m(off), 'disc') : ''}
-    ${prodList.length ? `<p class="bill-sub">Set aside for you (pay at the shop)</p>${prodList.map(p => line(esc(p.name), p.price ? m(p.price) : 'price at the shop')).join('')}` : ''}
+    ${prodList.length ? `<p class="bill-sub">Set aside for you (pay at the shop)</p>${prodList.map(p => line(esc(p.name) + (p.n > 1 ? ' ×' + p.n : ''), p.price ? m(p.price * p.n) : 'price at the shop')).join('')}` : ''}
     ${line('Estimated total', (from ? 'from ' : '') + m(total - off), 'tot')}</div>
     ${promoBox()}
     <div class="due"><span>Down payment now${dep > policyOf(info()).deposit ? ' (2 people)' : ''}</span><b>${dep ? m(dep) : 'None, pay at the shop'}</b></div>
@@ -827,10 +832,10 @@ const ACT = {
   menuTab(el) { S.menuTab = el.dataset.v; renderMenu(); },
   lang(el) { if (lang() === el.dataset.v) return; setLang(el.dataset.v); renderAll(); },
   galTag(el) { S.galTag = el.dataset.v; renderGallery(); },
-  addProd(el) {
-    const n = el.dataset.name, list = (S.bk.prods || '').split('; ').filter(Boolean), on = list.includes(n);
-    S.bk.prods = (on ? list.filter(x => x !== n) : [...list, n]).join('; ');
-    if (!on) toast(`${n} will be set aside for your visit`);
+  prodQty(el) {
+    const n = el.dataset.name, q = prodQ(), was = q[n] || 0, now = Math.max(0, Math.min(MAX_PROD, was + (+el.dataset.d)));
+    if (now) q[n] = now; else delete q[n];
+    if (!was && now) toast(`${n} will be set aside for your visit`);
     const sec = document.querySelector('#products .prod-grid'); if (sec) { sec.innerHTML = L(products().map(productCard).join('')); revealOnScroll(); }
     renderBooker();
   },
@@ -957,7 +962,7 @@ const ACT = {
     try {
       const r = await call('createBooking', { serviceIds: Object.keys(b.svc).filter(k => b.svc[k]), barberId: b.barber, date: b.date, time: b.time, name: b.name, phone: b.phone, email: b.email, birthday: bdayOf(b), notes: b.notes, consent: b.consent,
         payMethod: payChoice() ? S.pay : 'online', promo: S.promo.applied ? S.promo.applied.code : '',
-        ...(b.prods ? { notes: [b.notes, `Set aside for me: ${b.prods}`].filter(Boolean).join(' · ') } : {}),
+        ...(prodNote() ? { notes: [b.notes, `Set aside for me: ${prodNote()}`].filter(Boolean).join(' · ') } : {}),
         ...(gp ? { guest: { name: b.guest.self ? b.name.trim() : b.guest.name.trim(), ...(b.guest.self ? { sameClient: true } : {}), time: gp.time, barberId: gp.barberId, ...(gp.mode === 'pick' && gp.date !== b.date ? { date: gp.date } : {}), ...(b.guest.own ? { serviceIds: guestSvcs().map(x => x.id) } : {}) } } : {}) });
       await sendRef(b, r);
       saveMe();
