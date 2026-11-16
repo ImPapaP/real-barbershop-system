@@ -183,7 +183,7 @@ function page() {
         <button type="button" class="m-photo m-open" data-act="profile" data-id="${esc(b.id)}" aria-label="See ${esc(b.name)}’s profile">${b.photo ? `<img src="${esc(b.photo)}" alt="${esc(b.name)}" loading="lazy">` : `<span class="m-mono" aria-hidden="true">${esc(initials(b.name))}</span>`}${b.chair ? `<small>Chair ${esc(b.chair)}</small>` : ''}</button>
         <div class="m-body"><h3>${esc(b.name)}</h3><p class="muted small">${esc(b.title || '')}${b.specialty ? ' · ' + esc(b.specialty) : ''}</p>${b.ratingCount ? `<p class="m-rate">${ic('star', 'star')}<b>${Number(b.rating).toFixed(1)}</b><span>${b.ratingCount} rating${b.ratingCount === 1 ? '' : 's'}</span></p>` : ''}
         <div class="days" aria-label="Days in">${[1, 2, 3, 4, 5, 6, 0].map(d => `<span class="${(b.days || []).includes(d) ? 'on' : ''}" title="${DAYS_LONG[d]}">${DAYS[d].slice(0, 2)}</span>`).join('')}</div>
-        <div class="row m-acts"><button class="btn btn-sm" data-act="bookWith" data-id="${esc(b.id)}">Book with ${esc(b.name)} ${ic('arrow')}</button><button class="link-btn" data-act="profile" data-id="${esc(b.id)}">Profile</button></div></div>
+        <div class="row m-acts">${bookable(b) ? `<button class="btn btn-sm" data-act="bookWith" data-id="${esc(b.id)}">Book with ${esc(b.name)} ${ic('arrow')}</button>` : `<span class="muted small">${b.role === 'nails' ? 'Nail services coming soon' : 'Booking coming soon'}</span>`}<button class="link-btn" data-act="profile" data-id="${esc(b.id)}">Profile</button></div></div>
       </article>`).join('')}</div>
   </div></section>
 
@@ -242,6 +242,8 @@ function happenCard(h) {
     ${h.code ? `<div class="happen-code"><span>Code</span><b>${esc(h.code)}</b><button type="button" class="link-btn" data-act="copyCode" data-code="${esc(h.code)}">Copy</button></div>` : ''}
     <div class="happen-cta">${cta}</div></div></article>`;
 }
+// Has at least one service on the menu this person can do (Luz has none until nail services are added)
+const bookable = b => svcs().some(s => canServe(b, [s]));
 const langToggle = () => `<div class="lang" role="group" aria-label="Language"><button type="button" data-act="lang" data-v="en" aria-pressed="${lang() === 'en'}">EN</button><button type="button" data-act="lang" data-v="tl" aria-pressed="${lang() === 'tl'}">TL</button></div>`;
 const faqList = () => (Array.isArray(info().faq) && info().faq.length ? info().faq : defaultFaq(info()));
 // ---------- style gallery ----------
@@ -269,7 +271,7 @@ function profile() {
     <div class="pf-row"><p class="eyebrow">Days in</p><div class="days">${[1, 2, 3, 4, 5, 6, 0].map(d => `<span class="${(b.days || []).includes(d) ? 'on' : ''}" title="${DAYS_LONG[d]}">${DAYS[d].slice(0, 2)}</span>`).join('')}</div></div>
     ${bases.length ? `<div class="pf-row"><p class="eyebrow">${esc((b.tiers || []).map(t => TIERS[t] || t).join(' and '))} haircuts</p><p>Price starts at <b>${m(Math.min(...bases.map(x => x.price)))}</b></p></div>` : ''}
     ${photos.length ? `<div class="pf-row"><p class="eyebrow">Recent work</p><div class="pf-gal">${photos.map(g => `<img src="${esc(g.url)}" alt="${esc(g.caption || g.style || 'Haircut')}" loading="lazy">`).join('')}</div></div>` : ''}
-    <button type="button" class="btn btn-accent btn-lg" data-act="bookWith" data-id="${esc(b.id)}">Book with ${esc(b.name)} ${ic('arrow')}</button>
+    ${bookable(b) ? `<button type="button" class="btn btn-accent btn-lg" data-act="bookWith" data-id="${esc(b.id)}">Book with ${esc(b.name)} ${ic('arrow')}</button>` : `<p class="muted">${b.role === 'nails' ? 'Nail services are coming to online booking soon.' : 'Online booking with ' + esc(b.name) + ' is coming soon.'}</p>`}
   </div></div>`);
   el.hidden = false; document.body.style.overflow = 'hidden';
   el.querySelector('.pf-x').focus();
@@ -602,7 +604,7 @@ function welcomeBack() {
 }
 // Start with the barber: pick him first, then only his level's haircuts and his free hours show.
 function barberFirst() {
-  const b = S.bk, chosenB = barber(b.barber), all = (info().barbers || []).filter(x => isServiceStaff(x) && x.active !== false);
+  const b = S.bk, chosenB = barber(b.barber), all = (info().barbers || []).filter(x => isServiceStaff(x) && x.active !== false && bookable(x));
   if (chosenB) return `<div class="bf-chosen">${avatarOf(chosenB)}<span>Booking with <b>${esc(chosenB.name)}</b>${chosenB.tiers && chosenB.tiers.length === 1 ? ` · ${esc(TIERS[chosenB.tiers[0]] || '')} haircuts` : ''}</span><button type="button" class="link-btn" data-act="bfClear">Change</button></div>`;
   if (!S.byBarber) return `<button type="button" class="link-btn bf-open" data-act="bfOpen">${ic('scissors')} Have a favorite barber? Choose him first</button>`;
   const groups = [['deluxe', 'Deluxe · senior barbers'], ['regular', 'Regular · junior barbers'], ['her', 'Hair stylists'], ['nails', 'Nails']];
