@@ -4,7 +4,7 @@ import { db, demo, demoBar, resetDemo, login, logout, resetPassword, onAuth, upl
 import { buildXlsx, xlDate, xlTime, colName } from './xlsx.js';
 import { qrSvg } from './qr.js';
 import { drawBanner, bannerBlob } from './banner.js';
-import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, publicBarber, DEFAULT_POLICY, startMs, canServe, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE, defaultFaq, cleanCode } from './shared.js';
+import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, DEFAULT_POLICY, startMs, canServe, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE, defaultFaq, cleanCode } from './shared.js';
 
 // ---------- constants ----------
 const METHODS = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer'];
@@ -1383,6 +1383,8 @@ const ACT = {
     el.disabled = true;
     const staff = S.staff.length ? S.staff : STARTER_STAFF;
     if (!S.staff.length) for (const b of STARTER_STAFF) { const { id, ...rest } = b; await put('staff', id, { ...rest, since: today() }); }
+    // the shop's own products, ready to show on the website once the owner sets price and stock
+    if (!S.inventory.length) for (const p of STARTER_PRODUCTS) await put('inventory', p.id, { name: p.name, cat: 'Retail', stock: 0, reorder: 3, cost: 0, price: 0, unit: p.unit, log: [], web: true, webDesc: `${p.size} · ${p.desc}`, webTag: p.tag, photo: p.photo });
     if (await put('public', 'info', { ...JSON.parse(JSON.stringify(STARTER)), barbers: staff.filter(b => b.active !== false && isServiceStaff(b)).map(publicBarber) })) toast('Starter menu and team saved. Edit them in Shop setup and Barbers.');
   }
 };

@@ -174,6 +174,13 @@ export const STARTER = {
   ],
   barbers: []
 };
+// The shop's own REAL Barbers products, shown on the website. Prices are 0 until the owner sets them
+// (the website then says "Ask for price").
+export const STARTER_PRODUCTS = [
+  { id: 'liquid-pomade', name: 'Liquid Pomade', size: '100 ml', unit: 'bottles', desc: 'Firm hold, medium shine. Pump bottle, easy to work through the hair and washes out clean.', tag: '', photo: 'assets/products/liquid-pomade.jpg' },
+  { id: 'styling-powder', name: 'Styling Powder', size: '20 g', unit: 'bottles', desc: 'Firm hold, matte finish. Adds volume and texture at the roots.', tag: '', photo: 'assets/products/styling-powder.jpg' },
+  { id: 'sea-salt-spray', name: 'Sea Salt Spray', size: '100 ml', unit: 'bottles', desc: 'Medium hold, medium shine. Spray on damp hair for a loose, textured look.', tag: '', photo: 'assets/products/sea-salt-spray.jpg' }
+];
 export const STARTER_STAFF = [
   { id: 'lyndon', photo: 'assets/staff/lyndon.jpg', name: 'Lyndon', role: 'barber', title: 'Senior barber', specialty: 'Classic cuts and beard sculpting', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 1 },
   { id: 'rod', photo: 'assets/staff/rod.jpg', name: 'Roderick', role: 'barber', title: 'Senior barber', specialty: 'Hair art and designs', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 2 },
