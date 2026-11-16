@@ -68,7 +68,7 @@ export function comboError(info, services) {
 export function eligibleBarbers(info, services, date, barberId) {
   const d = dowOf(date);
   return (info.barbers || [])
-    .filter(b => b.active !== false && (b.days || []).includes(d))
+    .filter(b => b.active !== false && (b.days || []).includes(d) && !(b.off || []).includes(date)) // off = leave days
     .filter(b => canServe(b, services))
     .filter(b => !barberId || b.id === barberId)
     .sort((a, b) => (a.chair || 99) - (b.chair || 99))
@@ -102,7 +102,7 @@ export function validateRequest(info, data, now = Date.now()) {
   if (date < today || date > addDays(today, pol.bookAheadDays)) return { ok: false, error: `You can book up to ${pol.bookAheadDays} days ahead.` };
   const h = hoursFor(info, date);
   if (!h || h.closed) return { ok: false, error: 'The shop is closed that day.' };
-  const mins = services.reduce((t, s) => t + (Number(s.mins) || pol.step), 0);
+  const mins = Math.max(pol.step, services.reduce((t, s) => t + (s.mins === 0 ? 0 : Number(s.mins) || pol.step), 0)); // add-ons with 0 min fit inside the hour
   const start = toMin(time);
   if (start < toMin(h.open) || start + mins > toMin(h.close)) return { ok: false, error: 'That time is outside opening hours.' };
   if (pol.lastBooking && start > toMin(pol.lastBooking)) return { ok: false, error: `The last booking of the day starts at ${fmtTime(pol.lastBooking)}.` };
@@ -280,7 +280,7 @@ export function receiptView(id, s, info, barberName = '', visits = 0) {
     id, date: s.date, time: s.time, name: s.name && s.name !== 'Walk-in' ? String(s.name) : '', barberName,
     lines, discount: Number(s.discount) || 0, discountNote: s.discountNote || '', tip: Number(s.tip) || 0, total: Number(s.total) || 0,
     depositCredit: Number(s.depositCredit) || 0, paidAtShop, method: s.method || '', cash: Number(s.cash) || 0,
-    shop: { name: sh.name || '', wordmark: sh.wordmark || '', address: sh.address || '', phone: sh.phone || '', tagline: sh.tagline || '' },
+    orNo: s.orNo || '', shop: { name: sh.name || '', wordmark: sh.wordmark || '', address: sh.address || '', phone: sh.phone || '', tagline: sh.tagline || '', tin: sh.tin || '', birPermit: sh.birPermit || '' },
     loyalty: every && s.customerId ? { every, visits } : null
   };
 }

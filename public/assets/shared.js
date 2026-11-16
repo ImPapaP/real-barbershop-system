@@ -61,7 +61,7 @@ export function comboError(info, services) {
 }
 export function eligibleBarbers(info, services, date, barberId) {
   const d = dowOf(date);
-  return (info.barbers || []).filter(b => b.active !== false && (b.days || []).includes(d))
+  return (info.barbers || []).filter(b => b.active !== false && (b.days || []).includes(d) && !(b.off || []).includes(date)) // off = leave days
     .filter(b => canServe(b, services))
     .filter(b => !barberId || b.id === barberId)
     .sort((a, b) => (a.chair || 99) - (b.chair || 99));
@@ -71,7 +71,7 @@ export function availableTimes(info, { services, date, barberId, ignoreBookingId
   const pol = policyOf(info);
   const h = (info.hours || []).find(x => x.d === dowOf(date));
   if (!h || h.closed || !services.length) return [];
-  const mins = sum(services, s => s.mins || pol.step);
+  const mins = Math.max(pol.step, sum(services, s => (s.mins ?? pol.step))); // add-ons with 0 min fit inside the hour
   const bars = eligibleBarbers(info, services, date, barberId);
   const out = [];
   const last = pol.lastBooking ? toMin(pol.lastBooking) : Infinity; // latest start time, e.g. 7:00 PM
@@ -205,7 +205,7 @@ export const STARTER_STAFF = [
   { id: 'alex', name: 'Alex', role: 'reception', title: 'Receptionist', specialty: '', groups: [], payType: 'monthly', monthlyPay: 20000, rate: 0, dailyPay: 0 },
   { id: 'airyl', name: 'Airyl', role: 'stylist', title: 'Receptionist · braids', specialty: 'Braids', groups: ['braids'], rate: 70, dailyPay: 700, noDeposit: true, chair: 13 },
 ].map(b => ({ ...b, phone: '', days: [0, 1, 2, 3, 4, 5, 6], active: true }));
-export const publicBarber = b => ({ id: b.id, name: b.name, noDeposit: !!b.noDeposit, role: b.role || 'barber', title: b.title || '', specialty: b.specialty || '', groups: b.groups || ['him'], tiers: b.tiers || [], days: b.days || [], chair: b.chair || '', photo: b.photo || '', bio: b.bio || '', rating: b.rating || 0, ratingCount: b.ratingCount || 0 });
+export const publicBarber = b => ({ id: b.id, name: b.name, noDeposit: !!b.noDeposit, off: b.off || [], role: b.role || 'barber', title: b.title || '', specialty: b.specialty || '', groups: b.groups || ['him'], tiers: b.tiers || [], days: b.days || [], chair: b.chair || '', photo: b.photo || '', bio: b.bio || '', rating: b.rating || 0, ratingCount: b.ratingCount || 0 });
 
 // Shrinks a photo in the browser before upload: longest side `max` px, JPEG. Returns a Blob.
 export async function resizeImage(file, max = 1600, quality = 0.82) {
@@ -285,14 +285,15 @@ export function receiptHTML(r, cur = '₱') {
   // loyalty: every Nth visit is free (same rule as the dashboard), so after visit k there are N-1-k paid visits to go
   const L = r.loyalty, k = L ? L.visits % L.every : 0, onCard = L ? (k || (L.visits ? L.every : 0)) : 0, left = L ? L.every - 1 - k : 0;
   return `<div class="receipt rcpt">
-    <div class="rc-shop">${esc(sh.wordmark || sh.name || 'Receipt')}</div>${sh.address ? `<div class="rc-mid muted">${esc(sh.address)}</div>` : ''}<hr>
+    <div class="rc-shop">${esc(sh.wordmark || sh.name || 'Receipt')}</div>${sh.address ? `<div class="rc-mid muted">${esc(sh.address)}</div>` : ''}${sh.tin ? `<div class="rc-mid muted">TIN ${esc(sh.tin)}</div>` : ''}<hr>
+    ${r.orNo ? row('<b>Official receipt</b>', `<b>${esc(r.orNo)}</b>`) : ''}
     ${row(esc(fmtDate(r.date, true)), esc(fmtTime(r.time)))}${r.name ? row('Client', esc(r.name)) : ''}${r.barberName ? row('Barber', esc(r.barberName)) : ''}<hr>
     ${(r.lines || []).map(l => row(`${esc(l.name)}${l.qty > 1 ? ' ×' + l.qty : ''}`, m(l.price * l.qty))).join('')}<hr>
     ${r.discount ? row(`Discount${r.discountNote ? ' (' + esc(r.discountNote) + ')' : ''}`, '−' + m(r.discount)) : ''}${r.tip ? row('Tip', m(r.tip)) : ''}
     ${row('TOTAL', m(r.total), 'rc-tot')}
     ${r.depositCredit ? row('Deposit paid online', '−' + m(r.depositCredit)) : ''}${row(`Paid at the shop${r.method ? ' (' + esc(r.method) + ')' : ''}`, m(r.paidAtShop))}
     ${L ? `<hr><div class="rc-mid rc-loy"><span class="meter">${Array.from({ length: Math.min(L.every, 12) }, (_, i) => `<i class="${i < onCard ? 'on' : ''}"></i>`).join('')}</span><span>${k === 0 ? 'Free visit used. A new card starts next time' : left === 0 ? `Visit ${k} of ${L.every} · your next visit is free` : `Visit ${k} of ${L.every} · ${left} more to a free cut`}</span></div>` : ''}
-    <hr><div class="rc-mid muted">${esc(sh.tagline || 'Thank you!')}${sh.phone ? `<br>${esc(sh.phone)}` : ''}</div></div>`;
+    <hr><div class="rc-mid muted">${esc(sh.tagline || 'Thank you!')}${sh.phone ? `<br>${esc(sh.phone)}` : ''}${sh.birPermit ? `<br><small>${esc(sh.birPermit)}</small>` : ''}</div></div>`;
 }
 export const BACK_IC = '<svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5"/></svg>';
 export const LOGO_LG = new URL('./logo.png', import.meta.url).href;

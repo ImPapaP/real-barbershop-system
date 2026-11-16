@@ -1338,3 +1338,7 @@ input[data-cust][aria-expanded="true"]{background-image:url("data:image/svg+xml,
 .agree-card .eyebrow{margin:0}
 .agree-list{margin:0;padding-left:18px;display:grid;gap:8px;line-height:1.45}
 .mi-opts{display:block;margin-top:2px;color:var(--muted)}
+
+/* empty events section */
+.happen-empty{display:flex;gap:14px;align-items:flex-start;padding:20px;border:1.5px dashed var(--line-2);border-radius:16px;max-width:640px}
+.happen-empty p{margin:4px 0 0}

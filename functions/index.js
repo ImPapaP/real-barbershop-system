@@ -27,6 +27,7 @@ import * as logger from 'firebase-functions/logger';
 import crypto from 'node:crypto';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 import {
   validateRequest, policyOf, slotId, isActiveSlot, desiredSlots, slotStateFor, apptMins, startMs,
   verifyPaymongoSignature, rebookLink, newToken, tokenMatches, bookingCode, smsText, emailContent, eligibleBarbers,
@@ -341,7 +342,7 @@ export const getBooking = onCall(async req => {
   for (const gid of a.guests || []) {
     const gs = await apptRef(gid).get(); if (!gs.exists) continue;
     const ga = gs.data();
-    guests.push({ id: gid, token: ga.token, name: ga.name, status: ga.status, date: ga.date, time: ga.time, barberName: apptBarber(info, ga), services: servicesById(info, ga.serviceIds).filter(Boolean).map(x => x.name) });
+    guests.push({ id: gid, token: ga.token, name: ga.name, status: ga.status, date: ga.date, time: ga.time, barberName: apptBarber(info, ga), services: servicesById(info, ga.serviceIds).filter(Boolean).map(x => withOption(x, ga.options).name), addOn: !!ga.addOnOf, prices: servicesById(info, ga.serviceIds).filter(Boolean).map(x => { const o = withOption(x, ga.options); return { name: o.name, price: o.price, priceFrom: !!x.priceFrom }; }) });
   }
   const cut = a.status === 'done' ? await db.doc(`cuts/${id}`).get() : null;
   return { ...publicView(id, a, info), loyalty: await loyaltyFor(a, info), guests, rebook: rebookLink('.', a, info), queue: await queueFor(a), cutPhoto: cut && cut.exists ? cut.data().img || '' : '' };
@@ -777,6 +778,29 @@ async function pullFacebookPhotos() {
 }
 export const syncFacebookPhotos = onSchedule({ schedule: 'every 3 hours', timeZone: 'Asia/Manila' }, async () => {
   await pullFacebookPhotos().catch(e => logger.error('Facebook photo sync failed', e.message));
+});
+// =============== weekly backup ===============
+// Every Sunday at 3 AM: all the shop's records (no photos) as one JSON file in Cloud Storage, backups/YYYY-MM-DD.json.
+// The last 12 are kept. Download them in the Firebase console → Storage → backups.
+const BACKUP_COLS = ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts', 'waitlist', 'attendance', 'promos', 'closings', 'leaves'];
+export const weeklyBackup = onSchedule({ schedule: '0 3 * * 0', timeZone: 'Asia/Manila', timeoutSeconds: 540, memory: '512MiB' }, async () => {
+  const out = { at: new Date().toISOString(), info: (await db.doc('public/info').get()).data() || null };
+  for (const c of BACKUP_COLS) out[c] = (await db.collection(c).get()).docs.map(d => ({ id: d.id, ...d.data() }));
+  const bucket = getStorage().bucket(), name = `backups/${phNow().date}.json`;
+  await bucket.file(name).save(JSON.stringify(out), { contentType: 'application/json', resumable: false });
+  const [files] = await bucket.getFiles({ prefix: 'backups/' });
+  const old = files.filter(f => /\.json$/.test(f.name)).sort((a, b) => b.name.localeCompare(a.name)).slice(12);
+  await Promise.all(old.map(f => f.delete().catch(() => {})));
+  await db.doc('private/backup').set({ last: Date.now(), file: name, counts: Object.fromEntries(BACKUP_COLS.map(c => [c, out[c].length])) });
+});
+
+// =============== official receipt numbers ===============
+// One number per sale, in order, with no gaps or repeats even from two phones at once (private/receipts.next).
+export const nextReceiptNo = onCall(async req => {
+  if (!(await isAdmin(req))) throw new HttpsError('permission-denied', 'Only the shop can do this.');
+  const ref = db.doc('private/receipts');
+  const no = await db.runTransaction(async tx => { const s = await tx.get(ref), n = Math.max(1, (s.exists && s.data().next) || 1); tx.set(ref, { next: n + 1, at: Date.now() }, { merge: true }); return n; });
+  return { no };
 });
 export const syncFacebookNow = onCall(async req => {
   if (!(await isAdmin(req))) throw new HttpsError('permission-denied', 'Only the shop can do this.');

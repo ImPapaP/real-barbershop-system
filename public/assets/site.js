@@ -120,7 +120,7 @@ function page() {
     <a class="wordmark" href="#top" data-act="top" aria-label="${esc(shop.name)} home">${brand(shop.wordmark || shop.name)}</a>
     <nav class="site-nav" aria-label="Sections">
       <button class="lnk" data-act="scroll" data-to="services">Services</button>
-      ${happenings().length ? '<button class="lnk" data-act="scroll" data-to="promos">Promos</button>' : ''}
+      <button class="lnk" data-act="scroll" data-to="promos">Events</button>
       ${products().length ? '<button class="lnk" data-act="scroll" data-to="products">Products</button>' : ''}
       ${galAll().length || demo ? '<button class="lnk" data-act="scroll" data-to="gallery">Gallery</button>' : ''}
       <button class="lnk" data-act="scroll" data-to="team">Team</button>
@@ -169,10 +169,11 @@ function page() {
     <div id="menu-board" class="reveal">${menuBoard(S.menuTab)}</div>
   </div></section>
 
-  ${happenings().length ? `<section id="promos" class="sec"><div class="wrap">
-    <div class="sec-head reveal"><div><p class="eyebrow">What’s on</p><h2 class="sec-title">Promos &amp; events</h2></div>${shop.facebook ? `<a class="btn btn-ghost" href="${esc(shop.facebook)}" target="_blank" rel="noopener">Follow for new promos ${ic('arrow')}</a>` : ''}</div>
-    <div class="happen-grid">${happenings().map(h => happenCard(h)).join('')}</div>
-  </div></section>` : ''}
+  <section id="promos" class="sec"><div class="wrap">
+    <div class="sec-head reveal"><div><p class="eyebrow">What’s on</p><h2 class="sec-title">Events &amp; promos</h2></div>${shop.facebook ? `<a class="btn btn-ghost" href="${esc(shop.facebook)}" target="_blank" rel="noopener">Follow for news ${ic('arrow')}</a>` : ''}</div>
+    ${happenings().length ? `<div class="happen-grid">${happenings().map(h => happenCard(h)).join('')}</div>`
+      : `<div class="happen-empty reveal">${ic('star', 'pic')}<div><b>Nothing scheduled right now</b><p class="muted">Pop-ups, holiday hours, barber battles and promos show up here. ${shop.facebook ? 'Follow our Facebook page to hear first.' : 'Check back soon.'}</p></div></div>`}
+  </div></section>
   ${products().length ? `<section id="products" class="sec alt"><div class="wrap">
     <div class="sec-head reveal"><div><p class="eyebrow">Take it home</p><h2 class="sec-title">Our products</h2></div><p class="muted" style="max-width:40ch">The same products we use in the chair. Buy at the shop, or add one to your booking and we’ll set it aside.</p></div>
     <div class="prod-grid">${products().map(productCard).join('')}</div>
@@ -200,7 +201,7 @@ function page() {
   </div></section>
 
   ${revs.length ? `<section id="reviews" class="sec alt"><div class="wrap">
-    <div class="sec-head reveal"><div><p class="eyebrow">Reviews</p><h2 class="sec-title">What clients say</h2></div>${ratingChip(shop)}</div>
+    <div class="sec-head reveal"><div><p class="eyebrow">Reviews</p><h2 class="sec-title">What clients say</h2></div><div class="row">${ratingChip(shop)}${shop.googleUrl ? `<a class="btn btn-accent" href="${esc(shop.googleUrl)}" target="_blank" rel="noopener">${ic('star')} Leave a review</a>` : ''}</div></div>
     <div class="reviews">${revs.map((r, i) => `<figure class="review reveal" style="--d:${(i % 3) * 90}ms"><div class="stars" aria-label="${r.rating} out of 5 stars">${'★'.repeat(r.rating)}<span>${'★'.repeat(5 - r.rating)}</span></div><blockquote>${esc(r.text)}</blockquote><figcaption><b>${esc(r.name)}</b> · ${esc(r.source || '')}</figcaption></figure>`).join('')}</div>
   </div></section>` : ''}
 
@@ -620,7 +621,7 @@ function booker() {
   if (!policyOf(info()).onlineBooking) return bookOffline();
   const I = info(), b = S.bk, pol = policyOf(I), picked = chosen(), st = stepState();
   const bars = (I.barbers || []).filter(x => picked.length ? canServe(x, picked) : (x.groups || ['him']).includes(b.group));
-  const dates = bookableDates(I).map(d => ({ ...d, off: !d.closed && b.barber && !(barber(b.barber)?.days || []).includes(dowOf(d.date)) }));
+  const dates = bookableDates(I).map(d => ({ ...d, off: !d.closed && b.barber && (!(barber(b.barber)?.days || []).includes(dowOf(d.date)) || (barber(b.barber)?.off || []).includes(d.date)) }));
   const times = b.date && picked.length ? availableTimes(I, { services: picked, date: b.date, barberId: b.barber }, S.slots) : [];
   const total = sum(picked, s => s.price), from = picked.some(s => s.priceFrom), mins = sum(picked, s => s.mins);
   const gpk = st.when ? guestPick(times) : null, people = gpk && !b.guest.self ? 2 : 1, due = dueFor(gpk);

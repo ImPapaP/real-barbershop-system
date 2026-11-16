@@ -211,6 +211,7 @@ Barbers earn their **daily amount or their commission, whichever is higher**, fo
 - **Roles:** barber, hair stylist and nail technician take bookings and earn commission. Receptionist and maintenance only get daily pay: they're in Who's in and the pay table, but not on the website, in bookings or at checkout. Change any of it in **Staff → Edit**.
 - A day counts as worked when the barber rang up a sale that day, or when it's one of their scheduled days and they weren't marked absent. Mark absences, or someone coming in on a day off, in **Schedule → Who's in**.
 - Days only count from the barber's start date and from the first sale recorded in the system, so old dates don't build up pay.
+- **Leave:** Staff → **Leave** → **+ Add leave**. Pick the person, the dates, and **Paid** or **Unpaid**. Paid leave counts as a day in (their daily pay, or the daily minimum); unpaid leave isn't paid, and a monthly salary goes down by that day (the salary ÷ the days in that month). Leave days are taken off the website calendar for that person, and Who's in shows "Paid leave" or "Unpaid leave".
 - **Barbers** shows days worked, daily pay, commission, tips, total earned, and what's owed since the last payout.
 - **Pay vs what each barber brings in** (Barbers tab): his service sales next to what the shop pays him (daily pay + commission), pay as a % of his sales, and how much is left for the shop or how much more the shop pays than he brings in. A barber pays for himself once his services pass his daily pay ÷ the shop’s share each day (₱1,250 for ₱500/day + 60%, ₱1,400 for ₱700/day + 50%). The Excel Summary has the same columns.
 
@@ -263,8 +264,15 @@ Barbers earn their **daily amount or their commission, whichever is higher**, fo
 - **Loyalty card:** the stamp card is on the customer's booking page (and the "My loyalty card" link when they come back to the website).
 - **Cut photo:** open a finished visit (Edit) → **Add photo**. The client sees it on their booking page so they can ask for the same cut; **Add to gallery** puts it on the website.
 
+- **Served late:** when a client booked with a senior barber comes more than 20 minutes late (5 for juniors) and still gets their cut, tap **Served late** on the booking. Checkout opens with the full price and the down payment isn't taken off; it's kept, half to the barber. **No-show: late fee** is for when they didn't come or weren't served.
+- **Add-ons on the booking page:** "Pay at the shop" includes add-ons picked for the visit (and the second person's), so the client sees the real amount.
+- **Official receipt numbers (BIR):** Shop setup → **Official receipts (BIR)** → tick "Number every receipt in order", and fill in the prefix (e.g. OR-), the next number, your TIN and BIR permit / ATP number. Every sale then gets the next number in order (OR-000001, OR-000002, …), counted on the server so two phones never get the same number, and the receipt says "Official receipt" with the TIN and permit. The Excel export has a **Sales book** sheet (date, receipt number, client, gross sales, discount, net sales, payment, paid online earlier, paid at the shop) for your bookkeeper. Have your accountant confirm the setup with your BIR RDO before you rely on it as your official receipts.
+- **Backups:** Shop setup → **Backups** → **Download full backup** (one file with everything) or **Download clients, sales and bookings (Excel)**. On the live site, `weeklyBackup` also saves a full copy to Firebase Storage every Sunday at 3 AM and keeps the last 12 weeks.
+
 ## Website extras
 
+- **Events & promos:** always on the website (button "Events" in the menu). Add events and promos in Website → Promos & events; when there's nothing on, it says so and points to your Facebook page.
+- **Leave a review:** a button next to the reviews (and after a 4- or 5-star rating) opens your Google review page. Set the link in Website → Star rating → Link to the reviews.
 - **Style gallery:** tag each gallery photo with a style and barber (Website → Gallery). Customers filter by style, and **Book this look** books that barber with the look in the notes.
 - **Barber profiles:** tap a barber to see their bio (Staff → Edit → Short bio), days in, starting price, rating and recent work.
 - **Map:** a Google map under Visit, with your own "How to find us" note (Shop setup).

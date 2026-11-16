@@ -7,7 +7,7 @@ import {
 
 // The saved demo is keyed by a fingerprint of the starter data, so changing the menu or team
 // (or a browser briefly mixing old and new files) never leaves stale sample data behind.
-const SEED_REV = 24; // bump when seed() itself changes
+const SEED_REV = 25; // bump when seed() itself changes
 const fingerprint = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const KEY = `rb-demo-${SEED_REV}-${fingerprint(JSON.stringify([STARTER, STARTER_STAFF]))}`, USER_KEY = 'rb-demo-user';
 try { Object.keys(localStorage).filter(k => k.startsWith('rb-demo-') && k !== KEY && k !== USER_KEY).forEach(k => localStorage.removeItem(k)); } catch (_) {}
@@ -31,13 +31,16 @@ function seed() {
   const m = new Map(), T = phNow().date, day = n => addDays(T, n);
   let r = 11; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
   const pick = a => a[Math.floor(rnd() * a.length)];
-  m.set('public/info', { ...clone(STARTER), policy: { ...STARTER.policy, onlineBooking: true }, barbers: STARTER_STAFF.filter(isServiceStaff).map(publicBarber),
+  m.set('public/info', { ...clone(STARTER), policy: { ...STARTER.policy, onlineBooking: true }, barbers: STARTER_STAFF.filter(isServiceStaff).map(b => publicBarber({ ...b, off: b.id === 'vince' ? [day(5), day(6)] : [] })),
     products: STARTER_PRODUCTS.map((p, i) => ({ id: 'i' + (i + 1), name: p.name, price: p.price || 0, desc: `${p.size} · ${p.desc}`, photo: p.photo, tag: p.tag, inStock: true })),
     happenings: [ // samples so the demo shows the Promos & events section
       { id: 'h_s1', kind: 'promo', title: 'First visit? ₱50 off your cut', text: 'New to REAL Barbers? Use the code when you book online and get ₱50 off your first haircut.', start: '', end: day(30), code: 'WELCOME50', badge: '₱50 OFF', sample: true },
       { id: 'h_s2', kind: 'event', title: 'December: open every day', text: 'We’re open daily from 9 AM to 8 PM all December. Book early for the holidays, slots fill up fast.', start: '', end: day(45), sample: true }
     ] });
   STARTER_STAFF.forEach(({ id, ...b }) => m.set('staff/' + id, { ...b, since: day(-40) }));
+  // sample leave: Mac unpaid two days last week, Vince paid leave next week (the website hides those days for him)
+  m.set('leaves/l1', { staffId: 'mac', from: day(-6), to: day(-5), paid: false, note: 'Family emergency', at: Date.now() });
+  m.set('leaves/l2', { staffId: 'vince', from: day(5), to: day(6), paid: true, note: 'Vacation', at: Date.now() });
   m.set('admins/demo', { role: 'owner' });
   const svc = STARTER.services, him = svc.filter(s => s.group === 'him'), her = svc.filter(s => s.group === 'her');
   const names = ['Marco Reyes', 'Jericho Santos', 'Carlo Mendoza', 'Rafael Cruz', 'Joshua Villanueva', 'Kevin Ramos', 'Miguel Torres', 'Andrea Cruz', 'Bea Lim', 'Dennis Aquino'];
@@ -266,13 +269,13 @@ const FUNCS = {
     const code = Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
     store.set('appointments/' + id, {
       code, token, source: 'online', ...st, ...(promo ? { promo } : {}), notify: true, name: d.name.trim(), phone: d.phone.trim(), email: d.email.trim(), notes: d.notes || '', customerId: '', ...(cleanBday(d.birthday) ? { birthday: cleanBday(d.birthday) } : {}),
-      serviceIds: services.map(s => s.id), options: cleanOptions(I, services.map(s => s.id), d.options), mins: sum(services, s => s.mins), date: d.date, time: d.time, startAt: startMs(d.date, d.time), barberId: mainB, ...(d.barberId ? {} : { anyBarber: true }),
+      serviceIds: services.map(s => s.id), options: cleanOptions(I, services.map(s => s.id), d.options), mins: Math.max(pol.step, sum(services, s => s.mins ?? pol.step)), date: d.date, time: d.time, startAt: startMs(d.date, d.time), barberId: mainB, ...(d.barberId ? {} : { anyBarber: true }),
       deposit: dep, reminders: {}, reschedules: 0, createdAt: Date.now(), guests: gid ? [gid] : []
     });
     if (guest) store.set('appointments/' + gid, {
       code: code.slice(0, 5) + '2', token: Math.random().toString(36).slice(2, 14), source: 'online', ...st, notify: false, groupOf: id, bookedBy: d.name.trim(), ...(d.guest.sameClient ? { addOnOf: id } : {}),
       name: guest.name, phone: d.phone.trim(), email: d.email.trim(), notes: d.notes || '', customerId: '',
-      serviceIds: guest.services.map(s => s.id), options: cleanOptions(I, guest.services.map(s => s.id), d.options), mins: sum(guest.services, s => s.mins), date: guest.date, time: guest.time, startAt: startMs(guest.date, guest.time), barberId: guest.barberId, ...(d.guest.barberId ? {} : { anyBarber: true }),
+      serviceIds: guest.services.map(s => s.id), options: cleanOptions(I, guest.services.map(s => s.id), d.options), mins: Math.max(pol.step, sum(guest.services, s => s.mins ?? pol.step)), date: guest.date, time: guest.time, startAt: startMs(guest.date, guest.time), barberId: guest.barberId, ...(d.guest.barberId ? {} : { anyBarber: true }),
       deposit: depGuest ? { ...depOf(depGuest), ...(manual ? {} : { paidWith: id }) } : d.guest.sameClient && depMain ? { amount: 0, status: dep.status, paidWith: id } : { amount: 0, status: 'none' }, reminders: {}, reschedules: 0, createdAt: Date.now()
     });
     afterWrite('appointments/' + id); if (guest) afterWrite('appointments/' + gid);
@@ -283,7 +286,7 @@ const FUNCS = {
     let cid = a.customerId;
     if (!cid && a.phone) { const key = String(a.phone).replace(/\D/g, '').replace(/^63/, '0'); const c = [...store].find(([k, v]) => k.startsWith('customers/') && v.phoneKey === key); cid = c ? c[0].split('/')[1] : ''; }
     const visits = cid ? [...store].filter(([k, v]) => k.startsWith('sales/') && v.customerId === cid).length : 0;
-    const guests = (a.guests || []).map(gid => { const g = store.get('appointments/' + gid); return g && { id: gid, token: g.token, name: g.name, status: g.status, date: g.date, time: g.time, barberName: g.anyBarber ? '' : (I.barbers.find(b => b.id === g.barberId) || {}).name || '', services: (g.serviceIds || []).map(s => (I.services.find(x => x.id === s) || {}).name).filter(Boolean) }; }).filter(Boolean);
+    const guests = (a.guests || []).map(gid => { const g = store.get('appointments/' + gid); return g && { id: gid, token: g.token, name: g.name, status: g.status, date: g.date, time: g.time, barberName: g.anyBarber ? '' : (I.barbers.find(b => b.id === g.barberId) || {}).name || '', services: (g.serviceIds || []).map(s => I.services.find(x => x.id === s)).filter(Boolean).map(x => withOption(x, g.options).name), addOn: !!g.addOnOf, prices: (g.serviceIds || []).map(s => I.services.find(x => x.id === s)).filter(Boolean).map(x => { const o = withOption(x, g.options); return { name: o.name, price: o.price, priceFrom: !!x.priceFrom }; }) }; }).filter(Boolean);
     const cut = store.get('cuts/' + d.id);
     return { ...publicView(d.id), loyalty: every ? { every, visits, nextFree: (visits + 1) % every === 0 } : null, guests, rebook: rebookLink('.', a, I), queue: queueFor(a), cutPhoto: a.status === 'done' && cut ? cut.img : '' };
   },
@@ -294,6 +297,7 @@ const FUNCS = {
     if (!r.ok) fail('invalid-argument', r.error);
     return { code, off: r.off, label: r.label };
   },
+  nextReceiptNo() { const r = store.get('private/receipts') || {}, n = Math.max(1, r.next || 1); store.set('private/receipts', { ...r, next: n + 1 }); changed(); return { no: n }; },
   // Client accounts (mirrors the server). In the demo the code is shown on screen instead of texted.
   requestCode(d) {
     const phone = String(d.phone || '').replace(/\D/g, '').replace(/^63/, '0');
@@ -384,7 +388,7 @@ const FUNCS = {
     return { id: d.id, date: s.date, time: s.time, name: s.name && s.name !== 'Walk-in' ? s.name : '', barberName: (I.barbers.find(b => b.id === s.barberId) || {}).name || '',
       lines: (s.lines || []).map(l => ({ name: l.name, qty: Number(l.qty) || 1, price: Number(l.price) || 0 })), discount: s.discount || 0, discountNote: s.discountNote || '', tip: s.tip || 0, total: s.total || 0,
       depositCredit: s.depositCredit || 0, paidAtShop: Math.max(0, (s.total || 0) - (s.depositCredit || 0)), method: s.method || '', cash: s.cash || 0,
-      shop: { name: sh.name || '', wordmark: sh.wordmark || '', address: sh.address || '', phone: sh.phone || '', tagline: sh.tagline || '' }, loyalty: every && s.customerId ? { every, visits } : null };
+      orNo: s.orNo || '', shop: { name: sh.name || '', wordmark: sh.wordmark || '', address: sh.address || '', phone: sh.phone || '', tagline: sh.tagline || '', tin: sh.tin || '', birPermit: sh.birPermit || '' }, loyalty: every && s.customerId ? { every, visits } : null };
   },
   rateVisit(d) {
     const a = byToken(d);

@@ -31,7 +31,7 @@ const METHOD_NAMES = { gcash: 'GCash', paymaya: 'Maya', card: 'Card', qrph: 'QR 
 const S = {
   ready: false, user: null, canAdmin: false, loginErr: '', loginBusy: false, loginMsg: '',
   info: null, infoMissing: false, slow: false,
-  staff: [], appointments: [], sales: [], expenses: [], customers: [], inventory: [], payouts: [], waitlist: [], attendance: [], promos: [], closings: [], loaded: {}, reminding: '',
+  staff: [], appointments: [], sales: [], expenses: [], customers: [], inventory: [], payouts: [], waitlist: [], attendance: [], promos: [], closings: [], leaves: [], loaded: {}, reminding: '',
   proofImgs: {}, cutImgs: {}, refImgs: {},
   schedDate: '', schedBarber: '', schedQ: '', schedStatus: '', schedSrc: '', showExpired: false, period: 'month', from: '', to: '',
   clientQ: '', clientSort: 'recent', stockFilter: 'all', showArchived: false, pos: null, busy: false, uploading: ''
@@ -63,7 +63,7 @@ const services = () => info().services || [];
 const activeServices = () => services().filter(s => s.active !== false);
 const svcById = id => services().find(s => s.id === id);
 const svcNames = (ids, opts) => (ids || []).map(id => { const v = svcById(id); return v ? withOption(v, opts).name : 'Removed service'; }).join(', ');
-const svcMins = ids => sum((ids || []).map(svcById).filter(Boolean), s => s.mins || pol().step) || pol().step;
+const svcMins = ids => Math.max(pol().step, sum((ids || []).map(svcById).filter(Boolean), s => s.mins ?? pol().step));
 const staffAll = () => S.staff;
 const activeStaff = () => staffAll().filter(b => b.active !== false).sort((a, b) => (a.chair || 99) - (b.chair || 99) || a.name.localeCompare(b.name));
 const serviceStaff = () => activeStaff().filter(isServiceStaff); // takes bookings and sales
@@ -222,19 +222,22 @@ const netOf = s => (s.total || 0) - (s.tip || 0);
 // used this system (its first sale) or the barber's start date, whichever is later, and never in the future.
 let payCache = { ref: null };
 function payIndex() {
-  if (payCache.ref === S.sales && payCache.att === S.attendance) return payCache;
+  if (payCache.ref === S.sales && payCache.att === S.attendance && payCache.lv === S.leaves) return payCache;
   const saleDays = new Set(S.sales.map(x => `${x.date}_${x.barberId}`));
   const commDay = new Map(); S.sales.forEach(x => { const k = `${x.date}_${x.barberId}`; commDay.set(k, (commDay.get(k) || 0) + (Number(x.commission) || 0)); });
   const first = S.sales.reduce((m, x) => (!m || x.date < m ? x.date : m), '') || today();
   const marks = new Map(S.attendance.map(a => [a.id, a.present]));
-  return (payCache = { ref: S.sales, att: S.attendance, saleDays, first, marks, commDay });
+  return (payCache = { ref: S.sales, att: S.attendance, lv: S.leaves, saleDays, first, marks, commDay });
 }
 const payStart = b => { const f = payIndex().first; return b.since && b.since > f ? b.since : f; };
 const scheduledIn = (b, d) => (b.days || []).includes(parseYmd(d).getDay()) && b.active !== false && d >= payStart(b);
+// Leave (Staff → Leave): a paid leave day counts as a day in (daily pay / daily minimum, no commission); an unpaid one doesn't
+const leaveOn = (b, d) => (S.leaves || []).find(l => l.staffId === b.id && l.from <= d && d <= (l.to || l.from));
 function workedOn(b, d) {
   const P = payIndex();
   if (d > today() || d < payStart(b)) return false;
   if (P.saleDays.has(`${d}_${b.id}`)) return true;
+  const lv = leaveOn(b, d); if (lv) return !!lv.paid;
   const m = P.marks.get(`${d}_${b.id}`);
   return m === undefined ? scheduledIn(b, d) : m;
 }
@@ -251,7 +254,7 @@ const commOn = (b, d) => payIndex().commDay.get(`${d}_${b.id}`) || 0;
 // What the shop pays on day d besides commission
 function basePayFor(b, d) {
   const t = payType(b), amt = Number(b.dailyPay) || 0;
-  if (t === 'monthly') return d <= today() && d >= payStart(b) && b.active !== false ? round2((Number(b.monthlyPay) || 0) / monthDays(d)) : 0;
+  if (t === 'monthly') { const lv = leaveOn(b, d); return d <= today() && d >= payStart(b) && b.active !== false && !(lv && !lv.paid) ? round2((Number(b.monthlyPay) || 0) / monthDays(d)) : 0; }
   if (!workedOn(b, d)) return 0;
   return t === 'quota' ? round2(Math.max(0, amt - commOn(b, d))) : amt;
 }
@@ -381,7 +384,7 @@ const assignSelect = a => { const free = freeBarbersFor(a); return `<select clas
 function apptRow(a, compact) {
   const canCheckout = ['booked', 'waiting', 'inchair'].includes(a.status);
   const giveAway = (isLateNow(a) && waitingWalkins().length ? `<button class="btn btn-sm btn-danger" data-act="giveSlot" data-id="${esc(a.id)}">Give slot to walk-in</button>` : '')
-    + (owesLateFee(a) ? `<button class="btn btn-sm" data-act="lateFee" data-id="${esc(a.id)}" title="Over ${lateLimit(a, pol())} min late: down payment kept, full price owed">Collect late fee</button>` : '');
+    + (owesLateFee(a) ? `<button class="btn btn-sm btn-primary" data-act="servedLate" data-id="${esc(a.id)}" title="They came more than ${lateLimit(a, pol())} min late and got their service: full price, down payment kept">Served late</button><button class="btn btn-sm" data-act="lateFee" data-id="${esc(a.id)}" title="They didn’t come or weren’t served: charge the service as a late fee">No-show: late fee</button>` : '');
   const actions = `${giveAway}${canCheckout ? `<button class="btn btn-sm btn-primary" data-act="checkoutAppt" data-id="${esc(a.id)}">Checkout</button>` : ''}${a.status === 'done' && a.saleId ? `<button class="btn btn-sm" data-act="showSale" data-id="${esc(a.saleId)}">Receipt</button>` : ''}`;
   const flag = a.conflict && ['booked', 'pending_payment'].includes(a.status) ? ' ' + chip({ kind: 'bad', icon: '!', label: 'Overlaps another booking' }) : '';
   if (compact) return `<li>${a.barberId ? av(staffById(a.barberId)) : ''}<span class="t">${a.source === 'walk-in' ? `#${esc(a.queueNo || '')}` : fmtTime(a.time)}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${lateChip(a)}${bdayChip(a)}${refChip(a)}<div class="sub">${esc(svcNames(a.serviceIds, a.options))} · ${needsBarber(a) ? '<b class="needs-b">Any barber, assign one</b>' : esc(staffName(a.barberId))}</div></div>${chip(APPT[a.status] || APPT.booked)}</li>`;
@@ -454,8 +457,8 @@ function whosIn(d) {
   const future = d > today();
   return `<section class="panel"><div class="panel-h"><h2>Who’s in</h2><span class="muted small">${future ? 'Mark day-offs ahead of time.' : 'Tap to mark someone absent or in on their day off.'} Each day in earns the barber’s daily pay.</span></div>
     <div class="whos">${staff.map(b => {
-      const sold = P.saleDays.has(`${d}_${b.id}`), mark = P.marks.get(`${d}_${b.id}`), on = sold || (mark === undefined ? (b.days || []).includes(parseYmd(d).getDay()) : mark);
-      const note = sold ? 'Has sales' : mark === undefined ? (on ? 'Scheduled' : 'Day off') : (on ? 'Came in' : 'Absent');
+      const lv = leaveOn(b, d), sold = P.saleDays.has(`${d}_${b.id}`), mark = P.marks.get(`${d}_${b.id}`), on = sold || (!lv && (mark === undefined ? (b.days || []).includes(parseYmd(d).getDay()) : mark));
+      const note = sold ? 'Has sales' : lv ? (lv.paid ? 'Paid leave' : 'Unpaid leave') : mark === undefined ? (on ? 'Scheduled' : 'Day off') : (on ? 'Came in' : 'Absent');
       return `<button type="button" class="who${on ? ' on' : ''}" data-act="toggleIn" data-id="${esc(b.id)}" aria-pressed="${on}" ${sold ? 'disabled' : ''} title="${esc(note)}">${av(b)}<span><b>${esc(b.name)}</b><small>${note}${on && b.dailyPay ? ' · ' + money(b.dailyPay) : ''}</small></span></button>`;
     }).join('')}</div></section>`;
 }
@@ -594,6 +597,7 @@ function vCheckout() {
           ${field('Client', `<input id="pos-name" data-bind="pos.name" data-live data-cust role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="cust-pop" value="${esc(p.name)}" placeholder="Walk-in" autocomplete="off">`, 'pos-name')}
           ${field('Phone', `<input id="pos-phone" data-bind="pos.phone" data-live value="${esc(p.phone)}" inputmode="tel" placeholder="Optional">`, 'pos-phone')}
         </div>
+        ${p.servedLate ? `<p class="hint"><b>Served late.</b> More than ${lateLimit(appt || {}, pol())} minutes late for a senior barber: the client pays the full price, and the down payment isn’t taken off (it’s kept, half to the barber).</p>` : ''}
         ${p.lateFee ? `<p class="hint"><b>Late fee.</b> More than ${lateLimit(appt || {}, pol())} minutes late for a senior barber: the down payment is kept (half goes to the barber) and the client pays the full price of the service for the barber’s time.</p>` : ''}
         ${appt && appt.refPhoto ? `<button type="button" class="btn btn-sm" data-act="viewRef" data-id="${esc(appt.id)}" style="justify-self:start">See the cut they want (photo)</button>` : ''}
         ${loyal}${posBday(p) !== null ? `<p class="hint"><b>Birthday ${bdayWhen(posBday(p))}.</b> ${esc(bdayPromoText())} Tap “Birthday promo” below.</p>` : ''}
@@ -707,6 +711,12 @@ function exportXlsx() {
   const salesSh = [...head('Sales'), SH.map((t, i) => H(t, i, 8)), ...sRows];
   if (sRows.length) salesSh.push(totalRow(SH.length, 5, 4 + sRows.length, 'Total', [8, 9, 10, 11, 12, 13, 14, 15]));
 
+  // Sales book: one row per numbered receipt, in receipt order (for the accountant / BIR books)
+  const bookSales = s.sales.filter(x => x.orNo).sort((a, b) => String(a.orNo).localeCompare(String(b.orNo), undefined, { numeric: true }));
+  const bRows = bookSales.map(x => [D(x.date), x.orNo, x.name || 'Walk-in', M((x.svcTotal || 0) + (x.prodTotal || 0)), M(-(x.discount || 0)), M((x.total || 0) - (x.tip || 0)), x.method || '', M(x.depositCredit || 0), M((x.total || 0) - (x.depositCredit || 0) - (x.tip || 0))]);
+  const bookSh = [...head('Sales book'), ['Date', 'Receipt no.', 'Client', 'Gross sales', 'Discount', 'Net sales', 'Payment', 'Paid online earlier', 'Paid at the shop'].map((t, i) => H(t, i, 3)), ...bRows];
+  if (bRows.length) bookSh.push(totalRow(9, 5, 4 + bRows.length, 'Total', [3, 4, 5, 7, 8]));
+  else bookSh.push([{ v: 'No numbered receipts in this period. Turn on official receipt numbers in Shop setup.', s: 'sub' }]);
   // Expenses
   const eRows = exps.map(e => [D(e.date), e.cat, e.desc, e.method, M(e.amount)]);
   const expSh = [...head('Expenses'), ['Date', 'Category', 'Description', 'Paid by', 'Amount'].map((t, i) => H(t, i, 4)), ...eRows];
@@ -716,6 +726,7 @@ function exportXlsx() {
     { name: 'Summary', cols: [40, 13, 10, 14, 13, 14, 15, 14, 17, 18], rows: sum1 },
     { name: 'Day by day', cols: [18, 10, 15, 14, 15, 15, 15], rows: daily, freeze: 'A5', filter: dRows.length ? `A4:G${4 + dRows.length}` : '' },
     { name: 'Sales', cols: [18, 10, 14, 22, 14, 34, 22, 13, 13, 13, 12, 11, 13, 13, 14, 13], rows: salesSh, freeze: 'A5', filter: sRows.length ? `A4:P${4 + sRows.length}` : '' },
+    { name: 'Sales book', cols: [16, 16, 24, 14, 12, 14, 14, 16, 16], rows: bookSh, freeze: 'A5', filter: bRows.length ? `A4:I${4 + bRows.length}` : '' },
     { name: 'Expenses', cols: [18, 18, 36, 16, 15], rows: expSh, freeze: 'A5', filter: eRows.length ? `A4:E${4 + eRows.length}` : '' }
   ], { title: `${shop.name} income and expenses, ${rangeLabel(r)}`, author: shop.name });
   saveBlob(blob, fileBase(r) + '.xlsx');
@@ -790,6 +801,28 @@ function keepPanel(list, r) {
       <p class="muted small" style="margin:0">${money(P.base)} daily pay + ${money(P.comm)} commission</p></li>`).join('')}</ul>
     <p class="muted small" style="margin-top:12px">A barber pays for himself once his services pass his daily pay ÷ the shop’s % each day: ${[...new Map(rows.filter(x => x.P.daily).map(x => [`${x.P.daily}_${x.b.rate}`, x])).values()].sort((x, y) => x.P.daily - y.P.daily).map(({ b, P }) => `${money(P.need)} a day on ${money(P.daily)}/day + ${esc(b.rate || 0)}%`).join(', ')}.</p></section>`;
 }
+// Leave: paid leave days count as days in (daily pay or daily minimum; monthly salary unchanged),
+// unpaid leave days don't (monthly salary is reduced by that day). Leave days are taken off the booking calendar.
+const leaveDays = l => { let n = 0; for (let d = l.from; d <= (l.to || l.from) && n < 400; d = addDays(d, 1)) n++; return n; };
+function leavePanel(list) {
+  const t = today(), all = [...(S.leaves || [])].filter(l => (l.to || l.from) >= addDays(t, -60)).sort((a, b) => b.from.localeCompare(a.from));
+  return `<section class="panel"><div class="panel-h"><h2>Leave</h2><button class="btn btn-sm btn-primary" data-act="newLeave">+ Add leave</button></div>
+    ${all.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Dates</th><th>Days</th><th>Type</th><th>Note</th><th></th></tr></thead><tbody>${all.map(l => { const b = staffById(l.staffId), now = l.from <= t && t <= (l.to || l.from);
+      return `<tr><td><div class="row" style="flex-wrap:nowrap">${b ? av(b) : ''}<b>${esc(b ? b.name : 'Former staff')}</b></div></td><td class="nowrap">${fmtDate(l.from)}${l.to && l.to !== l.from ? ` – ${fmtDate(l.to)}` : ''}${now ? ' ' + chip({ kind: 'info', icon: '•', label: 'Now' }) : ''}</td><td class="r">${leaveDays(l)}</td>
+        <td>${chip(l.paid ? { kind: 'good', icon: '₱', label: 'Paid' } : { kind: 'mute', icon: '–', label: 'Unpaid' })}</td><td class="muted small">${esc(l.note || '')}</td><td><div class="acts"><button class="btn btn-sm btn-ghost" data-act="editLeave" data-id="${esc(l.id)}">Edit</button><button class="btn btn-sm btn-ghost" data-act="delLeave" data-id="${esc(l.id)}">Remove</button></div></td></tr>`; }).join('')}</tbody></table></div>`
+      : '<p class="empty">No leave recorded. Use “+ Add leave” for vacation, sick days or emergencies.</p>'}
+    <p class="muted small" style="margin-top:10px">Paid leave counts as a day in: daily pay, or the daily minimum for people on “daily minimum or commission”. Unpaid leave isn’t paid (a monthly salary goes down by that day). Clients can’t book that person online on leave days.</p></section>`;
+}
+function leaveModal(l) {
+  const c = l || { from: today(), to: today(), paid: true };
+  openModal(l ? 'Edit leave' : 'Add leave', `<form class="stack" data-form="leave" data-id="${esc(c.id || '')}">
+    ${field('Staff member', `<select id="m-lstaff" name="staffId" required>${staffAll().filter(b => b.active !== false).map(b => opt(b.id, b.name, b.id === c.staffId)).join('')}</select>`, 'm-lstaff')}
+    <div class="fgrid">${field('From', `<input id="m-lfrom" name="from" type="date" value="${esc(c.from)}" required>`, 'm-lfrom')}${field('To', `<input id="m-lto" name="to" type="date" value="${esc(c.to || c.from)}" required>`, 'm-lto')}</div>
+    <fieldset class="field"><legend>Type</legend><div class="row"><label class="check"><input type="radio" name="paid" value="1" ${c.paid ? 'checked' : ''}> Paid leave</label><label class="check"><input type="radio" name="paid" value="0" ${c.paid ? '' : 'checked'}> Unpaid leave</label></div></fieldset>
+    ${field('Note (optional)', `<input id="m-lnote" name="note" value="${esc(c.note || '')}" maxlength="120" placeholder="e.g. Vacation, sick, family emergency">`, 'm-lnote')}
+    <p class="err" id="m-err" role="alert"></p>
+    <div class="modal-f"><button type="button" class="btn btn-ghost" data-act="closeModal">Cancel</button><button class="btn btn-primary" type="submit">Save leave</button></div></form>`);
+}
 // How each person is paid, with an example and what it came to in this period
 function payRulesPanel(list, r) {
   if (!list.length) return '';
@@ -818,6 +851,7 @@ function vTeam() {
       <td><div class="acts"><button class="btn btn-sm btn-primary" data-act="payStaff" data-id="${esc(b.id)}" ${owed <= 0 ? 'disabled' : ''}>Pay</button><button class="btn btn-sm btn-ghost" data-act="editStaff" data-id="${esc(b.id)}">Edit</button></div></td></tr>`; }).join('')}
     </tbody></table></div>` : '<p class="empty">No staff yet. Use “+ Staff member”, or load the starter team in Shop setup.</p>'}
     <p class="muted small" style="margin-top:12px">Earned = base pay + commission (their rate × service sales after discounts) + their half of forfeited down payments + tips. Base pay depends on how each person is paid (see below). A day counts as worked when they had a sale, or it’s one of their days in and they weren’t marked absent in Schedule → Who’s in. “Owed now” is everything earned minus payouts.</p></section>
+  ${leavePanel(list.filter(b => b.active !== false))}
   ${payRulesPanel(list.filter(b => b.active !== false), r)}
   ${keepPanel(list.filter(b => b.active !== false && isServiceStaff(b)), r)}
   <section class="panel"><div class="panel-h"><h2>Payout history</h2></div>
@@ -886,6 +920,22 @@ function vStock() {
 }
 
 // ---------- tab: setup ----------
+// ---------- backups ----------
+// Download everything now (a JSON file that holds every record, and an Excel file of clients, sales and bookings).
+// The server also saves a copy every Sunday at 3 AM (see weeklyBackup); the last one shows here.
+const BACKUP_COLS = ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts', 'waitlist', 'attendance', 'promos', 'closings', 'leaves'];
+function backupPanel() {
+  if (S.backupInfo === undefined) { S.backupInfo = null; db.doc('private/backup').get().then(d => { S.backupInfo = d.exists ? d.data() : false; schedule(); }).catch(() => { S.backupInfo = false; }); }
+  const b = S.backupInfo;
+  return `<section class="panel"><div class="panel-h"><h2>Backups</h2></div>
+    <p class="muted small" style="max-width:72ch">Keep a copy of the shop’s records somewhere safe. ${demo ? 'In the demo there is no automatic backup.' : b ? `Last automatic backup: <b>${new Date(b.last).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}</b> (Firebase console → Storage → ${esc(b.file)}). A new one is saved every Sunday at 3 AM; the last 12 are kept.` : 'The automatic weekly backup starts once the backend is deployed (every Sunday at 3 AM).'}</p>
+    <div class="row"><button class="btn btn-primary" data-act="backupJson" ${S.backingUp ? 'disabled' : ''}>${S.backingUp ? 'Preparing…' : 'Download full backup'}</button><button class="btn" data-act="backupXlsx" ${S.backingUp ? 'disabled' : ''}>Download clients, sales and bookings (Excel)</button></div></section>`;
+}
+async function allRecords() {
+  const out = { at: new Date().toISOString(), shop: info().shop.name, info: info() };
+  for (const c of BACKUP_COLS) { try { out[c] = (await db.collection(c).get()).docs.map(d => ({ id: d.id, ...d.data() })); } catch (_) { out[c] = []; } }
+  return out;
+}
 function vSetup() {
   const I = info(), sh = I.shop, p = pol();
   return `${pageHead('Your shop', 'Shop setup', '')}
@@ -900,6 +950,11 @@ function vSetup() {
         <div class="fgrid">${field('Instagram', `<input id="sh-ig" name="instagram" value="${esc(sh.instagram || '')}" placeholder="https://www.instagram.com/...">`, 'sh-ig')}${field('Messenger link (optional)', `<input id="sh-msg" name="messenger" value="${esc(sh.messenger || '')}" placeholder="Made from your Facebook page if empty">`, 'sh-msg')}</div>
         ${field('How to find us (shown under the map)', `<textarea id="sh-dir" name="directions" rows="2" maxlength="240" placeholder="e.g. Ground floor, beside the escalator. Jeepneys to Antipolo Cathedral stop in front.">${esc(sh.directions || '')}</textarea>`, 'sh-dir')}
         <div class="fgrid">${field('GCash number for down payments', `<input id="sh-gcash" name="gcashNumber" value="${esc(sh.gcashNumber || '')}" inputmode="tel">`, 'sh-gcash')}${field('GCash account name', `<input id="sh-gname" name="gcashName" value="${esc(sh.gcashName || '')}">`, 'sh-gname')}</div>
+        <fieldset class="field"><legend>Official receipts (BIR)</legend>
+          <label class="row small"><input type="checkbox" id="sh-or" name="orEnabled" ${sh.orEnabled ? 'checked' : ''}> Number every receipt in order (official receipt numbers)</label>
+          <div class="fgrid three">${field('Number starts with', `<input id="sh-orp" name="orPrefix" value="${esc(sh.orPrefix || 'OR-')}" maxlength="10">`, 'sh-orp')}${field('Next number', `<input id="sh-orn" name="orNext" type="number" min="1" placeholder="${esc(S.orNext || 1)}">`, 'sh-orn')}${field('TIN', `<input id="sh-tin" name="tin" value="${esc(sh.tin || '')}" placeholder="000-000-000-000">`, 'sh-tin')}</div>
+          ${field('Line printed on receipts (e.g. BIR permit / ATP number)', `<input id="sh-permit" name="birPermit" value="${esc(sh.birPermit || '')}" maxlength="120">`, 'sh-permit')}
+          <p class="muted small" style="margin:0">Leave “Next number” empty to keep counting. Ask the shop’s accountant which details BIR needs on your receipts; this system isn’t a BIR-accredited cash register.</p></fieldset>
         <div class="fgrid">${field('Currency symbol', `<input id="sh-cur" name="currency" value="${esc(sh.currency || '₱')}" maxlength="4">`, 'sh-cur')}${field('Free cut every N visits (0 = off)', `<input id="sh-loy" name="loyaltyEvery" type="number" min="0" max="50" value="${esc(sh.loyaltyEvery ?? 10)}">`, 'sh-loy')}</div>
         <div class="modal-f"><button class="btn btn-primary" type="submit">Save details</button></div>
       </form></section>
@@ -933,7 +988,8 @@ function vSetup() {
     </tbody></table></div></section>
   ${promosPanel()}
   <section class="panel"><div class="panel-h"><h2>Who can use this dashboard</h2></div>
-    <p class="muted" style="max-width:72ch">Anyone with a sign-in whose user ID is in the <b>admins</b> collection in Firebase. To add a staff account: create the user in Firebase console → Authentication, copy their User UID, then add a document with that ID in Firestore → admins. README step 3 has the details.</p></section>`;
+    <p class="muted" style="max-width:72ch">Anyone with a sign-in whose user ID is in the <b>admins</b> collection in Firebase. To add a staff account: create the user in Firebase console → Authentication, copy their User UID, then add a document with that ID in Firestore → admins. README step 3 has the details.</p></section>
+  ${backupPanel()}`;
 }
 
 const siteUrl = u => /^(https?:|data:|blob:|\/)/.test(u || '') ? u : '../' + u; // site images are relative to the website, one folder up
@@ -1408,7 +1464,8 @@ function receiptModal(s, fresh) {
   const shop = info().shop;
   openModal('Receipt', `<div class="receipt">
     <div style="justify-content:center;font:800 22px/1 var(--f-display);text-transform:uppercase">${esc(shop.wordmark || shop.name)}</div>
-    <div style="justify-content:center" class="muted">${esc(shop.address)}</div><hr>
+    <div style="justify-content:center" class="muted">${esc(shop.address)}</div>${shop.tin ? `<div style="justify-content:center" class="muted">TIN ${esc(shop.tin)}</div>` : ''}<hr>
+    ${s.orNo ? `<div style="font-weight:700"><span>Official receipt</span><span>${esc(s.orNo)}</span></div>` : ''}
     <div><span>${fmtDate(s.date, true)}</span><span>${fmtTime(s.time)}</span></div>
     <div><span>Client</span><span>${esc(s.name || 'Walk-in')}</span></div><div><span>Barber</span><span>${esc(staffName(s.barberId))}</span></div><hr>
     ${(s.lines || []).map(l => `<div><span>${esc(l.name)}${l.qty > 1 ? ' ×' + l.qty : ''}</span><span>${money(l.price * l.qty, 1)}</span></div>`).join('')}<hr>
@@ -1418,7 +1475,7 @@ function receiptModal(s, fresh) {
     ${s.depositCredit ? `<div><span>Deposit paid online</span><span>${money(-s.depositCredit, 1)}</span></div><div><span>Paid at shop (${esc(s.method)})</span><span>${money(s.total - s.depositCredit, 1)}</span></div>` : `<div><span>Paid by</span><span>${esc(s.method)}</span></div>`}
     ${s.cash ? `<div><span>Cash received</span><span>${money(s.cash, 1)}</span></div><div><span>Change</span><span>${money(s.cash - (s.total - (s.depositCredit || 0)), 1)}</span></div>` : ''}
     ${loyaltyLine(s)}
-    <hr><div style="justify-content:center" class="muted">${esc(shop.tagline || 'Thank you!')}</div>
+    <hr><div style="justify-content:center;flex-direction:column;align-items:center;text-align:center" class="muted">${esc(shop.tagline || 'Thank you!')}${shop.birPermit ? `<small>${esc(shop.birPermit)}</small>` : ''}</div>
   </div>${receiptSend(s, fresh)}<div class="modal-f" style="margin-top:14px"><button type="button" class="btn btn-primary" data-act="closeModal">Done</button></div>`);
 }
 function loyaltyLine(s) {
@@ -1531,6 +1588,32 @@ const ACT = {
     p.lines = (a.serviceIds || []).map(svcById).filter(Boolean).map(s => withOption(s, a.options)).map(s => ({ kind: 'service', ref: s.id, name: `Late fee: ${s.name}`, price: s.price, qty: 1 }));
     S.pos = p; closeModal(true); location.hash = '#checkout';
   },
+  // Came more than 20 min late but still got the cut: they pay the full price and the down payment isn't credited (kept, split with the barber)
+  servedLate(el) {
+    ACT.checkoutAppt(el); const p = S.pos; if (!p || p.apptId !== el.dataset.id) return;
+    p.deposit = 0; p.servedLate = true; render();
+  },
+  async backupJson() {
+    S.backingUp = true; render();
+    try { const all = await allRecords(); saveBlob(new Blob([JSON.stringify(all, null, 1)], { type: 'application/json' }), `real-barbers-backup-${today()}.json`); toast(`Backup downloaded · ${BACKUP_COLS.reduce((n, c) => n + all[c].length, 0)} records`); }
+    catch (e) { toast('Couldn’t make the backup. Try again.'); }
+    S.backingUp = false; render();
+  },
+  async backupXlsx() {
+    S.backingUp = true; render();
+    try {
+      const all = await allRecords(), H = t => ({ v: t, s: 'head' });
+      const cust = [['Name', 'Phone', 'Email', 'Birthday', 'Notes', 'Added'].map(H), ...all.customers.map(c => [c.name || '', c.phone || '', c.email || '', c.birthday ? fmtBday(c.birthday) : '', c.notes || '', c.createdAt ? ymd(new Date(c.createdAt)) : ''])];
+      const sal = [['Date', 'Time', 'Receipt no.', 'Client', 'Staff', 'Items', 'Discount', 'Tip', 'Total', 'Paid online', 'Payment', 'Commission'].map(H), ...all.sales.sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || ''))).map(x => [x.date, x.time || '', x.orNo || '', x.name || 'Walk-in', staffName(x.barberId), (x.lines || []).map(l => l.name + (l.qty > 1 ? ' ×' + l.qty : '')).join(', '), { v: x.discount || 0, s: 'money' }, { v: x.tip || 0, s: 'money' }, { v: x.total || 0, s: 'money' }, { v: x.depositCredit || 0, s: 'money' }, x.method || '', { v: x.commission || 0, s: 'money' }])];
+      const bk = [['Date', 'Time', 'Code', 'Client', 'Phone', 'Email', 'Services', 'Staff', 'Status', 'How booked', 'Down payment'].map(H), ...all.appointments.sort((a, b) => ((a.date || '') + (a.time || '')).localeCompare((b.date || '') + (b.time || ''))).map(a => [a.date || '', a.time || '', a.code || '', a.name || '', a.phone || '', a.email || '', svcNames(a.serviceIds, a.options), a.anyBarber ? 'Any (to assign)' : staffName(a.barberId), (APPT[a.status] || {}).label || a.status || '', a.source || '', a.deposit ? `${a.deposit.amount || 0} ${a.deposit.status || ''}` : ''])];
+      saveBlob(buildXlsx([{ name: 'Clients', cols: [24, 16, 26, 14, 30, 12], rows: cust, freeze: 'A2' }, { name: 'Sales', cols: [12, 8, 14, 22, 14, 40, 11, 9, 11, 12, 12, 12], rows: sal, freeze: 'A2' }, { name: 'Bookings', cols: [12, 8, 10, 22, 15, 24, 34, 16, 14, 12, 14], rows: bk, freeze: 'A2' }], { title: `${info().shop.name} records ${today()}`, author: info().shop.name }), `real-barbers-records-${today()}.xlsx`);
+      toast('Excel file downloaded');
+    } catch (e) { console.error(e); toast('Couldn’t make the file. Try again.'); }
+    S.backingUp = false; render();
+  },
+  newLeave() { leaveModal(); },
+  editLeave(el) { const l = (S.leaves || []).find(x => x.id === el.dataset.id); if (l) leaveModal(l); },
+  async delLeave(el) { const l = (S.leaves || []).find(x => x.id === el.dataset.id); if (!l) return; if (await del('leaves', l.id)) { toast('Leave removed'); setTimeout(syncPublicBarbers, 400); } },
   async markRefunded(el) { const a = S.appointments.find(x => x.id === el.dataset.id); if (a && await patch('appointments', a.id, { deposit: { ...a.deposit, status: 'refunded', refundedAt: Date.now() } })) toast('Marked as refunded'); },
   checkoutAppt(el) {
     const a = S.appointments.find(x => x.id === el.dataset.id); if (!a) return;
@@ -1583,10 +1666,13 @@ const ACT = {
       const b = staffById(p.barberId), rate = Number(b && b.rate) || 0;
       const { commission, fees: productFees } = commissionFor(b, p.lines, T.disc, svcById); // product fee first, then the split, rounded down
       const id = newId(), rtoken = newToken();
+      // official receipt number, from the counter on the server so two phones never get the same one
+      let orNo = '';
+      if (info().shop.orEnabled) { try { const r = await call('nextReceiptNo', {}); orNo = `${info().shop.orPrefix || ''}${String(r.no).padStart(6, '0')}`; } catch (e) { toast('Couldn’t get a receipt number. The sale is saved without one.'); } }
       const sale = {
         date: today(), time: nowHM(), at: Date.now(), customerId, name: p.name.trim() || 'Walk-in', phone: p.phone.trim(), phoneKey: phoneKey(p.phone), barberId: p.barberId,
         lines: p.lines.map(l => ({ ...l, price: Number(l.price) || 0 })), svcTotal: T.svc, prodTotal: T.prod, discount: T.disc, discountNote: T.disc ? (p.discountNote || '') : '',
-        tip: T.tip, total: T.total, depositCredit: T.deposit, method: p.method, cash: p.method === 'Cash' ? num(p.cash) : 0, apptId: p.apptId || '', rate, commission, productFees, rtoken, ...(p.lateFee ? { lateFee: true } : {})
+        tip: T.tip, total: T.total, depositCredit: T.deposit, method: p.method, cash: p.method === 'Cash' ? num(p.cash) : 0, apptId: p.apptId || '', rate, commission, productFees, rtoken, ...(orNo ? { orNo } : {}), ...(p.lateFee ? { lateFee: true } : {}), ...(p.servedLate ? { servedLate: true } : {})
       };
       if (!await put('sales', id, sale)) return;
       for (const l of p.lines.filter(x => x.kind === 'product')) {
@@ -1594,7 +1680,7 @@ const ACT = {
         await patch('inventory', it.id, { stock: (it.stock || 0) - l.qty, log: [...(it.log || []), { at: Date.now(), delta: -l.qty, note: `Sold to ${sale.name}` }].slice(-20) });
       }
       if (p.apptId && p.lateFee) { const la = S.appointments.find(x => x.id === p.apptId) || {}; await patch('appointments', p.apptId, { status: 'noshow', lateFeeSale: id, saleId: id, customerId: customerId || '', receipt: { id, t: rtoken }, ...(la.deposit && la.deposit.status === 'paid' ? { deposit: { ...la.deposit, status: 'kept' } } : {}) }); }
-      else if (p.apptId) await patch('appointments', p.apptId, { status: 'done', saleId: id, customerId: customerId || '', receipt: { id, t: rtoken } });
+      else if (p.apptId) { const sa = S.appointments.find(x => x.id === p.apptId) || {}; await patch('appointments', p.apptId, { status: 'done', saleId: id, customerId: customerId || '', receipt: { id, t: rtoken }, ...(p.servedLate ? { servedLate: true, ...(sa.deposit && sa.deposit.status === 'paid' ? { deposit: { ...sa.deposit, status: 'kept' } } : {}) } : {}) }); }
       S.pos = blankPos();
       toast(`Sale saved · ${money(sale.total, 1)}`); receiptModal({ id, ...sale }, true);
     } finally { S.busy = false; render(); }
@@ -1690,11 +1776,13 @@ async function saveInfo(partial) {
 }
 const faqOwn = () => JSON.parse(JSON.stringify(Array.isArray(info().faq) && info().faq.length ? info().faq : defaultFaq(info())));
 // Barbers on the website, with their average rating from booked clients
+// Upcoming leave days, so the website doesn't offer those days (max 1 year, 200 days)
+function leaveDates(id) { const out = [], t = today(), end = addDays(t, 365); (S.leaves || []).filter(l => l.staffId === id && (l.to || l.from) >= t).forEach(l => { for (let d = l.from < t ? t : l.from; d <= (l.to || l.from) && d <= end && out.length < 200; d = addDays(d, 1)) out.push(d); }); return [...new Set(out)].sort(); }
 async function syncPublicBarbers() {
   const rated = S.appointments.filter(a => a.rating && a.barberId);
   await saveInfo({ barbers: S.staff.filter(b => b.active !== false && isServiceStaff(b)).sort((a, b) => (a.chair || 99) - (b.chair || 99)).map(b => {
     const r = rated.filter(a => a.barberId === b.id);
-    return publicBarber({ ...b, rating: r.length ? Math.round(sum(r, a => a.rating.stars) / r.length * 10) / 10 : 0, ratingCount: r.length });
+    return publicBarber({ ...b, off: leaveDates(b.id), rating: r.length ? Math.round(sum(r, a => a.rating.stars) / r.length * 10) / 10 : 0, ratingCount: r.length });
   }) });
 }
 const FORM = {
@@ -1780,6 +1868,14 @@ const FORM = {
     const ok = f.dataset.id ? await patch('expenses', f.dataset.id, data) : await put('expenses', newId(), { ...data, createdAt: Date.now() });
     if (ok) { closeModal(); toast(f.dataset.id ? 'Expense updated' : `Expense added · ${money(data.amount, 1)}`); }
   },
+  async leave(f) {
+    const fd = new FormData(f), from = String(fd.get('from') || ''), to = String(fd.get('to') || from), staffId = String(fd.get('staffId') || '');
+    if (!staffId || !from) return modalErr(f, 'Pick the staff member and the first day.');
+    if (to < from) return modalErr(f, '“To” is before “From”.');
+    const data = { staffId, from, to, paid: fd.get('paid') === '1', note: String(fd.get('note') || '').trim(), at: Date.now() };
+    const ok = f.dataset.id ? await patch('leaves', f.dataset.id, data) : await put('leaves', newId(), data);
+    if (ok) { closeModal(); toast(`${data.paid ? 'Paid' : 'Unpaid'} leave saved for ${staffName(staffId)}`); setTimeout(syncPublicBarbers, 400); }
+  },
   async staff(f) {
     const fd = new FormData(f), name = String(fd.get('name') || '').trim(), role = String(fd.get('role') || 'barber'), svcRole = isServiceStaff({ role });
     const rate = svcRole ? num(fd.get('rate')) : 0;
@@ -1837,7 +1933,8 @@ const FORM = {
     const fd = new FormData(f), name = String(fd.get('name') || '').trim();
     if (!name) { toast('Enter the shop name.', 'bad'); return; }
     const g = k => String(fd.get(k) || '').trim();
-    const shop = { ...info().shop, name, wordmark: g('wordmark'), tagline: g('tagline'), about: g('about'), address: g('address'), phone: g('phone'), facebook: g('facebook'), instagram: g('instagram'), messenger: g('messenger'), directions: g('directions'), gcashNumber: g('gcashNumber'), gcashName: g('gcashName'), currency: g('currency') || '₱', loyaltyEvery: Math.max(0, parseInt(fd.get('loyaltyEvery'), 10) || 0) };
+    const shop = { ...info().shop, name, wordmark: g('wordmark'), tagline: g('tagline'), about: g('about'), address: g('address'), phone: g('phone'), facebook: g('facebook'), instagram: g('instagram'), messenger: g('messenger'), directions: g('directions'), gcashNumber: g('gcashNumber'), gcashName: g('gcashName'), currency: g('currency') || '₱', loyaltyEvery: Math.max(0, parseInt(fd.get('loyaltyEvery'), 10) || 0), orEnabled: fd.has('orEnabled'), orPrefix: g('orPrefix'), tin: g('tin'), birPermit: g('birPermit') };
+    const orNext = parseInt(fd.get('orNext'), 10); if (orNext > 0) { await put('private', 'receipts', { next: orNext, at: Date.now() }); S.orNext = orNext; }
     if (shop.facebook && !/^https:\/\//.test(shop.facebook)) shop.facebook = 'https://' + shop.facebook.replace(/^http:\/\//, '');
     if (await saveInfo({ shop })) toast('Shop details saved');
   },
@@ -1924,6 +2021,7 @@ function startWatches() {
   watchCol('customers', db.collection('customers'));
   watchCol('inventory', db.collection('inventory'));
   watchCol('payouts', db.collection('payouts'));
+  watchCol('leaves', db.collection('leaves'));
   watchCol('attendance', db.collection('attendance'));
   watchCol('promos', db.collection('promos'));
   watchCol('closings', db.collection('closings'));

@@ -257,3 +257,11 @@ test('late limit and refund depend on whether the booking has a down payment', a
   assert.deepEqual(cleanOptions(info, ['n1'], { n1: 'fake' }), {});
   const s = withOption(info.services[0], { n1: 'reg' }); assert.equal(s.price, 190); assert.equal(s.name, 'Manicure + Regular polish');
 });
+
+test('a barber on leave is not offered that day, and 0-minute add-ons fit in the hour', async () => {
+  const { eligibleBarbers } = await import('../src/core.js');
+  const info = { barbers: [{ id: 'v', days: [0, 1, 2, 3, 4, 5, 6], groups: ['him'], tiers: ['regular'], off: ['2026-12-01'] }] };
+  const svc = [{ id: 'h9', group: 'him', tier: 'regular' }];
+  assert.deepEqual(eligibleBarbers(info, svc, '2026-12-01'), []);
+  assert.deepEqual(eligibleBarbers(info, svc, '2026-12-02'), ['v']);
+});
