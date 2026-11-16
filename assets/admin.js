@@ -32,7 +32,7 @@ const S = {
   ready: false, user: null, canAdmin: false, loginErr: '', loginBusy: false, loginMsg: '',
   info: null, infoMissing: false, slow: false,
   staff: [], appointments: [], sales: [], expenses: [], customers: [], inventory: [], payouts: [], waitlist: [], attendance: [], promos: [], closings: [], loaded: {}, reminding: '',
-  proofImgs: {}, cutImgs: {},
+  proofImgs: {}, cutImgs: {}, refImgs: {},
   schedDate: '', schedBarber: '', schedQ: '', schedStatus: '', schedSrc: '', showExpired: false, period: 'month', from: '', to: '',
   clientQ: '', clientSort: 'recent', stockFilter: 'all', showArchived: false, pos: null, busy: false, uploading: ''
 };
@@ -316,6 +316,7 @@ async function ensureCustomer(name, phone, email, save, birthday) {
 const custOf = a => (a.customerId && S.customers.find(c => c.id === a.customerId)) || matchCustomer(a.name, a.phone);
 const bdayFor = a => cleanBday(a.birthday) || cleanBday((custOf(a) || {}).birthday);
 const bdayWhen = n => n === 0 ? 'today' : n > 0 ? `in ${n} day${n === 1 ? '' : 's'}` : `${-n} day${n === -1 ? '' : 's'} ago`;
+const refChip = a => a.refPhoto ? ` <button type="button" class="chip chip-info chip-btn" data-act="viewRef" data-id="${esc(a.id)}" title="See the cut they want"><b aria-hidden="true">▣</b>Photo</button>` : '';
 const bdayChip = a => { const n = bdayDays(bdayFor(a), a.date || today()); return n === 0 ? ' ' + chip({ kind: 'info', icon: '★', label: 'Birthday today' }) : ''; };
 const bdayField = v => `<div class="field"><label for="m-bday-m">Birthday <span class="opt">(optional · for the free birthday haircut)</span></label>${bdaySelects(v || '', 'm-bday', part => `name="b${part}"`)}</div>`;
 const bdayFrom = fd => cleanBday(`${fd.get('bm') || ''}-${fd.get('bd') || ''}`);
@@ -338,11 +339,11 @@ function apptRow(a, compact) {
   const giveAway = isLateNow(a) && waitingWalkins().length ? `<button class="btn btn-sm btn-danger" data-act="giveSlot" data-id="${esc(a.id)}">Give slot to walk-in</button>` : '';
   const actions = `${giveAway}${canCheckout ? `<button class="btn btn-sm btn-primary" data-act="checkoutAppt" data-id="${esc(a.id)}">Checkout</button>` : ''}${a.status === 'done' && a.saleId ? `<button class="btn btn-sm" data-act="showSale" data-id="${esc(a.saleId)}">Receipt</button>` : ''}`;
   const flag = a.conflict && ['booked', 'pending_payment'].includes(a.status) ? ' ' + chip({ kind: 'bad', icon: '!', label: 'Overlaps another booking' }) : '';
-  if (compact) return `<li>${a.barberId ? av(staffById(a.barberId)) : ''}<span class="t">${a.source === 'walk-in' ? `#${esc(a.queueNo || '')}` : fmtTime(a.time)}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${lateChip(a)}${bdayChip(a)}<div class="sub">${esc(svcNames(a.serviceIds))} · ${needsBarber(a) ? '<b class="needs-b">Any barber, assign one</b>' : esc(staffName(a.barberId))}</div></div>${chip(APPT[a.status] || APPT.booked)}</li>`;
+  if (compact) return `<li>${a.barberId ? av(staffById(a.barberId)) : ''}<span class="t">${a.source === 'walk-in' ? `#${esc(a.queueNo || '')}` : fmtTime(a.time)}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${lateChip(a)}${bdayChip(a)}${refChip(a)}<div class="sub">${esc(svcNames(a.serviceIds))} · ${needsBarber(a) ? '<b class="needs-b">Any barber, assign one</b>' : esc(staffName(a.barberId))}</div></div>${chip(APPT[a.status] || APPT.booked)}</li>`;
   const choices = STATUS_CHOICES.includes(a.status) ? STATUS_CHOICES : [a.status, ...STATUS_CHOICES];
   return `<tr>
     <td class="num nowrap"><b>${a.source === 'walk-in' ? `Walk-in #${esc(a.queueNo || '')}` : fmtTime(a.time)}</b>${a.source === 'walk-in' ? `<div class="muted small">arrived ${fmtTime(a.time)}</div>` : ''}</td>
-    <td><b>${esc(a.name || 'Walk-in')}</b>${a.code ? ` <span class="muted small">${esc(a.code)}</span>` : ''}${lateChip(a)}${bdayChip(a)}${a.promo ? ' ' + chip({ kind: 'info', icon: '%', label: `${a.promo.code} −${money(a.promo.off)}` }) : ''}${a.phone ? `<div class="muted small">${esc(a.phone)}</div>` : ''}</td>
+    <td><b>${esc(a.name || 'Walk-in')}</b>${a.code ? ` <span class="muted small">${esc(a.code)}</span>` : ''}${lateChip(a)}${bdayChip(a)}${refChip(a)}${a.promo ? ' ' + chip({ kind: 'info', icon: '%', label: `${a.promo.code} −${money(a.promo.off)}` }) : ''}${a.phone ? `<div class="muted small">${esc(a.phone)}</div>` : ''}</td>
     <td>${esc(svcNames(a.serviceIds))}${a.notes ? `<div class="muted small">${esc(a.notes)}</div>` : ''}${flag}</td>
     <td>${needsBarber(a) ? `<div class="assign"><span class="chip chip-warn"><b aria-hidden="true">?</b>Any barber</span>${assignSelect(a)}</div>` : esc(staffName(a.barberId))}</td>
     <td><span class="muted small">${a.source === 'online' ? 'Online' : a.source === 'walk-in' ? 'Walk-in' : 'Phone / in person'}</span><div>${depositChip(a)}</div></td>
@@ -442,7 +443,7 @@ function vSchedule() {
     ${issues.map(a => `<tr><td class="num nowrap"><b>${fmtDate(a.date)}</b><div class="muted small">${fmtTime(a.time)}</div></td><td><b>${esc(a.name)}</b><div class="muted small">${esc(a.phone)} · ${esc(a.email || '')}</div></td><td>${esc(svcNames(a.serviceIds))}</td><td>${depositChip(a)}</td><td><div class="acts"><button class="btn btn-sm btn-primary" data-act="editAppt" data-id="${esc(a.id)}">Rebook</button></div></td></tr>`).join('')}
   </tbody></table></div></section>` : ''}
   ${isToday ? `<section class="panel"><div class="panel-h"><h2>Walk-in queue</h2><span class="muted small">Served in order of arrival</span></div>
-    ${queue.length ? `<ul class="list">${queue.map(a => `<li><span class="qno">#${esc(a.queueNo || '')}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${a.fromQr ? ` ${chip({ kind: 'info', icon: '▦', label: 'Joined by QR' })}` : ''}<div class="sub">${a.phone ? esc(a.phone) + ' · ' : ''}${esc(svcNames(a.serviceIds) || 'Not sure yet')} · waiting ${Math.max(0, Math.round((Date.now() - (a.createdAt || Date.now())) / 60000))} min</div></div>
+    ${queue.length ? `<ul class="list">${queue.map(a => `<li><span class="qno">#${esc(a.queueNo || '')}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${a.fromQr ? ` ${chip({ kind: 'info', icon: '▦', label: 'Joined by QR' })}` : ''}${refChip(a)}<div class="sub">${a.phone ? esc(a.phone) + ' · ' : ''}${esc(svcNames(a.serviceIds) || 'Not sure yet')} · waiting ${Math.max(0, Math.round((Date.now() - (a.createdAt || Date.now())) / 60000))} min</div></div>
       <select data-change="apptBarber" data-id="${esc(a.id)}" aria-label="Barber for #${esc(a.queueNo || '')}" style="width:auto">${opt('', 'Any barber', !a.barberId)}${serviceStaff().map(b => opt(b.id, b.name, b.id === a.barberId)).join('')}</select>
       <button class="btn btn-sm btn-primary" data-act="startAppt" data-id="${esc(a.id)}">Start</button></li>`).join('')}</ul>` : '<p class="empty">Nobody waiting. Add a walk-in when someone arrives.</p>'}</section>` : ''}
   ${whosIn(d)}
@@ -548,6 +549,7 @@ function vCheckout() {
           ${field('Client', `<input id="pos-name" data-bind="pos.name" data-live data-cust role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="cust-pop" value="${esc(p.name)}" placeholder="Walk-in" autocomplete="off">`, 'pos-name')}
           ${field('Phone', `<input id="pos-phone" data-bind="pos.phone" data-live value="${esc(p.phone)}" inputmode="tel" placeholder="Optional">`, 'pos-phone')}
         </div>
+        ${appt && appt.refPhoto ? `<button type="button" class="btn btn-sm" data-act="viewRef" data-id="${esc(appt.id)}" style="justify-self:start">See the cut they want (photo)</button>` : ''}
         ${loyal}${posBday(p) !== null ? `<p class="hint"><b>Birthday ${bdayWhen(posBday(p))}.</b> Their birthday haircut is free. Tap “Birthday free cut” below.</p>` : ''}
         ${field('Barber', `<select id="pos-barber" data-bind="pos.barberId" data-live>${opt('', 'Choose barber', !p.barberId)}${serviceStaff().map(b => opt(b.id, `${b.name} · ${b.rate || 0}%`, b.id === p.barberId)).join('')}</select>`, 'pos-barber')}
         <div class="lines">${p.lines.length ? p.lines.map((l, i) => `<div class="line"><span class="nm">${esc(l.name)}</span><span class="qty"><button type="button" data-act="posQty" data-i="${i}" data-d="-1" aria-label="One less">−</button><span>${l.qty}</span><button type="button" data-act="posQty" data-i="${i}" data-d="1" aria-label="One more">+</button></span><span class="num">${money(l.price * l.qty)}</span><button type="button" class="icon-btn" data-act="posDel" data-i="${i}" aria-label="Remove ${esc(l.name)}">✕</button></div>`).join('') : '<p class="muted small" style="padding:10px 0">No items yet. Tap a service or product.</p>'}</div>
@@ -1442,7 +1444,7 @@ const ACT = {
   dayPick(el) { S.schedDate = el.dataset.d; render(); },
   schedStatus(el) { S.schedStatus = S.schedStatus === el.dataset.v ? '' : el.dataset.v; render(); },
   schedClear() { Object.assign(S, { schedQ: '', schedStatus: '', schedSrc: '', schedBarber: '' }); render(); },
-  async startAppt(el) { await patch('appointments', el.dataset.id, { status: 'inchair' }); },
+  async startAppt(el) { await patch('appointments', el.dataset.id, { status: 'inchair', startedAt: Date.now() }); },
   checkoutAppt(el) {
     const a = S.appointments.find(x => x.id === el.dataset.id); if (!a) return;
     const p = blankPos(); p.apptId = a.id; p.name = a.name || ''; p.phone = a.phone || ''; p.barberId = a.barberId || '';
@@ -1482,7 +1484,7 @@ const ACT = {
       const { commission, fees: productFees } = commissionFor(b, p.lines, T.disc, svcById); // product fee first, then the split, rounded down
       const id = newId(), rtoken = newToken();
       const sale = {
-        date: today(), time: nowHM(), at: Date.now(), customerId, name: p.name.trim() || 'Walk-in', phone: p.phone.trim(), barberId: p.barberId,
+        date: today(), time: nowHM(), at: Date.now(), customerId, name: p.name.trim() || 'Walk-in', phone: p.phone.trim(), phoneKey: phoneKey(p.phone), barberId: p.barberId,
         lines: p.lines.map(l => ({ ...l, price: Number(l.price) || 0 })), svcTotal: T.svc, prodTotal: T.prod, discount: T.disc, discountNote: T.disc ? (p.discountNote || '') : '',
         tip: T.tip, total: T.total, depositCredit: T.deposit, method: p.method, cash: p.method === 'Cash' ? num(p.cash) : 0, apptId: p.apptId || '', rate, commission, productFees, rtoken
       };
@@ -1495,6 +1497,14 @@ const ACT = {
       S.pos = blankPos();
       toast(`Sale saved · ${money(sale.total, 1)}`); receiptModal({ id, ...sale }, true);
     } finally { S.busy = false; render(); }
+  },
+  async viewRef(el) {
+    const a = S.appointments.find(x => x.id === el.dataset.id); if (!a) return; const rk = a.id + ':' + ((a.refPhoto && a.refPhoto.at) || ''); // a replaced photo gets a new key
+    const show = img => openModal('Reference photo', `<div class="stack"><p><b>${esc(a.name || 'Walk-in')}</b> · ${a.source === 'walk-in' ? 'walk-in #' + esc(a.queueNo || '') : `${fmtDate(a.date)} ${fmtTime(a.time)}`} · ${esc(svcNames(a.serviceIds))} · ${esc(staffName(a.barberId))}</p>
+      ${img ? `<img class="ref-full" src="${esc(img)}" alt="The cut ${esc(a.name || 'the client')} wants">` : img === false ? '<p class="muted">The client removed this photo.</p>' : '<p class="muted"><span class="spinner"></span> Loading…</p>'}${a.refPhoto && a.refPhoto.note ? `<p class="note">${esc(a.refPhoto.note)}</p>` : ''}
+      <p class="muted small">Sent by the client with their booking. Only the shop can see it.</p></div>`, true);
+    show(S.refImgs[rk]);
+    if (!S.refImgs[rk]) { try { const d = await db.doc(`refs/${a.id}`).get(); S.refImgs[rk] = d.exists ? d.data().img : false; } catch (_) { S.refImgs[rk] = false; } if (MODAL.cur && MODAL.cur.title === 'Reference photo') show(S.refImgs[rk]); }
   },
   showSale(el) { const s = S.sales.find(x => x.id === el.dataset.id); if (s) receiptModal(s); },
   async rcMakeLink(el) { const s = S.sales.find(x => x.id === el.dataset.id); if (!s) return; const rtoken = newToken(); if (await patch('sales', s.id, { rtoken })) { if (s.apptId) await patch('appointments', s.apptId, { receipt: { id: s.id, t: rtoken } }); receiptModal({ ...s, rtoken }); } },
@@ -1639,7 +1649,7 @@ const FORM = {
     if (!svc.length) return modalErr(f, 'Pick at least one service.');
     const custId = mode === 'edit' ? ((S.appointments.find(x => x.id === id) || {}).customerId || (matchCustomer(name, phone) || {}).id || '') : await ensureCustomer(name, phone, '', true, birthday);
     if (mode === 'edit' && custId && birthday) await patch('customers', custId, { birthday });
-    const base = { name, phone, ...(birthday ? { birthday } : {}), serviceIds: svc, mins: svcMins(svc), barberId: String(fd.get('barberId') || ''), notes: String(fd.get('notes') || '').trim(), customerId: custId || '' };
+    const base = { name, phone, phoneKey: phoneKey(phone), ...(birthday ? { birthday } : {}), serviceIds: svc, mins: svcMins(svc), barberId: String(fd.get('barberId') || ''), notes: String(fd.get('notes') || '').trim(), customerId: custId || '' };
     if (fd.has('date')) { const t = String(fd.get('time')); if (t && toMin(t) % pol().step !== 0) return modalErr(f, `Use a time on the ${pol().step}-minute mark, like 2:00 or 2:30.`); }
     let ok;
     if (mode === 'walkin') {

@@ -2,7 +2,7 @@
 // Used for the live preview before Firebase is connected. Payments are skipped; bookings confirm instantly.
 import {
   windowOfTime, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, comboError, commissionFor, isServiceStaff, rebookLink, slotId, blockTimes, isActiveSlot, availableTimes, policyOf,
-  startMs, phNow, addDays, sum, promoCheck, cleanCode, cleanBday
+  startMs, phNow, addDays, sum, promoCheck, cleanCode, cleanBday, queueItems, accountView
 } from './shared.js';
 
 // The saved demo is keyed by a fingerprint of the starter data, so changing the menu or team
@@ -15,6 +15,7 @@ const clone = o => o === undefined ? undefined : JSON.parse(JSON.stringify(o));
 const listeners = new Set();
 let store = new Map();
 store = load() || seed();
+queueMicrotask(() => { try { writeQueue(); } catch (_) {} });
 save();
 
 function load() { try { const s = localStorage.getItem(KEY); return s ? new Map(JSON.parse(s)) : null; } catch (_) { return null; } }
@@ -148,7 +149,9 @@ function runQuery(path, filters) {
   for (const [f, op, v] of filters) docs = docs.filter(d => { const x = (d.data() || {})[f]; return op === '==' ? x === v : op === '!=' ? x !== v : op === '>=' ? x >= v : op === '>' ? x > v : op === '<=' ? x <= v : op === '<' ? x < v : true; });
   return { docs, size: docs.length, empty: !docs.length, metadata: { fromCache: false } };
 }
-function afterWrite(path) { const [col, id] = path.split('/'); if (col === 'appointments') syncSlots(id); changed(); }
+function afterWrite(path) { const [col, id] = path.split('/'); if (col === 'appointments') { syncSlots(id); writeQueue(); } changed(); }
+// Mirrors the server: today's queue without names, for the website's live wait time
+function writeQueue() { const info = store.get('public/info'); if (info) store.set('public/queue', queueItems([...store].filter(([k]) => k.startsWith('appointments/')).map(([, v]) => v), info, phNow().date)); }
 function setDeep(obj, key, val) { const ks = key.split('.'); let o = obj; ks.slice(0, -1).forEach(k => { o = o[k] = (o[k] && typeof o[k] === 'object') ? o[k] : {}; }); o[ks.at(-1)] = val; }
 function docRef(path) {
   return {
@@ -189,7 +192,7 @@ function publicView(id) {
     policy: { deposit: pol.deposit, rescheduleHours: pol.rescheduleHours, lateMinutes: pol.lateMinutes, holdMinutes: pol.holdMinutes },
     payMethod: a.payMethod || 'online', proof: a.proof ? { status: a.proof.status, at: a.proof.at, note: a.proof.note || '' } : null,
     gcash: a.payMethod === 'gcash' ? { number: I.shop.gcashNumber || '', name: I.shop.gcashName || '' } : null,
-    promo: a.promo || null, late: a.late || null, rating: a.rating || null, receipt: a.receipt && a.receipt.id ? { id: a.receipt.id, t: a.receipt.t } : null, groupOf: a.groupOf || '', source: a.source || 'online', gaveToWalkin: !!a.gaveToWalkin
+    promo: a.promo || null, late: a.late || null, rating: a.rating || null, receipt: a.receipt && a.receipt.id ? { id: a.receipt.id, t: a.receipt.t } : null, refPhoto: a.refPhoto ? { at: a.refPhoto.at, note: a.refPhoto.note || '' } : null, groupOf: a.groupOf || '', source: a.source || 'online', gaveToWalkin: !!a.gaveToWalkin
   };
 }
 function queueFor(a) {
@@ -277,6 +280,51 @@ const FUNCS = {
     const r = promoCheck(store.get('promos/' + code), total, phNow().date);
     if (!r.ok) fail('invalid-argument', r.error);
     return { code, off: r.off, label: r.label };
+  },
+  // Client accounts (mirrors the server). In the demo the code is shown on screen instead of texted.
+  requestCode(d) {
+    const phone = String(d.phone || '').replace(/\D/g, '').replace(/^63/, '0');
+    if (!/^09\d{9}$/.test(phone)) fail('invalid-argument', 'Enter your 11-digit mobile number, like 0917 123 4567.');
+    const known = [...store].some(([k, v]) => (k.startsWith('appointments/') && String(v.phone || '').replace(/\D/g, '').replace(/^63/, '0') === phone) || (k.startsWith('customers/') && v.phoneKey === phone));
+    if (!known) fail('not-found', 'We don’t have any visits for this number yet. Book first, then you can log in.');
+    const code = String(Math.floor(Math.random() * 1e6)).padStart(6, '0');
+    store.set('otp/' + phone, { code, exp: Date.now() + 10 * 60e3, tries: 0 }); changed();
+    return { ok: true, demoCode: code };
+  },
+  verifyCode(d) {
+    const phone = String(d.phone || '').replace(/\D/g, '').replace(/^63/, '0'), code = String(d.code || '').replace(/\D/g, ''), o = store.get('otp/' + phone);
+    if (!o || o.exp < Date.now()) fail('deadline-exceeded', 'That code has expired. Ask for a new one.');
+    if (o.tries >= 5) fail('resource-exhausted', 'Too many wrong tries. Ask for a new code.');
+    if (o.code !== code) { store.set('otp/' + phone, { ...o, tries: o.tries + 1 }); fail('permission-denied', 'That code isn’t right. Check the text and try again.'); }
+    store.delete('otp/' + phone);
+    const session = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    store.set('clientSessions/' + session, { phone, exp: Date.now() + 30 * 864e5 }); changed();
+    return { session };
+  },
+  myAccount(d) {
+    const s = store.get('clientSessions/' + String(d.session || ''));
+    if (!s || s.exp < Date.now()) fail('unauthenticated', 'Your login has expired. Please log in again.');
+    const key = v => String(v || '').replace(/\D/g, '').replace(/^63/, '0'), all = [...store];
+    const customers = all.filter(([k, v]) => k.startsWith('customers/') && v.phoneKey === s.phone).map(([k, v]) => ({ id: k.split('/')[1], ...v }));
+    const appts = all.filter(([k, v]) => k.startsWith('appointments/') && key(v.phone) === s.phone).map(([k, v]) => ({ id: k.split('/')[1], ...v }));
+    const ids = new Set(customers.map(c => c.id));
+    const sales = all.filter(([k, v]) => k.startsWith('sales/') && (ids.has(v.customerId) || key(v.phone) === s.phone)).map(([k, v]) => ({ id: k.split('/')[1], ...v }));
+    return accountView({ phone: s.phone, customers, appts, sales, info: info(), today: phNow().date });
+  },
+  logoutClient(d) { store.delete('clientSessions/' + String(d.session || '')); changed(); return { ok: true }; },
+  addRefPhoto(d) {
+    const a = byToken(d);
+    if (!['pending_payment', 'booked', 'waiting'].includes(a.status)) fail('failed-precondition', 'You can only add a photo before your visit.');
+    if (!/^data:image\/(jpeg|png|webp);base64,/.test(d.image || '') || d.image.length > 900000) fail('invalid-argument', 'Upload a photo (JPG or PNG).');
+    const now = Date.now(), note = String(d.note || '').trim().slice(0, 200);
+    store.set('refs/' + d.id, { img: d.image, note, at: now, apptId: d.id });
+    store.set('appointments/' + d.id, { ...a, refPhoto: { at: now, note } }); afterWrite('appointments/' + d.id);
+    return this.getBooking(d);
+  },
+  removeRefPhoto(d) {
+    const a = byToken(d); store.delete('refs/' + d.id);
+    const { refPhoto, ...rest } = a; store.set('appointments/' + d.id, rest); afterWrite('appointments/' + d.id);
+    return this.getBooking(d);
   },
   submitProof(d) {
     const a = byToken(d), now = Date.now();

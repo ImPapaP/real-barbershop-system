@@ -7,7 +7,7 @@ import { L, lang, setLang } from './i18n.js';
 const q = new URLSearchParams(location.search);
 const ID = q.get('id') || '', TOKEN = q.get('t') || '';
 const S = {
-  b: null, info: null, err: '', loading: true, rc: null, rcFor: '', polls: 0, mode: 'view', busy: false,
+  b: null, info: null, err: '', loading: true, rc: null, rcFor: '', ref: { busy: false, preview: '', err: '' }, polls: 0, mode: 'view', busy: false,
   rs: { date: '', time: '', barber: '' }, slots: {}, slotsDate: '', slotsLoaded: false, unsub: null,
   justPaid: q.get('paid') === '1', paymentCancelled: q.get('cancelled') === '1',
   proof: { file: null, preview: '', ref: '', err: '', busy: false }, late: { busy: false, err: '' }, rate: { stars: 0, text: '', busy: false, err: '' }
@@ -18,7 +18,7 @@ const m = n => money(n, info().shop.currency || '₱');
 function render() { const a = document.activeElement, id = a && a.id; $('#app').innerHTML = L(shell(body())); if (id) document.getElementById(id)?.focus({ preventScroll: true }); }
 function shell(inner) {
   const shop = info().shop;
-  return `${demoBar('admin/')}<header class="site-head"><div class="wrap head-in"><a class="wordmark" href="./">${brand(shop.wordmark || shop.name)}</a><nav class="site-nav"><div class="lang" role="group" aria-label="Language"><button type="button" data-act="lang" data-v="en" aria-pressed="${lang() === 'en'}">EN</button><button type="button" data-act="lang" data-v="tl" aria-pressed="${lang() === 'tl'}">TL</button></div><a class="btn btn-sm" href="./#book">Book again</a></nav></div></header>
+  return `${demoBar('admin/')}<header class="site-head"><div class="wrap head-in"><a class="wordmark" href="./">${brand(shop.wordmark || shop.name)}</a><nav class="site-nav"><a class="lnk acct-lnk" href="account.html" aria-label="My visits"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="6.5" r="3.2"/><path d="M3.5 17.5a6.5 6.5 0 0113 0"/></svg><span>My visits</span></a><div class="lang" role="group" aria-label="Language"><button type="button" data-act="lang" data-v="en" aria-pressed="${lang() === 'en'}">EN</button><button type="button" data-act="lang" data-v="tl" aria-pressed="${lang() === 'tl'}">TL</button></div><a class="btn btn-sm" href="./#book">Book again</a></nav></div></header>
   <main class="sec"><div class="wrap" style="max-width:760px;display:grid;gap:18px"><a class="pop-back page-back-link" href="./">${BACK_IC}<span>Back to the website</span></a>${inner}</div></main>
   <footer class="site-foot"><div class="wrap"><span>${esc(shop.name)} · ${esc(shop.phone)}</span><span>${esc(shop.address)}</span></div></footer>`;
 }
@@ -88,6 +88,15 @@ function todayCards(b) {
 }
 const addMin = (t, n) => { const [h, mm] = t.split(':').map(Number), x = h * 60 + mm + n; return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`; };
 // ---------- after the visit: rate it, see the cut ----------
+// Reference photo: show the barber the cut you want (only the shop sees it)
+function refCard(b) {
+  if (!['booked', 'pending_payment', 'waiting'].includes(b.status)) return '';
+  const R = S.ref, has = !!b.refPhoto;
+  return `<section class="ticket ref-card"><div class="row" style="justify-content:space-between;align-items:flex-start"><div><h2>Photo of the cut you want</h2><p class="muted small">${has ? 'Sent. Your barber sees it before your visit.' : 'Optional. Add a picture or screenshot of a cut you like.'}</p></div>${has ? '<span class="chip chip-good"><b aria-hidden="true">✓</b>Sent</span>' : ''}</div>
+    ${R.preview ? `<img class="ref-img" src="${R.preview}" alt="Your reference photo">` : ''}
+    ${R.err ? `<p class="err">${esc(R.err)}</p>` : ''}
+    <div class="row"><label class="btn btn-sm${has ? '' : ' btn-accent'}">${R.busy ? '<span class="spinner"></span> Sending…' : has ? 'Replace photo' : 'Add a photo'}<input type="file" id="ref-file" accept="image/*" hidden ${R.busy ? 'disabled' : ''}></label>${has ? '<button type="button" class="btn btn-sm btn-ghost" data-act="refRemove">Remove</button>' : ''}</div></section>`;
+}
 // The receipt from checkout, shown right on the booking page (and as its own page to keep)
 function receiptCard(b) {
   if (!b.receipt) return '';
@@ -115,7 +124,7 @@ function walkinView(b) {
   if (b.status === 'inchair') return `<div class="status-hero">${chipHTML('good', '✂', 'In the chair')}<h1>You’re up, ${esc(String(b.name).split(' ')[0])}</h1><p class="muted">Enjoy your cut.</p></div>`;
   if (b.status !== 'waiting') return `<div class="status-hero">${chipHTML('mute', '–', b.status === 'done' ? 'Completed' : 'Not in the queue')}<h1>${b.status === 'done' ? 'Thanks for visiting' : 'You’re no longer in the queue'}</h1><a class="btn btn-accent" href="./#book">Book your next cut</a></div>${b.status === 'done' ? receiptCard(b) + rateCard(b) + cutCard(b) + loyaltyCard(b) : ''}`;
   return `<div class="status-hero walkin-ticket"><p class="eyebrow">Walk-in queue · ${fmtDate(b.date)}</p><div class="qbig" aria-label="Queue number">#${esc(Q ? Q.queueNo : '')}</div>
-    <h1>${Q && Q.ahead ? `${Q.ahead} ahead of you` : 'You’re next'}</h1><p class="muted">Stay close to the shop. We’ll call your name. This page updates by itself.</p><span class="live-dot">Live</span></div>`;
+    <h1>${Q && Q.ahead ? `${Q.ahead} ahead of you` : 'You’re next'}</h1><p class="muted">Stay close to the shop. We’ll call your name. This page updates by itself.</p><span class="live-dot">Live</span></div>${refCard(b)}`;
 }
 
 function body() {
@@ -142,6 +151,7 @@ function body() {
     case 'booked': return `<div class="status-hero">${S.justPaid ? '<span class="success-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>' : chipHTML('good', '✓', 'Confirmed')}<h1>${S.justPaid ? 'You’re booked!' : 'See you ' + fmtDate(b.date)}</h1>
         <p class="muted">${fmtTime(b.time)} with ${esc(b.barberName || 'your barber')}. Please arrive on time: if you’re ${pol.lateMinutes} minutes late or more, your slot may go to a walk-in and the deposit is kept.</p></div>
         ${todayCards(b)}
+        ${refCard(b)}
         ${details(b)}
         ${guestsCard(b)}
         ${loyaltyCard(b)}
@@ -198,6 +208,7 @@ const fileToData = blob => new Promise((res, rej) => { const r = new FileReader(
 const ACT = {
   resetDemo,
   lang(el) { setLang(el.dataset.v); render(); },
+  async refRemove() { try { S.b = { ...S.b, ...(await call('removeRefPhoto', { id: ID, token: TOKEN })) }; S.ref = { busy: false, preview: '', err: '' }; } catch (e) { S.ref.err = e.message || 'Couldn’t remove it.'; } render(); },
   rsCal(el) { S.rs.calM = shiftMonth(el.dataset.m, +el.dataset.v); render(); },
   async copy(el) { try { await navigator.clipboard.writeText(el.dataset.text); toast('Copied'); } catch (_) { toast(el.dataset.text); } },
   async sendProof() {
@@ -251,6 +262,13 @@ let tt;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => t.hidden = true, 3000); }
 document.addEventListener('click', e => { const el = e.target.closest('[data-act]'); if (!el || el.disabled) return; const f = ACT[el.dataset.act]; if (f) f(el, e); });
 document.addEventListener('change', async e => {
+  if (e.target.id === 'ref-file') {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    S.ref = { busy: true, preview: '', err: '' }; render();
+    try { const data = await fileToData(await resizeImage(f, 900, 0.78)); S.b = { ...S.b, ...(await call('addRefPhoto', { id: ID, token: TOKEN, image: data })) }; S.ref = { busy: false, preview: data, err: '' }; }
+    catch (err) { S.ref = { busy: false, preview: '', err: err.message || 'Couldn’t send the photo. Try another one.' }; }
+    render(); return;
+  }
   if (e.target.id !== 'proof-file') return;
   const f = e.target.files && e.target.files[0]; if (!f) return;
   if (!/^image\//.test(f.type)) { S.proof.err = 'Choose an image (a screenshot from your gallery).'; render(); return; }
