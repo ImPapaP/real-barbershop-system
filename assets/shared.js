@@ -2,7 +2,7 @@
 export const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 5, leadMinutes: 60, bookAheadDays: 30, step: 60, maxReschedules: 2, rebookDays: 28, onlineBooking: true, lastBooking: '19:00' };
+export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 5, leadMinutes: 60, bookAheadDays: 120, step: 60, maxReschedules: 2, rebookDays: 28, onlineBooking: true, lastBooking: '19:00' };
 
 export const $ = (s, r = document) => r.querySelector(s);
 export const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -348,3 +348,25 @@ export function defaultFaq(info) {
     { q: 'Do you have promo codes?', a: 'When we run a promo, we post the code on our Facebook and Instagram. Type it in “Have a promo code?” when you book. It comes off your bill at the shop.' }
   ];
 }
+
+// Month calendar for picking a booking date. dates: [{date, closed, off}] (what bookableDates returns,
+// plus off = barber's day off). month: 'YYYY-MM' being shown. Arrows step a month at a time.
+export function monthGrid({ dates, selected, act, month, navAct, disabled = false, label = 'Date' }) {
+  if (!dates.length) return '<p class="muted small">No dates open for booking.</p>';
+  const by = Object.fromEntries(dates.map(d => [d.date, d])), first = dates[0].date.slice(0, 7), last = dates[dates.length - 1].date.slice(0, 7);
+  const m = month && month >= first && month <= last ? month : (selected || dates[0].date).slice(0, 7);
+  const [y, mo] = m.split('-').map(Number), start = new Date(Date.UTC(y, mo - 1, 1)).getUTCDay(), days = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  const today = dates[0].date, cells = [];
+  for (let i = 0; i < start; i++) cells.push('<span class="cal-x" aria-hidden="true"></span>');
+  for (let d = 1; d <= days; d++) {
+    const iso = `${m}-${String(d).padStart(2, '0')}`, x = by[iso], can = x && !x.closed && !x.off && !disabled;
+    const why = !x ? '' : x.closed ? ' (closed)' : x.off ? ' (day off)' : '';
+    cells.push(`<button type="button" class="cal-d${iso === today ? ' today' : ''}${x && (x.closed || x.off) ? ' shut' : ''}" data-act="${act}" data-v="${iso}" aria-pressed="${iso === selected}" aria-label="${fmtDate(iso)}${why}" ${can ? '' : 'disabled'}>${d}</button>`);
+  }
+  return `<div class="cal" role="group" aria-label="${label}">
+    <div class="cal-h"><button type="button" class="cal-nav" data-act="${navAct}" data-v="-1" data-m="${m}" aria-label="Previous month" ${m <= first ? 'disabled' : ''}>‹</button><b>${MONTHS_LONG[mo - 1]} ${y}</b><button type="button" class="cal-nav" data-act="${navAct}" data-v="1" data-m="${m}" aria-label="Next month" ${m >= last ? 'disabled' : ''}>›</button></div>
+    <div class="cal-w" aria-hidden="true">${['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(w => `<span>${w}</span>`).join('')}</div>
+    <div class="cal-g">${cells.join('')}</div></div>`;
+}
+export const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+export const shiftMonth = (m, n) => { const [y, mo] = m.split('-').map(Number), d = new Date(Date.UTC(y, mo - 1 + n, 1)); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };

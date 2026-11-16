@@ -3,7 +3,7 @@
 import { db, call, demo, demoBar, resetDemo } from './fb.js';
 import {
   $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, DAYS_LONG, MONTHS, sum, phNow, dowOf, policyOf, openStatus,
-  availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph, brand, LOGO_LG, dur, isServiceStaff, toMin, fromMin, addDays, blockTimes, slotId, messengerLink, defaultFaq
+  availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph, brand, LOGO_LG, dur, isServiceStaff, toMin, fromMin, addDays, blockTimes, slotId, messengerLink, defaultFaq, monthGrid, shiftMonth
 } from './shared.js';
 import { L, lang, setLang } from './i18n.js';
 import { paintBanners } from './banner.js';
@@ -110,6 +110,7 @@ function page() {
     <nav class="site-nav" aria-label="Sections">
       <button class="lnk" data-act="scroll" data-to="services">Services</button>
       ${happenings().length ? '<button class="lnk" data-act="scroll" data-to="promos">Promos</button>' : ''}
+      ${products().length ? '<button class="lnk" data-act="scroll" data-to="products">Products</button>' : ''}
       ${galAll().length || demo ? '<button class="lnk" data-act="scroll" data-to="gallery">Gallery</button>' : ''}
       <button class="lnk" data-act="scroll" data-to="team">Team</button>
       <button class="lnk" data-act="scroll" data-to="visit">Visit</button>
@@ -159,6 +160,10 @@ function page() {
   ${happenings().length ? `<section id="promos" class="sec"><div class="wrap">
     <div class="sec-head reveal"><div><p class="eyebrow">What’s on</p><h2 class="sec-title">Promos &amp; events</h2></div>${shop.facebook ? `<a class="btn btn-ghost" href="${esc(shop.facebook)}" target="_blank" rel="noopener">Follow for new promos ${ic('arrow')}</a>` : ''}</div>
     <div class="happen-grid">${happenings().map(h => happenCard(h)).join('')}</div>
+  </div></section>` : ''}
+  ${products().length ? `<section id="products" class="sec alt"><div class="wrap">
+    <div class="sec-head reveal"><div><p class="eyebrow">Take it home</p><h2 class="sec-title">Our products</h2></div><p class="muted" style="max-width:40ch">The same products we use in the chair. Buy at the shop, or add one to your booking and we’ll set it aside.</p></div>
+    <div class="prod-grid">${products().map(productCard).join('')}</div>
   </div></section>` : ''}
   ${galAll().length || demo ? `<section id="gallery" class="sec dark-sec"><div class="wrap">
     <div class="sec-head reveal"><div><p class="eyebrow">Style gallery</p><h2 class="sec-title">Fresh from the chair</h2></div><div class="row">${shop.instagram ? `<a class="btn btn-ghost" href="${esc(shop.instagram)}" target="_blank" rel="noopener">${ic('camera')} Instagram</a>` : ''}${shop.facebook ? `<a class="btn btn-ghost" href="${esc(shop.facebook)}" target="_blank" rel="noopener">More on Facebook ${ic('arrow')}</a>` : ''}</div></div>
@@ -217,6 +222,14 @@ function page() {
   <div class="mbar" id="mbar" hidden><div><b id="mbar-t">Book a chair</b><small id="mbar-s">${policyOf(I).onlineBooking ? m(policyOf(I).deposit) + ' deposit secures your slot' : 'Call or message us to book'}</small></div><button class="btn btn-accent" data-act="mbar">Book now</button></div>
   ${messengerLink(shop) ? `<a class="msgr" href="${esc(messengerLink(shop))}" target="_blank" rel="noopener" aria-label="Message us on Messenger">${ic('chat')}<span>Message us</span></a>` : ''}
   <div id="lightbox" hidden></div><div id="profile" hidden></div>`;
+}
+const products = () => (info().products || []).filter(p => p.name);
+function productCard(p) {
+  const added = new RegExp(`(^|; )${p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|;)`).test(S.bk.prods || '');
+  return `<article class="prod reveal"><div class="prod-ph">${p.photo ? `<img src="${esc(p.photo)}" alt="${esc(p.name)}" loading="lazy">` : `<span class="prod-mono" aria-hidden="true">${esc(initials(p.name))}</span>`}${p.tag ? `<span class="prod-tag">${esc(p.tag)}</span>` : ''}</div>
+    <div class="prod-b"><h3>${esc(p.name)}</h3>${p.desc ? `<p>${esc(p.desc)}</p>` : ''}
+      <div class="prod-foot"><b class="prod-price">${m(p.price)}</b>${p.inStock ? '<span class="prod-in">In stock</span>' : '<span class="prod-out">Out of stock</span>'}</div>
+      ${p.inStock ? `<button type="button" class="btn btn-sm ${added ? 'btn-accent' : ''}" data-act="addProd" data-name="${esc(p.name)}" aria-pressed="${added}">${added ? ic('check') + ' Added to your booking' : 'Add to my booking'}</button>` : ''}</div></article>`;
 }
 function happenCard(h) {
   const when = h.kind === 'event' ? (h.start && h.end && h.start !== h.end ? `${fmtDate(h.start)} – ${fmtDate(h.end)}` : h.start ? fmtDate(h.start) : h.end ? `Until ${fmtDate(h.end)}` : '') : h.end ? `Until ${fmtDate(h.end)}` : 'Ongoing';
@@ -368,7 +381,7 @@ function guestOptions(times) {
     if (n && n.barbers.includes(bb.id)) out.push({ mode: 'after', time: next, barberId: bb.id, label: `Right after, ${fmtTime(next)}, with ${bb.name}`, sub: 'One after the other' });
   }
   // Their own time: any day, any free time, any barber who does their services
-  const g = b.guest, gt2 = g.time ? guestTimes().find(x => x.time === g.time) : null;
+  const g = b.guest, gt2 = g.time ? (guestTimes() || []).find(x => x.time === g.time) : null;
   const gb = gt2 && (g.barber && gt2.barbers.includes(g.barber) ? g.barber : gt2.barbers[0]);
   out.push({ mode: 'pick', date: g.date || b.date, time: gb ? g.time : '', barberId: gb || '', label: 'Choose their own time', sub: gb ? `${dayWord(g.date || b.date)}, ${fmtTime(g.time)} with ${barber(gb)?.name || ''}` : 'Any day, any free time, any barber' });
   return out;
@@ -377,7 +390,9 @@ function guestOptions(times) {
 function guestTimes() {
   const b = S.bk, g = b.guest, date = g.date || b.date, gs = guestSvcs(), pol = policyOf(info());
   if (!gs.length || !b.time) return [];
-  const slots = { ...S.range.slots, ...(date === b.date ? S.slots : {}) };
+  const day = date === b.date ? null : slotsForDay(date);
+  if (date !== b.date && !day) return null; // still loading that day
+  const slots = { ...S.range.slots, ...(day || {}), ...(date === b.date ? S.slots : {}) };
   const mt = availableTimes(info(), { services: chosen(), date: b.date, barberId: b.barber }, S.slots).find(x => x.time === b.time);
   const mainB = b.barber || (mt && mt.barbers[0]);
   if (mainB && date === b.date) blockTimes(b.time, sum(chosen(), x => x.mins), pol.step).forEach(t => { slots[slotId(mainB, b.date, t)] = { state: 'booked' }; });
@@ -386,12 +401,12 @@ function guestTimes() {
 function guestWhen() {
   const b = S.bk, g = b.guest, gs = guestSvcs(), date = g.date || b.date;
   const bars = (info().barbers || []).filter(x => isServiceStaff(x) && x.active !== false && canServe(x, gs));
-  const dates = bookableDates(info()).filter(d => !d.closed).slice(0, 14);
+  const dates = bookableDates(info());
   const times = guestTimes(), who = gs[0] && gs[0].group === 'her' ? 'stylist' : 'barber';
   return `<div class="guest-when">
     <p class="bf-label">Their ${who}</p><div class="bf-row"><button type="button" class="bf-chip" data-act="guestBarber" data-id="" aria-pressed="${!g.barber}"><span class="av any">${ic('scissors')}</span><span>Any</span></button>${bars.map(x => `<button type="button" class="bf-chip" data-act="guestBarber" data-id="${esc(x.id)}" aria-pressed="${g.barber === x.id}">${avatarOf(x)}<span>${esc(x.name)}</span></button>`).join('')}</div>
-    <p class="bf-label">Day</p><div class="dates" role="group" aria-label="Their day">${dates.map(d => { const x = new Date(`${d.date}T00:00:00Z`), off = g.barber && !((barber(g.barber) || {}).days || []).includes(dowOf(d.date)); return `<button type="button" class="dchip" data-act="guestDate" data-v="${d.date}" aria-pressed="${d.date === date}" ${off ? 'disabled' : ''}><small>${DAYS[x.getUTCDay()]}</small><b>${x.getUTCDate()}</b><span>${off ? 'Off' : d.date === b.date ? 'Same day' : MONTHS[x.getUTCMonth()]}</span></button>`; }).join('')}</div>
-    <p class="bf-label">Time</p>${date !== b.date && !S.range.at ? '<p class="muted small"><span class="spinner"></span> Checking free times…</p>' : `<div class="times-in">${timeChips(times, g.time, 'guestTime')}</div>`}
+    <p class="bf-label">Day</p>${monthGrid({ dates: dates.map(d => ({ ...d, off: !!(g.barber && !((barber(g.barber) || {}).days || []).includes(dowOf(d.date))) })), selected: date, act: 'guestDate', month: g.calM || date.slice(0, 7), navAct: 'guestCal', label: 'Their day' })}
+    <p class="bf-label">Time</p>${times === null ? '<p class="muted small"><span class="spinner"></span> Checking free times…</p>' : `<div class="times-in">${timeChips(times, g.time, 'guestTime')}</div>`}
   </div>`;
 }
 // Their own services: For him (Deluxe or Regular haircut + add-ons) or For her
@@ -431,6 +446,16 @@ function ensureRange() {
   db.collection('slots').where('date', '>=', ds[0]).where('date', '<=', ds[ds.length - 1]).get()
     .then(s => { R.slots = Object.fromEntries(s.docs.map(x => [x.id, x.data()])); R.at = Date.now(); R.loading = false; renderBooker(); })
     .catch(() => { R.at = Date.now(); R.loading = false; });
+}
+// Slots for one day outside the 14-day range (the second person can pick any day up to the booking limit)
+const dayCache = {};
+function slotsForDay(date) {
+  const c = dayCache[date];
+  if (c && Date.now() - c.at < 60e3) return c.slots;
+  if (!c || !c.loading) { dayCache[date] = { ...(c || { slots: null }), loading: true, at: (c && c.at) || 0 };
+    db.collection('slots').where('date', '==', date).get().then(s => { dayCache[date] = { slots: Object.fromEntries(s.docs.map(x => [x.id, x.data()])), at: Date.now(), loading: false }; renderBooker(); })
+      .catch(() => { dayCache[date] = { slots: {}, at: Date.now(), loading: false }; }); }
+  return c ? c.slots : null;
 }
 function nextFree() {
   const picked = chosen(); if (!picked.length || !S.range.at) return null;
@@ -501,7 +526,7 @@ function booker() {
     </section>
     <section class="step" id="st-3" ${st.picked ? '' : 'aria-disabled="true"'}><div class="step-h"><span class="n ${st.when ? 'ok' : ''}">${st.when ? ic('check') : 3}</span><h3>Pick a date and time</h3>${st.when ? `<span class="done">${fmtDate(b.date)}, ${fmtTime(b.time)}</span>` : ''}</div>
       ${st.picked ? nextFreeCard() : ''}
-      <div class="dates" role="group" aria-label="Date">${dates.map(d => { const x = new Date(`${d.date}T00:00:00Z`); return `<button type="button" class="dchip" data-act="bkDate" data-v="${d.date}" aria-pressed="${d.date === b.date}" ${d.closed || d.off || !st.picked ? 'disabled' : ''}><small>${DAYS[x.getUTCDay()]}</small><b>${x.getUTCDate()}</b><span>${d.closed ? 'Closed' : d.off ? 'Off' : MONTHS[x.getUTCMonth()]}</span></button>`; }).join('')}</div>
+      ${monthGrid({ dates, selected: b.date, act: 'bkDate', month: S.calM, navAct: 'calNav', disabled: !st.picked })}
       ${st.picked && b.date ? (S.slotsLoaded ? `<div class="times-in">${timeChips(times, b.time, 'bkTime')}</div>${waitlistBox(times)}` : '<p class="muted small"><span class="spinner"></span> Checking free times…</p>') : `<p class="muted small">${st.picked ? 'Pick a date to see free times.' : hasTiers(b.group) ? 'Pick a haircut first.' : 'Choose a service first.'}</p>`}
     </section>
     <section class="step" id="st-4" ${st.when ? '' : 'aria-disabled="true"'}><div class="step-h"><span class="n ${st.details ? 'ok' : ''}">${st.details ? ic('check') : 4}</span><h3>Your details</h3><span class="req-note"><span class="req">*</span> Required</span></div>
@@ -541,7 +566,8 @@ function promoOff(total) {
 }
 function bill(picked, gpk, people) {
   const pol = policyOf(info()), gs = gpk ? guestSvcs() : [], all = [...picked, ...gs];
-  const total = sum(all, x => x.price), from = all.some(x => x.priceFrom), off = promoOff(total), dep = pol.deposit * people;
+  const svcTotal = sum(all, x => x.price), from = all.some(x => x.priceFrom), off = promoOff(svcTotal), dep = pol.deposit * people;
+  const prodList = (S.bk.prods || '').split('; ').filter(Boolean).map(n => products().find(x => x.name === n)).filter(Boolean), total = svcTotal + sum(prodList, p => p.price);
   const line = (l, r, cls = '') => `<div class="bill-row ${cls}"><span>${l}</span><b>${r}</b></div>`;
   if (!picked.length) return `<div class="bill"><p class="muted small">Pick a service to see the price breakdown.</p></div><div class="due"><span>Down payment now</span><b>${m(dep)}</b></div>`;
   return `<div class="bill" aria-label="Price breakdown"><p class="bill-h">Price breakdown</p>
@@ -549,6 +575,7 @@ function bill(picked, gpk, people) {
     ${picked.map(x => line(esc(x.name), esc(priceLabel(x, cur())))).join('')}
     ${gpk ? `<p class="bill-sub">${esc(S.bk.guest.name.trim() || 'Second person')}</p>${gs.map(x => line(esc(x.name), esc(priceLabel(x, cur())))).join('')}` : ''}
     ${off ? line(`Promo ${esc(S.promo.applied.code)} (${esc(S.promo.applied.label)})`, '−' + m(off), 'disc') : ''}
+    ${prodList.length ? `<p class="bill-sub">Set aside for you (pay at the shop)</p>${prodList.map(p => line(esc(p.name), m(p.price))).join('')}` : ''}
     ${line('Estimated total', (from ? 'from ' : '') + m(total - off), 'tot')}</div>
     ${promoBox()}
     <div class="due"><span>Down payment now${people > 1 ? ' (2 people)' : ''}</span><b>${m(dep)}</b></div>
@@ -706,6 +733,13 @@ const ACT = {
   menuTab(el) { S.menuTab = el.dataset.v; renderMenu(); },
   lang(el) { if (lang() === el.dataset.v) return; setLang(el.dataset.v); renderAll(); },
   galTag(el) { S.galTag = el.dataset.v; renderGallery(); },
+  addProd(el) {
+    const n = el.dataset.name, list = (S.bk.prods || '').split('; ').filter(Boolean), on = list.includes(n);
+    S.bk.prods = (on ? list.filter(x => x !== n) : [...list, n]).join('; ');
+    if (!on) toast(`${n} will be set aside for your visit`);
+    const sec = document.querySelector('#products .prod-grid'); if (sec) { sec.innerHTML = L(products().map(productCard).join('')); revealOnScroll(); }
+    renderBooker();
+  },
   usePromo(el) { S.promo = { open: true, code: el.dataset.code, applied: null, err: '', busy: false, pending: el.dataset.code }; toast(`Code ${el.dataset.code} will be applied when you pick your service`); goStep(chosen().length ? 3 : 1); maybeApplyPromo(); },
   async copyCode(el) { try { await navigator.clipboard.writeText(el.dataset.code); toast('Code copied'); } catch (_) { toast(el.dataset.code); } },
   lookBook(el) { const g = gallery()[+el.dataset.i]; if (!g) return; S.lb = -1; lightbox(); S.bk.notes = `I’d like this look: ${g.caption || g.style || 'photo from your gallery'}`; ACT.bookWith({ dataset: { id: g.barberId } }); },
@@ -763,6 +797,8 @@ const ACT = {
   guestMode(el) { const g = S.bk.guest; g.mode = el.dataset.v; if (g.mode === 'pick') { g.date = g.date || S.bk.date; ensureRange(); } renderBooker(); },
   guestBarber(el) { const g = S.bk.guest; g.barber = el.dataset.id; g.time = ''; const bb = barber(g.barber); if (bb && !(bb.days || []).includes(dowOf(g.date || S.bk.date))) g.date = ''; renderBooker(); },
   guestDate(el) { const g = S.bk.guest; g.date = el.dataset.v; g.time = ''; ensureRange(); renderBooker(); },
+  calNav(el) { S.calM = shiftMonth(el.dataset.m, +el.dataset.v); renderBooker(); },
+  guestCal(el) { S.bk.guest.calM = shiftMonth(el.dataset.m, +el.dataset.v); renderBooker(); },
   guestTime(el) { S.bk.guest.time = el.dataset.v; renderBooker(); },
   guestOwn(el) { const g = S.bk.guest; g.own = el.dataset.v === '1'; g.mode = ''; if (g.own && !Object.values(g.svc).some(Boolean)) { g.group = S.bk.group; g.tier = ''; } renderBooker(); },
   guestGroup(el) { const g = S.bk.guest; if (g.group === el.dataset.v) return; g.group = el.dataset.v; g.tier = ''; g.svc = {}; g.mode = ''; renderBooker(); },
@@ -817,6 +853,7 @@ const ACT = {
     try {
       const r = await call('createBooking', { serviceIds: Object.keys(b.svc).filter(k => b.svc[k]), barberId: b.barber, date: b.date, time: b.time, name: b.name, phone: b.phone, email: b.email, notes: b.notes, consent: b.consent,
         payMethod: payChoice() ? S.pay : 'online', promo: S.promo.applied ? S.promo.applied.code : '',
+        ...(b.prods ? { notes: [b.notes, `Set aside for me: ${b.prods}`].filter(Boolean).join(' · ') } : {}),
         ...(gp ? { guest: { name: b.guest.name.trim(), time: gp.time, barberId: gp.barberId, ...(gp.mode === 'pick' && gp.date !== b.date ? { date: gp.date } : {}), ...(b.guest.own ? { serviceIds: guestSvcs().map(x => x.id) } : {}) } } : {}) });
       saveMe();
       try { localStorage.setItem('lastBooking', JSON.stringify({ id: r.id, token: r.token, ...when })); } catch (_) {}

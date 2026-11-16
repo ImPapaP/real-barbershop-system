@@ -1094,3 +1094,40 @@ canvas.happen-img{width:100%;height:auto;aspect-ratio:1200/630;background:#0b0b0
 .perk{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;padding:3px 9px 3px 7px;border-radius:999px;background:color-mix(in srgb,var(--good) 13%,transparent);color:var(--good-ink)}
 .perk .ic{width:13px;height:13px}
 .pickcard .perks{grid-column:1/-1;margin:2px 0 0}
+
+/* ---------- month calendar (booking date) ---------- */
+.cal{border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--surface);max-width:420px}
+.cal-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.cal-h b{font-size:16px}
+.cal-nav{width:40px;height:40px;border-radius:50%;border:1px solid var(--line-2);background:var(--surface);font-size:22px;line-height:1;cursor:pointer;color:var(--ink)}
+.cal-nav:disabled{opacity:.3;cursor:default}
+.cal-w,.cal-g{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-w span{text-align:center;font-size:11.5px;font-weight:700;color:var(--muted);padding:4px 0}
+.cal-d{aspect-ratio:1;min-width:0;padding:0;border:1px solid transparent;border-radius:10px;background:var(--surface-2);font-weight:700;font-size:15px;cursor:pointer;color:var(--ink)}
+.cal-d:hover:not(:disabled){border-color:var(--ink)}
+.cal-d:disabled{background:transparent;color:var(--line-2);cursor:default}
+.cal-d.shut:disabled{text-decoration:line-through}
+.cal-d.today{box-shadow:inset 0 0 0 1.5px var(--line-2)}
+.cal-d[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
+.cal-x{aspect-ratio:1}
+
+/* ---------- our products ---------- */
+.prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr));gap:16px}
+.prod{display:grid;grid-template-rows:auto 1fr;background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden;min-width:0}
+.prod-ph{position:relative;aspect-ratio:1;background:linear-gradient(160deg,#1d2433,#0b0d12);display:grid;place-items:center;overflow:hidden}
+.prod-ph img{width:100%;height:100%;object-fit:cover}
+.prod-mono{font:400 64px/1 var(--f-slab);color:rgba(243,245,250,.85);letter-spacing:.02em}
+.prod-tag{position:absolute;top:12px;left:12px;background:#f3f5fa;color:#0b0d12;font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:4px 9px;border-radius:999px}
+.prod-b{display:grid;gap:8px;align-content:start;padding:14px 16px 16px}
+.prod-b h3{font-size:17px;font-weight:700;margin:0}
+.prod-b p{font-size:14px;color:var(--ink-2);line-height:1.5;margin:0}
+.prod-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px}
+.prod-price{font:800 22px/1 var(--f-display)}
+.prod-in,.prod-out{font-size:12px;font-weight:700}
+.prod-in{color:var(--good-ink)}
+.prod-out{color:var(--muted)}
+.prod .btn{justify-self:stretch}
+@media (max-width:520px){.prod-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.prod-b{padding:12px}.prod-b p{display:none}.prod-mono{font-size:44px}.prod .btn{font-size:12.5px;padding-inline:8px}}
+form[data-form=item]:has(select[name=cat] option[value=Supply]:checked) .web-only{display:none}
+.board2{grid-template-columns:minmax(0,1fr)}.board2>*,.m-tiers>*,.tier-box,.m-bundles,.m-extras,.m-rest,.mgroup{min-width:0}
+.cal-w,.cal-g{grid-template-columns:repeat(7,minmax(0,1fr))}@media (max-width:420px){.cal{padding:10px}.cal-w,.cal-g{gap:3px}.cal-d{font-size:14px;border-radius:8px}}
