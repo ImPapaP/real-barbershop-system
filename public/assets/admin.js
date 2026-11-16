@@ -214,9 +214,9 @@ function periodRange(p) {
 const inR = (d, r) => d >= r[0] && d <= r[1];
 const netOf = s => (s.total || 0) - (s.tip || 0);
 
-// ---------- barber pay: guaranteed daily pay + commission ----------
-// For each day worked a barber earns their guaranteed daily pay (e.g. ₱700 Deluxe, ₱500 Regular),
-// plus their commission rate (e.g. 60%) of every service they did, after discounts. The shop keeps the rest.
+// ---------- staff pay ----------
+// Each person's pay plan (see "pay plans" below) decides the base: barbers get ₱700 / ₱500 or their 50% / 40%
+// commission, whichever is higher. Commission is their rate of every service they did, after discounts.
 // A day counts as worked when they rang up a sale that day, or when it's one of their scheduled days and
 // they weren't marked absent (Schedule → Who's in). Days are only counted from the first day the shop
 // used this system (its first sale) or the barber's start date, whichever is later, and never in the future.
@@ -1293,7 +1293,7 @@ function cutField(c) {
     <p class="muted small">The client sees it on their booking page, so they can ask for the same cut next time.</p></div>`;
 }
 function staffModal(b) {
-  const c = b || { role: 'barber', rate: 60, dailyPay: 500, days: [0, 1, 2, 3, 4, 5, 6], groups: ['him'], tiers: ['regular'], active: true };
+  const c = b || { role: 'barber', payType: 'quota', rate: 40, dailyPay: 500, days: [0, 1, 2, 3, 4, 5, 6], groups: ['him'], tiers: ['regular'], active: true };
   const f = c.productFee || PRODUCT_FEE;
   openModal(b ? `Edit ${b.name}` : 'Add staff member', `<form class="stack staff-form" data-form="staff" data-id="${esc(c.id || '')}">
     <div class="fgrid">${field('Name', `<input id="m-sname" name="name" value="${esc(c.name || '')}" required>`, 'm-sname')}${field('Role', `<select id="m-srole" name="role">${Object.entries(ROLES).map(([k, l]) => opt(k, l, (c.role || 'barber') === k)).join('')}</select>`, 'm-srole')}</div>
