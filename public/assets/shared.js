@@ -482,12 +482,12 @@ export function accountView({ phone, customers = [], appts = [], sales = [], inf
 }
 
 // Down payment for one person's booking: none when their barber is set to "no down payment" (junior barbers),
-// or, for "any available", when every barber who could take it is. Same rule as the server.
+// Only senior barbers take one: for "any available", it's needed only when every barber who could take it is a senior. Same rule as the server.
 export function depositFor(info, barberId, services) {
   const pol = policyOf(info), bs = info.barbers || [];
   if (barberId) { const b = bs.find(x => x.id === barberId); return b && b.noDeposit ? 0 : pol.deposit; }
   const can = bs.filter(b => b.active !== false && canServe(b, services || []));
-  return can.length && can.every(b => b.noDeposit) ? 0 : pol.deposit;
+  return can.length && can.every(b => !b.noDeposit) ? pol.deposit : 0;
 }
 
 // Service options (e.g. polish on a manicure): { serviceId: optionId } on a booking. Keeps only real options

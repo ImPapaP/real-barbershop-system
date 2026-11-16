@@ -239,6 +239,9 @@ test('no down payment for junior barbers, including "any available" when only ju
   assert.equal(depositFor(info, 'rey', deluxe), 200);
   assert.equal(depositFor(info, '', regular), 0);
   assert.equal(depositFor(info, '', deluxe), 200);
+  // any available where a senior and a junior could both do it: no down payment (only seniors take one)
+  const both = { ...info, barbers: [...info.barbers, { id: 'lyn', tiers: ['regular', 'deluxe'], groups: ['him'] }] };
+  assert.equal(depositFor(both, '', regular), 0);
 });
 
 test('late limit and refund depend on whether the booking has a down payment', async () => {
