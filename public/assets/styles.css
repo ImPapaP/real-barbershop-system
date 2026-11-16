@@ -1141,3 +1141,19 @@ form[data-form=item]:has(select[name=cat] option[value=Supply]:checked) .web-onl
 .daycheck .totals .ok b{color:var(--good-ink)}
 .daycheck .totals .bad b,.daycheck .totals .bad span{color:var(--bad, #b42318)}
 .dc-cash{display:grid;gap:12px}
+
+/* ---------- add nails (or hair) to this visit ---------- */
+.addon{margin-top:18px;padding:14px 16px 16px;border:1.5px dashed var(--line-2);border-radius:14px;display:grid;gap:10px}
+.addon-h{display:grid;gap:3px}
+.addon-h b{display:flex;align-items:center;gap:6px;font-size:15px}
+.addon-h .ic{width:16px;height:16px}
+.addon-h small{color:var(--muted);font-size:13px}
+.addon:has([aria-pressed="true"]){border-style:solid;border-color:var(--ink)}
+.addon-when{margin-top:14px;padding-top:14px;border-top:1px dashed var(--line-2)}
+.addon .pick{grid-template-columns:repeat(auto-fill,minmax(min(100%,150px),1fr));gap:8px}
+.addon .pickcard{padding:10px 12px;gap:2px;min-height:0}
+.addon .pickcard b{font-size:14px;padding-right:22px}
+.addon .pickcard small{font-size:12px}
+.addon .pickcard .p{font-size:15px}
+.addon .pickcard .tick{top:9px;right:9px}
+@media (max-width:420px){.addon .pick{grid-template-columns:repeat(2,minmax(0,1fr))}}
