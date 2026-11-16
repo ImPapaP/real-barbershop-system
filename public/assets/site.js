@@ -370,7 +370,8 @@ function applySelection({ group, svc = [], barber: bid = '' }) {
 // barber/stylist, or right after with the same barber (only when he does their services too).
 const guestSvcs = () => { const g = S.bk.guest; return g.own ? svcs().filter(x => g.svc[x.id]) : chosen(); };
 // "Add nails to this visit": the same client adds a service of another kind, done by someone else (one down payment)
-const addOnGroups = () => groupTabs().filter(([k]) => k !== S.bk.group && (k === 'nails' || S.bk.group === 'nails'));
+// Only between For her and Nails (not offered with men's haircuts)
+const addOnGroups = () => groupTabs().filter(([k]) => (S.bk.group === 'her' && k === 'nails') || (S.bk.group === 'nails' && k === 'her'));
 // Who does the extra service, for the summary: the chosen person, or the only one free, or "another <role>"
 const guestWho = o => { const id = o.barberId || ((availableTimes(info(), { services: guestSvcs(), date: o.date || S.bk.date, barberId: '' }, S.slots).find(x => x.time === o.time) || {}).barbers || []).filter(x => x !== S.bk.barber).concat([''])[0];
   return id ? ` with ${esc(barber(id)?.name || '')}` : `, another ${staffWord(guestSvcs()[0] && guestSvcs()[0].group)}`; };
