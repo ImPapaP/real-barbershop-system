@@ -1055,7 +1055,7 @@ function cpPick(i) {
   cpClose(); input.focus();
 }
 // Opens when staff tap the field or start typing, not when a pop-up puts the cursor there by itself
-document.addEventListener('click', e => { if (e.target.matches && e.target.matches('[data-cust]') && CP.input !== e.target) { const el = e.target; CP.i = -1; cpOpen(el); setTimeout(() => CP.input === el && cpOpen(el), 280); } }); // again once the pop-up has finished opening
+document.addEventListener('click', e => { if (e.target.matches && e.target.matches('[data-cust]') && CP.input === e.target && e.clientX > e.target.getBoundingClientRect().right - 40) { cpClose(); return; } if (e.target.matches && e.target.matches('[data-cust]') && CP.input !== e.target) { const el = e.target; CP.i = -1; cpOpen(el); setTimeout(() => CP.input === el && cpOpen(el), 280); } }); // again once the pop-up has finished opening
 document.addEventListener('input', e => { if (e.target.matches && e.target.matches('[data-cust]')) { CP.i = -1; cpOpen(e.target); } });
 document.addEventListener('keydown', e => {
   if (e.target.matches && e.target.matches('[data-cust]') && e.key === 'ArrowDown' && CP.input !== e.target) { e.preventDefault(); CP.i = 0; cpOpen(e.target); return; }
