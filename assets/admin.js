@@ -148,8 +148,7 @@ function render() {
   S.enter = S.canAdmin && (tab !== S.lastTab || (all && !S.wasLoaded)); S.lastTab = tab; if (all) S.wasLoaded = true;
   if (S.enter || !$('#app').firstElementChild) $('#app').innerHTML = view(); else morph($('#app'), view());
   if (id && !$('#modal').contains(a)) { const n = document.getElementById(id); if (n && n !== document.activeElement) { n.focus({ preventScroll: true }); try { if (s != null) n.setSelectionRange(s, e); } catch (_) {} } }
-  const cl = S.customers.map(c => `<option value="${esc(c.name)}">${esc(c.phone || '')}</option>`).join('');
-  if (cl !== S.custListHtml) { S.custListHtml = cl; $('#cust-list').innerHTML = cl; }
+  if (CP.input && !document.body.contains(CP.input)) cpClose();
 }
 function view() { return demoBar() + inner(); }
 function inner() {
@@ -506,7 +505,7 @@ function vCheckout() {
       <div class="ticket">
         <div class="row" style="justify-content:space-between"><h2>Ticket</h2><span class="muted small num">${fmtDate(today())} · ${fmtTime(nowHM())}</span></div>
         <div class="fgrid">
-          ${field('Client', `<input id="pos-name" data-bind="pos.name" data-live list="cust-list" value="${esc(p.name)}" placeholder="Walk-in" autocomplete="off">`, 'pos-name')}
+          ${field('Client', `<input id="pos-name" data-bind="pos.name" data-live data-cust role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="cust-pop" value="${esc(p.name)}" placeholder="Walk-in" autocomplete="off">`, 'pos-name')}
           ${field('Phone', `<input id="pos-phone" data-bind="pos.phone" data-live value="${esc(p.phone)}" inputmode="tel" placeholder="Optional">`, 'pos-phone')}
         </div>
         ${loyal}${posBday(p) !== null ? `<p class="hint"><b>Birthday ${bdayWhen(posBday(p))}.</b> Their birthday haircut is free. Tap “Birthday free cut” below.</p>` : ''}
@@ -996,6 +995,61 @@ function happenPreview() {
   const fd = new FormData(f), g = k => String(fd.get(k) || '').trim();
   drawBanner(c, { kind: g('kind') || 'promo', title: g('title') || 'Your title here', text: g('text'), start: g('start'), end: g('end'), code: g('code'), badge: g('badge') }, info().shop);
 }
+// ---------- client search (name fields in Add walk-in, New booking and Checkout) ----------
+// Type a name or number: matching clients show with their phone, visits and birthday. Picking one fills the
+// phone (and birthday) too. Arrow keys + Enter work; Esc closes.
+const CP = { input: null, items: [], i: -1 };
+function cpMatches(q) {
+  const st = custStats(), t = q.trim().toLowerCase(), digits = t.replace(/\D/g, '');
+  let list = S.customers.map(c => ({ c, st: st[c.id] || { visits: 0, last: '' } }));
+  if (t) list = list.filter(({ c }) => c.name.toLowerCase().includes(t) || (digits.length >= 3 && normPhone(c.phone).includes(digits)))
+    .sort((a, b) => (b.c.name.toLowerCase().startsWith(t) - a.c.name.toLowerCase().startsWith(t)) || (b.st.last || '').localeCompare(a.st.last || ''));
+  else list.sort((a, b) => (b.st.last || '').localeCompare(a.st.last || ''));
+  return list.slice(0, 6);
+}
+const cpMark = (text, q) => { const t = q.trim(); const i = t ? text.toLowerCase().indexOf(t.toLowerCase()) : -1; return i < 0 ? esc(text) : `${esc(text.slice(0, i))}<mark>${esc(text.slice(i, i + t.length))}</mark>${esc(text.slice(i + t.length))}`; };
+function cpOpen(input) {
+  const q = input.value, list = cpMatches(q), exact = list.some(({ c }) => c.name.trim().toLowerCase() === q.trim().toLowerCase());
+  CP.input = input; CP.items = list; if (CP.i >= list.length) CP.i = list.length - 1;
+  let pop = document.getElementById('cust-pop');
+  if (!pop) { pop = document.createElement('div'); pop.id = 'cust-pop'; pop.className = 'cust-pop'; pop.setAttribute('role', 'listbox'); document.body.appendChild(pop); }
+  const meta = ({ c, st }) => { const n = bdayDays(c.birthday, today()); return [st.visits ? `${st.visits} visit${st.visits === 1 ? '' : 's'}` : 'New', st.last ? `last ${shortDate(st.last)}` : '', n !== null && Math.abs(n) <= 7 ? `★ birthday ${bdayWhen(n)}` : ''].filter(Boolean).join(' · '); };
+  pop.innerHTML = `${list.length ? `<p class="cp-h">${q.trim() ? 'Matching clients' : 'Recent clients'}</p>` : ''}
+    ${list.map((x, i) => `<button type="button" class="cp-item${i === CP.i ? ' on' : ''}" role="option" aria-selected="${i === CP.i}" data-cp="${i}" tabindex="-1"><span class="avatar">${esc(initials(x.c.name))}</span><span class="cp-t"><b>${cpMark(x.c.name, q)}</b><small>${x.c.phone ? cpMark(x.c.phone, q.replace(/\D/g, '').length >= 3 ? q : '') : 'No phone'}</small></span><span class="cp-m">${esc(meta(x))}</span></button>`).join('')}
+    ${q.trim() && !exact ? `<button type="button" class="cp-new" data-cpnew tabindex="-1"><b class="cp-plus" aria-hidden="true">+</b><span><span>New client: <b>${esc(q.trim())}</b></span><small>Saved to your client list when you save</small></span></button>` : ''}
+    ${!list.length && !q.trim() ? '<div class="cp-new">No clients yet. Type a name to add one.</div>' : ''}`;
+  const r = input.getBoundingClientRect(), w = Math.max(r.width, Math.min(360, innerWidth - 24));
+  pop.style.width = w + 'px'; pop.style.left = Math.max(12, Math.min(r.left, innerWidth - w - 12)) + 'px';
+  const below = innerHeight - r.bottom, h = Math.min(pop.scrollHeight, 380);
+  if (below < h + 12 && r.top > below) { pop.style.top = ''; pop.style.bottom = (innerHeight - r.top + 6) + 'px'; } else { pop.style.bottom = ''; pop.style.top = (r.bottom + 6) + 'px'; }
+  pop.hidden = !(list.length || q.trim()); input.setAttribute('aria-expanded', String(!pop.hidden));
+}
+function cpClose() { const pop = document.getElementById('cust-pop'); if (pop) pop.hidden = true; if (CP.input) CP.input.setAttribute('aria-expanded', 'false'); CP.input = null; CP.i = -1; }
+function cpPick(i) {
+  const x = CP.items[i], input = CP.input; if (!x || !input) return;
+  const c = x.c, form = input.closest('form');
+  input.value = c.name;
+  if (input.id === 'pos-name') { S.pos.name = c.name; S.pos.phone = c.phone || ''; cpClose(); render(); return; }
+  if (form) {
+    const ph = form.querySelector('[name=phone]'); if (ph && c.phone) ph.value = c.phone;
+    const bd = cleanBday(c.birthday), bm = form.querySelector('[name=bm]'), bdd = form.querySelector('[name=bd]');
+    if (bd && bm && bdd) { bm.value = String(+bd.slice(0, 2)); bdd.value = String(+bd.slice(3)); }
+  }
+  cpClose(); input.focus();
+}
+document.addEventListener('focusin', e => { if (e.target.matches && e.target.matches('[data-cust]')) { CP.i = -1; cpOpen(e.target); } });
+document.addEventListener('input', e => { if (e.target.matches && e.target.matches('[data-cust]')) { CP.i = -1; cpOpen(e.target); } });
+document.addEventListener('keydown', e => {
+  if (!CP.input || e.target !== CP.input) return;
+  const pop = document.getElementById('cust-pop'); if (!pop || pop.hidden) return;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const n = CP.items.length; if (!n) return; CP.i = (CP.i + (e.key === 'ArrowDown' ? 1 : -1) + n) % n; cpOpen(CP.input); }
+  else if (e.key === 'Enter' && CP.i >= 0) { e.preventDefault(); cpPick(CP.i); }
+  else if (e.key === 'Escape') { e.stopPropagation(); cpClose(); }
+}, true);
+document.addEventListener('mousedown', e => { if (e.target.closest && e.target.closest('[data-cpnew]')) { e.preventDefault(); const f = CP.input && CP.input.closest('form'), nx = f ? f.querySelector('[name=phone]') : document.getElementById('pos-phone'); cpClose(); if (nx) nx.focus(); return; } const b = e.target.closest && e.target.closest('[data-cp]'); if (b) { e.preventDefault(); cpPick(+b.dataset.cp); return; } if (CP.input && !e.target.closest('#cust-pop') && e.target !== CP.input) cpClose(); });
+document.addEventListener('focusout', e => { if (e.target === CP.input) setTimeout(() => { if (CP.input && document.activeElement !== CP.input) cpClose(); }, 120); });
+addEventListener('resize', () => CP.input && cpOpen(CP.input));
+document.addEventListener('scroll', () => CP.input && cpOpen(CP.input), true);
 document.addEventListener('input', e => { if (e.target.closest('form[data-form=happen]')) { if (e.target.id === 'hp-code') autoBadge(); happenPreview(); } });
 document.addEventListener('change', e => { if (e.target.closest('form[data-form=happen]')) { if (e.target.id === 'hp-code') autoBadge(); happenPreview(); } });
 // Picking a promo code fills the banner's big text with its discount
@@ -1049,7 +1103,7 @@ function openModal(title, body, wide) {
   m.hidden = false;
   setTimeout(() => { const f = m.querySelector('input:not([type=checkbox]),select,textarea'); if (f) f.focus(); }, 30);
 }
-function closeModal() { const m = $('#modal'); m.hidden = true; m.innerHTML = ''; }
+function closeModal() { cpClose(); const m = $('#modal'); m.hidden = true; m.innerHTML = ''; }
 const svcChecks = sel => { const groups = [...new Set(activeServices().map(s => s.cat || 'Services'))]; return groups.map(g => `<p class="eyebrow" style="margin:4px 0">${esc(g)}</p><div class="checks">${activeServices().filter(s => (s.cat || 'Services') === g).map(s => `<label class="check"><input type="checkbox" name="svc" value="${esc(s.id)}" ${(sel || []).includes(s.id) ? 'checked' : ''}>${esc(s.name)}<span class="p">${esc(priceLabel(s, cur()))}</span></label>`).join('')}</div>`).join(''); };
 const barberSelect = (name, sel, anyLabel) => `<select name="${name}" id="m-${name}">${anyLabel ? opt('', anyLabel, !sel) : ''}${serviceStaff().map(b => opt(b.id, b.name, b.id === sel)).join('')}</select>`;
 const mFoot = (label, extra) => `<div class="modal-f">${extra || ''}<button type="button" class="btn" data-act="closeModal">Cancel</button><button class="btn btn-primary" type="submit">${esc(label)}</button></div>`;
@@ -1058,7 +1112,7 @@ function apptModal(a, mode) {
   const c = a || {}, walk = mode === 'walkin' || c.source === 'walk-in', d = c.deposit || {};
   openModal(a ? 'Edit visit' : walk ? 'Add walk-in' : 'New booking', `<form class="stack" data-form="appt" data-id="${esc(c.id || '')}" data-mode="${mode}">
     ${c.status === 'needs_attention' ? '<p class="hint"><b>This client paid but lost the slot.</b> Pick a new time, set the status to Booked and save. Or refund the deposit in PayMongo and mark it refunded below.</p>' : ''}
-    <div class="fgrid">${field('Client name', `<input id="m-name" name="name" list="cust-list" value="${esc(c.name || '')}" autocomplete="off" required placeholder="${walk ? 'Saved as a client' : ''}">`, 'm-name')}${field('Phone', `<input id="m-phone" name="phone" inputmode="tel" value="${esc(c.phone || '')}" placeholder="Optional">`, 'm-phone')}</div>
+    <div class="fgrid">${field('Client name', `<input id="m-name" name="name" data-cust role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="cust-pop" value="${esc(c.name || '')}" autocomplete="off" required placeholder="${walk ? 'Saved as a client' : ''}">`, 'm-name')}${field('Phone', `<input id="m-phone" name="phone" inputmode="tel" value="${esc(c.phone || '')}" placeholder="Optional">`, 'm-phone')}</div>
     ${bdayField(c.birthday || (a ? (custOf(c) || {}).birthday : ''))}
     <fieldset class="field"><legend>Services</legend>${svcChecks(c.serviceIds)}</fieldset>
     <div class="fgrid${walk ? '' : ' three'}">${field('Barber', barberSelect('barberId', c.barberId, 'Any barber'), 'm-barberId')}
