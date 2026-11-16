@@ -146,7 +146,7 @@ function page() {
         <dl class="facts">
           ${cut ? `<div><dt>${esc(cut.name)}</dt><dd>${m(cut.price)}</dd></div>` : ''}
           <div><dt>Hours</dt><dd>${esc(hoursSummary(I.hours))}</dd></div>
-          ${policyOf(I).onlineBooking ? `<div><dt>Deposit to book</dt><dd>${m(policyOf(I).deposit)}</dd></div>` : '<div><dt>Walk-ins</dt><dd>Welcome</dd></div>'}
+          ${policyOf(I).onlineBooking ? `<div><dt>Down payment</dt><dd>${m(policyOf(I).deposit)} · senior barbers only</dd></div>` : '<div><dt>Walk-ins</dt><dd>Welcome</dd></div>'}
         </dl>
       </div>
       <div class="hero-side">
@@ -231,7 +231,7 @@ function page() {
     ${policyCards()}
   </div></section>
   <footer class="site-foot"><div class="wrap"><span class="wordmark" style="font-size:18px">${brand(shop.wordmark || shop.name, 'sm')}</span><span>${esc(shop.address)} · ${esc(shop.phone)}</span><span>© ${today.date.slice(0, 4)} ${esc(shop.name)} · <a href="account.html">My visits</a> · <a href="terms.html">Booking Terms</a> · <a href="privacy.html">Privacy Policy</a></span></div></footer>
-  <div class="mbar" id="mbar" hidden><div><b id="mbar-t">Book a chair</b><small id="mbar-s">${policyOf(I).onlineBooking ? m(policyOf(I).deposit) + ' deposit secures your slot' : 'Call or message us to book'}</small></div><button class="btn btn-accent" data-act="mbar">Book now</button></div>
+  <div class="mbar" id="mbar" hidden><div><b id="mbar-t">Book a chair</b><small id="mbar-s">${policyOf(I).onlineBooking ? 'Down payment only for senior barbers' : 'Call or message us to book'}</small></div><button class="btn btn-accent" data-act="mbar">Book now</button></div>
   ${messengerLink(shop) ? `<a class="msgr" href="${esc(messengerLink(shop))}" target="_blank" rel="noopener" aria-label="Message us on Messenger">${ic('chat')}<span>Message us</span></a>` : ''}
   <div id="lightbox" hidden></div><div id="profile" hidden></div>`;
 }
@@ -460,7 +460,7 @@ function addOnPicker() {
   const groups = addOnGroups(); if (!groups.length) return '';
   const g = S.bk.guest, grp = g.self ? g.group : groups.some(x => x[0] === S.addOnG) ? S.addOnG : groups[0][0], list = svcs().filter(s => (s.group || 'him') === grp && s.kind !== 'extra');
   const who = (info().barbers || []).filter(x => isServiceStaff(x) && x.active !== false && list.some(s => canServe(x, [s]))).map(x => x.name);
-  return `<div class="addon"><div class="addon-h"><b>${ic('plus')} Add ${addOnLabel(grp)} to this visit?</b><small>${who.length === 1 ? `With ${esc(who[0])}, ` : ''}at the same time or right after. One down payment covers both.</small></div>
+  return `<div class="addon"><div class="addon-h"><b>${ic('plus')} Add ${addOnLabel(grp)} to this visit?</b><small>${who.length === 1 ? `With ${esc(who[0])}, ` : ''}at the same time or right after. No extra down payment.</small></div>
     ${groups.length > 1 ? `<div class="tabs sm" role="tablist">${groups.map(([k, l]) => `<button role="tab" type="button" aria-selected="${grp === k}" data-act="addOnGroup" data-v="${k}">${l}</button>`).join('')}</div>` : ''}
     <div class="pick">${svcs().filter(s => (s.group || 'him') === grp).map(s => `<button type="button" class="pickcard sm" data-act="addOnSvc" data-g="${grp}" data-id="${esc(s.id)}" aria-pressed="${!!(g.self && g.svc[s.id])}"><span class="tick" aria-hidden="true">${ic('check')}</span><b>${esc(s.name)}</b><small>${dur(s.mins)}</small><span class="p">${esc(priceLabel(s, cur()))}</span></button>`).join('')}</div>
     ${g.self ? optionsBox(svcs().filter(s => g.svc[s.id])) : ''}
@@ -551,7 +551,7 @@ function guestBox(times) {
     ${!guestValid() ? (g.own && gs.length ? `<p class="err">${esc(comboError(info(), gs))}</p>` : '') : `<div><p class="small" style="font-weight:700;margin:0 0 8px">When</p>${opts.length ? `<div class="guest-opts" role="radiogroup" aria-label="When">${opts.map(o => `<button type="button" class="pickcard radio" role="radio" data-act="guestMode" data-v="${o.mode}" aria-pressed="${g.mode === o.mode}" aria-checked="${g.mode === o.mode}"><span class="tick" aria-hidden="true">${ic('check')}</span><b>${esc(o.label)}</b><small>${esc(o.sub)}</small></button>`).join('')}</div>${g.mode === 'pick' ? guestWhen() : ''}`
       : `<p class="muted small">No free slot for them at ${fmtTime(S.bk.time)}${g.own ? ' for those services' : ''}. Try another time${g.own ? ' or service' : ''}.</p>`}</div>`}
     ${S.tried && (detailErrors().gsvc || detailErrors().gmode) ? `<p class="field-err">${esc(detailErrors().gsvc || detailErrors().gmode)}</p>` : ''}
-    <p class="muted small">Each person needs the ${m(pol.deposit)} down payment, so ${m(pol.deposit * 2)} in total.</p></div>`;
+    <p class="muted small">Each person booked with a senior barber needs the ${m(pol.deposit)} down payment. Everyone else pays at the shop.</p></div>`;
 }
 const guestPick = times => { const g = S.bk.guest; if (!g.on) return null; const o = guestOptions(times).find(o => o.mode === g.mode); return o && o.time ? o : null; };
 // ---------- next available ----------
