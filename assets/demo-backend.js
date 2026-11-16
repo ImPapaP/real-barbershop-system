@@ -189,7 +189,7 @@ function publicView(id) {
     policy: { deposit: pol.deposit, rescheduleHours: pol.rescheduleHours, lateMinutes: pol.lateMinutes, holdMinutes: pol.holdMinutes },
     payMethod: a.payMethod || 'online', proof: a.proof ? { status: a.proof.status, at: a.proof.at, note: a.proof.note || '' } : null,
     gcash: a.payMethod === 'gcash' ? { number: I.shop.gcashNumber || '', name: I.shop.gcashName || '' } : null,
-    promo: a.promo || null, late: a.late || null, rating: a.rating || null, groupOf: a.groupOf || '', source: a.source || 'online', gaveToWalkin: !!a.gaveToWalkin
+    promo: a.promo || null, late: a.late || null, rating: a.rating || null, receipt: a.receipt && a.receipt.id ? { id: a.receipt.id, t: a.receipt.t } : null, groupOf: a.groupOf || '', source: a.source || 'online', gaveToWalkin: !!a.gaveToWalkin
   };
 }
 function queueFor(a) {
@@ -313,6 +313,17 @@ const FUNCS = {
     if (a.status !== 'booked' || now > startAt + 30 * 60e3 || startAt - now > 3 * 3600e3) fail('failed-precondition', 'You can only tell us this on the day, close to your time.');
     store.set('appointments/' + d.id, { ...a, late: { mins, at: now } }); afterWrite('appointments/' + d.id);
     return publicView(d.id);
+  },
+  // Same as the server's getReceipt: what the client may see of a sale
+  getReceipt(d) {
+    const s = store.get('sales/' + String(d.id || ''));
+    if (!s || !s.rtoken || s.rtoken !== d.t) fail('not-found', 'Receipt not found. Check the link.');
+    const I = info(), sh = I.shop || {}, every = Math.max(0, parseInt(sh.loyaltyEvery, 10) || 0);
+    const visits = s.customerId ? [...store].filter(([k, v]) => k.startsWith('sales/') && v.customerId === s.customerId).length : 0;
+    return { id: d.id, date: s.date, time: s.time, name: s.name && s.name !== 'Walk-in' ? s.name : '', barberName: (I.barbers.find(b => b.id === s.barberId) || {}).name || '',
+      lines: (s.lines || []).map(l => ({ name: l.name, qty: Number(l.qty) || 1, price: Number(l.price) || 0 })), discount: s.discount || 0, discountNote: s.discountNote || '', tip: s.tip || 0, total: s.total || 0,
+      depositCredit: s.depositCredit || 0, paidAtShop: Math.max(0, (s.total || 0) - (s.depositCredit || 0)), method: s.method || '', cash: s.cash || 0,
+      shop: { name: sh.name || '', wordmark: sh.wordmark || '', address: sh.address || '', phone: sh.phone || '', tagline: sh.tagline || '' }, loyalty: every && s.customerId ? { every, visits } : null };
   },
   rateVisit(d) {
     const a = byToken(d);

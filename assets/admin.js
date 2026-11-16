@@ -861,6 +861,7 @@ function vSetup() {
       </div>
       <label class="consent"><input type="checkbox" id="po-online" name="onlineBooking" ${p.onlineBooking ? 'checked' : ''}><span><b>Take online bookings with a deposit.</b> Turn this on only after the booking backend and PayMongo are set up (checklist part 2). While it’s off, the website asks customers to call or message the shop instead.</span></label>
       <label class="consent"><input type="checkbox" id="po-gcash" name="manualGcash" ${p.manualGcash !== false ? 'checked' : ''}><span><b>Also let customers pay by GCash screenshot.</b> They send the down payment to your GCash number above and upload the screenshot. The booking is confirmed when you approve it on the Schedule.</span></label>
+      <label class="consent"><input type="checkbox" id="po-rcpt" name="receiptTexts" ${p.receiptTexts !== false ? 'checked' : ''}><span><b>Text clients a short receipt after checkout.</b> The full receipt is emailed when we have their email, and it shows on their booking page. Each text costs about ₱0.50.</span></label>
       <p class="muted small">PayMongo needs at least ₱100 per payment. The website shows these rules to customers before they pay.</p>
       <div class="modal-f"><button class="btn btn-primary" type="submit">Save rules</button></div>
     </form></section>
@@ -1307,7 +1308,23 @@ function payModal(b) {
     ${field('Note', `<input id="m-pnote" name="note" placeholder="e.g. Weekly pay, cash">`, 'm-pnote')}
     <p class="err" id="m-err" hidden></p>${mFoot('Record payout')}</form>`);
 }
-function receiptModal(s) {
+const newToken = () => Array.from(crypto.getRandomValues(new Uint8Array(15)), b => b.toString(36).padStart(2, '0')).join('').slice(0, 24);
+const receiptUrl = s => new URL(`../receipt.html?id=${encodeURIComponent(s.id)}&t=${encodeURIComponent(s.rtoken)}`, location.href).href;
+// How the receipt reaches the client: their booking page, a text, an email, or a link staff send themselves
+function receiptSend(s, fresh) {
+  if (!s.rtoken) return `<div class="rc-send"><button type="button" class="btn btn-sm" data-act="rcMakeLink" data-id="${esc(s.id)}">Make a receipt link for the client</button></div>`;
+  const appt = s.apptId ? S.appointments.find(a => a.id === s.apptId) : null, email = (appt && appt.email) || (custById(s.customerId) || {}).email || '';
+  const texts = pol().receiptTexts !== false && s.phone, sent = s.receiptSent || {};
+  const items = [appt && appt.token ? `<b aria-hidden="true">✓</b><span>On their booking page</span>` : '',
+    texts ? `<b aria-hidden="true">✓</b><span>${fresh ? 'Texting' : sent.sms ? 'Texted' : 'Text to'} ${esc(s.phone)}</span>` : '',
+    email ? `<b aria-hidden="true">✓</b><span>${fresh ? 'Emailing' : sent.email ? 'Emailed' : 'Email to'} ${esc(email)}</span>` : ''].filter(Boolean);
+  const url = receiptUrl(s), sms = `sms:${encodeURIComponent(s.phone || '')}?body=${encodeURIComponent(`${info().shop.name || 'REAL Barbers'} receipt: ${url}`)}`;
+  return `<div class="rc-send"><p class="eyebrow">Send to client</p>
+    ${items.length ? `<ul class="rc-sent">${items.map(x => `<li>${x}</li>`).join('')}</ul>` : `<p class="muted small">No phone or email on this sale. Copy the link and send it on Messenger.</p>`}
+    ${demo && fresh && (texts || email) ? '<p class="muted small">Demo: nothing is actually sent.</p>' : ''}
+    <div class="row"><button type="button" class="btn btn-sm" data-act="rcCopy" data-url="${esc(url)}">Copy receipt link</button>${s.phone ? `<a class="btn btn-sm" href="${esc(sms)}">Text it from this phone</a>` : ''}<a class="btn btn-sm btn-ghost" href="${esc(url)}" target="_blank" rel="noopener">Open</a></div></div>`;
+}
+function receiptModal(s, fresh) {
   const shop = info().shop;
   openModal('Receipt', `<div class="receipt">
     <div style="justify-content:center;font:800 22px/1 var(--f-display);text-transform:uppercase">${esc(shop.wordmark || shop.name)}</div>
@@ -1322,7 +1339,7 @@ function receiptModal(s) {
     ${s.cash ? `<div><span>Cash received</span><span>${money(s.cash, 1)}</span></div><div><span>Change</span><span>${money(s.cash - (s.total - (s.depositCredit || 0)), 1)}</span></div>` : ''}
     ${loyaltyLine(s)}
     <hr><div style="justify-content:center" class="muted">${esc(shop.tagline || 'Thank you!')}</div>
-  </div><div class="modal-f" style="margin-top:14px"><button type="button" class="btn btn-primary" data-act="closeModal">Done</button></div>`);
+  </div>${receiptSend(s, fresh)}<div class="modal-f" style="margin-top:14px"><button type="button" class="btn btn-primary" data-act="closeModal">Done</button></div>`);
 }
 function loyaltyLine(s) {
   const N = loyaltyN(); if (!N || !s.customerId) return '';
@@ -1463,23 +1480,25 @@ const ACT = {
       const customerId = await ensureCustomer(p.name, p.phone, appt && appt.email, p.save || !!(appt && appt.birthday), appt && appt.birthday) || (appt && appt.customerId) || '';
       const b = staffById(p.barberId), rate = Number(b && b.rate) || 0;
       const { commission, fees: productFees } = commissionFor(b, p.lines, T.disc, svcById); // product fee first, then the split, rounded down
-      const id = newId();
+      const id = newId(), rtoken = newToken();
       const sale = {
         date: today(), time: nowHM(), at: Date.now(), customerId, name: p.name.trim() || 'Walk-in', phone: p.phone.trim(), barberId: p.barberId,
         lines: p.lines.map(l => ({ ...l, price: Number(l.price) || 0 })), svcTotal: T.svc, prodTotal: T.prod, discount: T.disc, discountNote: T.disc ? (p.discountNote || '') : '',
-        tip: T.tip, total: T.total, depositCredit: T.deposit, method: p.method, cash: p.method === 'Cash' ? num(p.cash) : 0, apptId: p.apptId || '', rate, commission, productFees
+        tip: T.tip, total: T.total, depositCredit: T.deposit, method: p.method, cash: p.method === 'Cash' ? num(p.cash) : 0, apptId: p.apptId || '', rate, commission, productFees, rtoken
       };
       if (!await put('sales', id, sale)) return;
       for (const l of p.lines.filter(x => x.kind === 'product')) {
         const it = S.inventory.find(i => i.id === l.ref); if (!it) continue;
         await patch('inventory', it.id, { stock: (it.stock || 0) - l.qty, log: [...(it.log || []), { at: Date.now(), delta: -l.qty, note: `Sold to ${sale.name}` }].slice(-20) });
       }
-      if (p.apptId) await patch('appointments', p.apptId, { status: 'done', saleId: id, customerId: customerId || '' });
+      if (p.apptId) await patch('appointments', p.apptId, { status: 'done', saleId: id, customerId: customerId || '', receipt: { id, t: rtoken } });
       S.pos = blankPos();
-      toast(`Sale saved · ${money(sale.total, 1)}`); receiptModal({ id, ...sale });
+      toast(`Sale saved · ${money(sale.total, 1)}`); receiptModal({ id, ...sale }, true);
     } finally { S.busy = false; render(); }
   },
   showSale(el) { const s = S.sales.find(x => x.id === el.dataset.id); if (s) receiptModal(s); },
+  async rcMakeLink(el) { const s = S.sales.find(x => x.id === el.dataset.id); if (!s) return; const rtoken = newToken(); if (await patch('sales', s.id, { rtoken })) { if (s.apptId) await patch('appointments', s.apptId, { receipt: { id: s.id, t: rtoken } }); receiptModal({ ...s, rtoken }); } },
+  async rcCopy(el) { try { await navigator.clipboard.writeText(el.dataset.url); toast('Receipt link copied'); } catch (_) { prompt('Copy this link', el.dataset.url); } },
   async voidSale(el) { if (!armed(el)) return; const s = S.sales.find(x => x.id === el.dataset.id); if (await del('sales', el.dataset.id)) { if (s && s.apptId) await patch('appointments', s.apptId, { status: 'inchair', saleId: '' }); toast('Sale voided. Product stock wasn’t changed back.'); } },
   period(el) { S.period = el.dataset.v; render(); },
   newExpense() { expenseModal(null); },
@@ -1734,7 +1753,7 @@ const FORM = {
   },
   async policy(f) {
     const fd = new FormData(f), n = (k, min, max) => Math.min(max, Math.max(min, parseInt(fd.get(k), 10) || 0));
-    const policy = { ...pol(), deposit: n('deposit', 100, 100000), holdMinutes: n('holdMinutes', 5, 60), rescheduleHours: n('rescheduleHours', 0, 168), lateMinutes: n('lateMinutes', 0, 120), leadMinutes: n('leadMinutes', 0, 1440), bookAheadDays: n('bookAheadDays', 1, 365), rebookDays: n('rebookDays', 0, 120), manualGcash: fd.has('manualGcash'), lastBooking: /^\d{2}:\d{2}$/.test(String(fd.get('lastBooking') || '')) ? String(fd.get('lastBooking')) : '', onlineBooking: fd.has('onlineBooking') };
+    const policy = { ...pol(), deposit: n('deposit', 100, 100000), holdMinutes: n('holdMinutes', 5, 60), rescheduleHours: n('rescheduleHours', 0, 168), lateMinutes: n('lateMinutes', 0, 120), leadMinutes: n('leadMinutes', 0, 1440), bookAheadDays: n('bookAheadDays', 1, 365), rebookDays: n('rebookDays', 0, 120), manualGcash: fd.has('manualGcash'), receiptTexts: fd.has('receiptTexts'), lastBooking: /^\d{2}:\d{2}$/.test(String(fd.get('lastBooking') || '')) ? String(fd.get('lastBooking')) : '', onlineBooking: fd.has('onlineBooking') };
     if (await saveInfo({ policy })) toast('Booking rules saved');
   }
 };

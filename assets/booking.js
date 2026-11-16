@@ -1,13 +1,13 @@
 // "Your booking" page, opened from the confirmation email or after paying on PayMongo.
 // Shows the booking status and lets the customer reschedule or cancel within the policy.
 import { db, call, demoBar, resetDemo } from './fb.js';
-import { $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, MONTHS, dowOf, sum, policyOf, availableTimes, bookableDates, timeChips, STARTER, icsFor, brand, LOGO_LG, resizeImage, phNow, monthGrid, shiftMonth, BACK_IC } from './shared.js';
+import { $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, MONTHS, dowOf, sum, policyOf, availableTimes, bookableDates, timeChips, STARTER, icsFor, brand, LOGO_LG, resizeImage, phNow, monthGrid, shiftMonth, BACK_IC, receiptHTML } from './shared.js';
 import { L, lang, setLang } from './i18n.js';
 
 const q = new URLSearchParams(location.search);
 const ID = q.get('id') || '', TOKEN = q.get('t') || '';
 const S = {
-  b: null, info: null, err: '', loading: true, polls: 0, mode: 'view', busy: false,
+  b: null, info: null, err: '', loading: true, rc: null, rcFor: '', polls: 0, mode: 'view', busy: false,
   rs: { date: '', time: '', barber: '' }, slots: {}, slotsDate: '', slotsLoaded: false, unsub: null,
   justPaid: q.get('paid') === '1', paymentCancelled: q.get('cancelled') === '1',
   proof: { file: null, preview: '', ref: '', err: '', busy: false }, late: { busy: false, err: '' }, rate: { stars: 0, text: '', busy: false, err: '' }
@@ -88,6 +88,15 @@ function todayCards(b) {
 }
 const addMin = (t, n) => { const [h, mm] = t.split(':').map(Number), x = h * 60 + mm + n; return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`; };
 // ---------- after the visit: rate it, see the cut ----------
+// The receipt from checkout, shown right on the booking page (and as its own page to keep)
+function receiptCard(b) {
+  if (!b.receipt) return '';
+  const key = b.receipt.id;
+  if (S.rcFor !== key) { S.rcFor = key; S.rc = null; call('getReceipt', b.receipt).then(r => { S.rc = r; render(); }).catch(() => { S.rc = 'err'; render(); }); }
+  const link = `receipt.html?id=${encodeURIComponent(b.receipt.id)}&t=${encodeURIComponent(b.receipt.t)}`;
+  return `<section class="ticket rc-card"><div class="row" style="justify-content:space-between"><h2>Your receipt</h2><a class="link-btn" href="${esc(link)}">Open receipt</a></div>
+    ${S.rc === null ? '<p class="muted small"><span class="spinner"></span> Loading…</p>' : S.rc === 'err' ? `<p class="muted small">Couldn’t load it right now. <a href="${esc(link)}">Open the receipt page</a>.</p>` : receiptHTML(S.rc, info().shop.currency || '₱')}</section>`;
+}
 function rateCard(b) {
   const shop = info().shop;
   if (b.rating) return `<section class="panel"><div class="panel-h"><h2>Thanks for the rating!</h2><span class="stars" aria-label="${b.rating.stars} stars">${'★'.repeat(b.rating.stars)}<span>${'★'.repeat(5 - b.rating.stars)}</span></span></div>
@@ -104,7 +113,7 @@ const cutCard = b => b.cutPhoto ? `<section class="panel"><div class="panel-h"><
 function walkinView(b) {
   const Q = b.queue;
   if (b.status === 'inchair') return `<div class="status-hero">${chipHTML('good', '✂', 'In the chair')}<h1>You’re up, ${esc(String(b.name).split(' ')[0])}</h1><p class="muted">Enjoy your cut.</p></div>`;
-  if (b.status !== 'waiting') return `<div class="status-hero">${chipHTML('mute', '–', b.status === 'done' ? 'Completed' : 'Not in the queue')}<h1>${b.status === 'done' ? 'Thanks for visiting' : 'You’re no longer in the queue'}</h1><a class="btn btn-accent" href="./#book">Book your next cut</a></div>${b.status === 'done' ? rateCard(b) + cutCard(b) + loyaltyCard(b) : ''}`;
+  if (b.status !== 'waiting') return `<div class="status-hero">${chipHTML('mute', '–', b.status === 'done' ? 'Completed' : 'Not in the queue')}<h1>${b.status === 'done' ? 'Thanks for visiting' : 'You’re no longer in the queue'}</h1><a class="btn btn-accent" href="./#book">Book your next cut</a></div>${b.status === 'done' ? receiptCard(b) + rateCard(b) + cutCard(b) + loyaltyCard(b) : ''}`;
   return `<div class="status-hero walkin-ticket"><p class="eyebrow">Walk-in queue · ${fmtDate(b.date)}</p><div class="qbig" aria-label="Queue number">#${esc(Q ? Q.queueNo : '')}</div>
     <h1>${Q && Q.ahead ? `${Q.ahead} ahead of you` : 'You’re next'}</h1><p class="muted">Stay close to the shop. We’ll call your name. This page updates by itself.</p><span class="live-dot">Live</span></div>`;
 }
@@ -143,7 +152,7 @@ function body() {
     case 'expired': return `<div class="status-hero">${chipHTML('mute', '–', 'Not confirmed')}<h1>Your hold ran out</h1><p class="muted">The deposit wasn’t paid within ${pol.holdMinutes} minutes, so the slot was released. No money was taken.</p><a class="btn btn-accent btn-lg" href="${esc(b.rebook || './#book')}">Book again</a></div>`;
     case 'cancelled': return `<div class="status-hero">${chipHTML('mute', '–', 'Cancelled')}<h1>${b.proof && b.proof.status === 'rejected' ? 'We couldn’t confirm your payment' : 'Booking cancelled'}</h1><p class="muted">${b.proof && b.proof.status === 'rejected' ? `We couldn’t match your GCash screenshot to a payment, so this booking for ${fmtDate(b.date)}, ${fmtTime(b.time)} isn’t confirmed. If you did pay, call <b>${esc(info().shop.phone)}</b> and we’ll fix it.` : `This booking for ${fmtDate(b.date)}, ${fmtTime(b.time)} is cancelled.`}</p><a class="btn btn-accent" href="${esc(b.rebook || './#book')}">Make a new booking</a></div>${details(b)}`;
     case 'needs_attention': return `<div class="status-hero">${chipHTML('warn', '!', 'We’ll call you')}<h1>We got your deposit</h1><p class="muted">Someone confirmed the same time while you were paying. The shop will call you to pick a new time or refund your deposit. You can also call <b>${esc(info().shop.phone)}</b>.</p></div>${details(b)}`;
-    case 'done': return `<div class="status-hero">${chipHTML('good', '✓', 'Completed')}<h1>Thanks for visiting</h1><p class="muted">See you on your next cut.</p><a class="btn btn-accent" href="${esc(b.rebook || './#book')}">Book the same again</a><p class="muted small" style="margin-top:8px">Same service and barber, you just pick the day.</p></div>${rateCard(b)}${cutCard(b)}${loyaltyCard(b)}`;
+    case 'done': return `<div class="status-hero">${chipHTML('good', '✓', 'Completed')}<h1>Thanks for visiting</h1><p class="muted">See you on your next cut.</p><a class="btn btn-accent" href="${esc(b.rebook || './#book')}">Book the same again</a><p class="muted small" style="margin-top:8px">Same service and barber, you just pick the day.</p></div>${receiptCard(b)}${rateCard(b)}${cutCard(b)}${loyaltyCard(b)}`;
     case 'noshow': return `<div class="status-hero">${chipHTML('bad', '✕', 'Missed')}<h1>We missed you</h1><p class="muted">${b.gaveToWalkin ? `You were more than ${b.policy.lateMinutes} minutes late, so your slot went to a walk-in and the deposit was kept, per the booking policy. Still on your way? Call <b>${esc(info().shop.phone)}</b> and we’ll fit you in if we can.` : 'This appointment was marked as missed and the deposit was kept, per the booking policy.'}</p><a class="btn btn-accent" href="${esc(b.rebook || './#book')}">Book again</a></div>`;
     default: return `<div class="status-hero">${chipHTML('info', '◷', 'In progress')}<h1>${fmtDate(b.date)}, ${fmtTime(b.time)}</h1></div>${details(b)}`;
   }
