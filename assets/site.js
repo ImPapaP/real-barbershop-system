@@ -374,6 +374,25 @@ const addOnGroups = () => groupTabs().filter(([k]) => k !== S.bk.group && (k ===
 // Who does the extra service, for the summary: the chosen person, or the only one free, or "another <role>"
 const guestWho = o => { const id = o.barberId || ((availableTimes(info(), { services: guestSvcs(), date: o.date || S.bk.date, barberId: '' }, S.slots).find(x => x.time === o.time) || {}).barbers || []).filter(x => x !== S.bk.barber).concat([''])[0];
   return id ? ` with ${esc(barber(id)?.name || '')}` : `, another ${staffWord(guestSvcs()[0] && guestSvcs()[0].group)}`; };
+// Step 1: "Add nails to this visit" right under the haircut (or "Add a hair service" when booking nails)
+function addOnPicker() {
+  const groups = addOnGroups(); if (!groups.length) return '';
+  const g = S.bk.guest, grp = g.self ? g.group : groups.some(x => x[0] === S.addOnG) ? S.addOnG : groups[0][0], list = svcs().filter(s => (s.group || 'him') === grp && s.kind !== 'extra');
+  const who = (info().barbers || []).filter(x => isServiceStaff(x) && x.active !== false && list.some(s => canServe(x, [s]))).map(x => x.name);
+  return `<div class="addon"><div class="addon-h"><b>${ic('plus')} Add ${addOnLabel(grp)} to this visit?</b><small>${who.length === 1 ? `With ${esc(who[0])}, ` : ''}at the same time or right after. One down payment covers both.</small></div>
+    ${groups.length > 1 ? `<div class="tabs sm" role="tablist">${groups.map(([k, l]) => `<button role="tab" type="button" aria-selected="${grp === k}" data-act="addOnGroup" data-v="${k}">${l}</button>`).join('')}</div>` : ''}
+    <div class="pick">${svcs().filter(s => (s.group || 'him') === grp).map(s => `<button type="button" class="pickcard sm" data-act="addOnSvc" data-g="${grp}" data-id="${esc(s.id)}" aria-pressed="${!!(g.self && g.svc[s.id])}"><span class="tick" aria-hidden="true">${ic('check')}</span><b>${esc(s.name)}</b><small>${dur(s.mins)}</small><span class="p">${esc(priceLabel(s, cur()))}</span></button>`).join('')}</div>
+    ${g.self && guestSvcs().length && comboError(info(), guestSvcs()) ? `<p class="err">${esc(comboError(info(), guestSvcs()))}</p>` : ''}</div>`;
+}
+// Step 3: when the add-on happens (picked after the main time)
+function addOnWhen(times) {
+  const g = S.bk.guest; if (!g.self || !guestValid()) return '';
+  const opts = guestOptions(times);
+  if (opts.length && !g.mode) g.mode = opts[0].mode;
+  return `<div class="addon-when"><p class="small" style="font-weight:700;margin:0 0 8px">When for your ${esc(guestSvcs().map(x => x.name.toLowerCase()).join(' + '))}?</p>
+    ${opts.length ? `<div class="guest-opts" role="radiogroup" aria-label="When for the extra service">${opts.map(o => `<button type="button" class="pickcard radio" role="radio" data-act="guestMode" data-v="${o.mode}" aria-pressed="${g.mode === o.mode}" aria-checked="${g.mode === o.mode}"><span class="tick" aria-hidden="true">${ic('check')}</span><b>${esc(o.label)}</b><small>${esc(o.sub)}</small></button>`).join('')}</div>${g.mode === 'pick' ? guestWhen() : ''}` : '<p class="muted small">Nothing free around this time. Try another time.</p>'}
+    ${S.tried && detailErrors().gmode ? `<p class="field-err">${esc(detailErrors().gmode)}</p>` : ''}</div>`;
+}
 const addOnLabel = g => g === 'nails' ? 'nails' : 'a hair service';
 const guestValid = () => { const l = guestSvcs(); return l.length > 0 && !comboError(info(), l); };
 function guestOptions(times) {
@@ -439,13 +458,9 @@ function guestPicker() {
 }
 function guestBox(times) {
   const g = S.bk.guest, pol = policyOf(info());
-  if (!g.on) return `${addOnGroups().length ? `<button type="button" class="link-btn add-guest" data-act="guestSelf">${ic('plus')} Add ${addOnLabel(addOnGroups()[0][0])} to this visit</button>` : ''}<button type="button" class="link-btn add-guest" data-act="guestOn">${ic('user')} Booking for someone else too? Add a second person</button>`;
+  if (g.self) return ''; // nails (or hair) for the same client is picked in step 1 and timed in step 3
+  if (!g.on) return `<button type="button" class="link-btn add-guest" data-act="guestOn">${ic('user')} Booking for someone else too? Add a second person</button>`;
   const opts = guestOptions(times), gs = guestSvcs();
-  if (g.self) return `<div class="guest-box"><div class="row" style="justify-content:space-between"><b>Add ${addOnLabel(g.group)} to your visit</b><button type="button" class="link-btn" data-act="guestOff">Remove</button></div>
-    <div>${guestPicker()}</div>
-    ${!guestValid() ? (gs.length ? `<p class="err">${esc(comboError(info(), gs))}</p>` : '<p class="muted small">Pick what you’d like.</p>') : `<div><p class="small" style="font-weight:700;margin:0 0 8px">When</p>${opts.length ? `<div class="guest-opts" role="radiogroup" aria-label="When">${opts.map(o => `<button type="button" class="pickcard radio" role="radio" data-act="guestMode" data-v="${o.mode}" aria-pressed="${g.mode === o.mode}" aria-checked="${g.mode === o.mode}"><span class="tick" aria-hidden="true">${ic('check')}</span><b>${esc(o.label)}</b><small>${esc(o.sub)}</small></button>`).join('')}</div>${g.mode === 'pick' ? guestWhen() : ''}` : '<p class="muted small">Nothing free around your time. Try another time.</p>'}</div>`}
-    ${S.tried && (detailErrors().gsvc || detailErrors().gmode) ? `<p class="field-err">${esc(detailErrors().gsvc || detailErrors().gmode)}</p>` : ''}
-    <p class="muted small">One ${m(pol.deposit)} down payment covers your whole visit.</p></div>`;
   return `<div class="guest-box"><div class="row" style="justify-content:space-between"><b>Second person</b><button type="button" class="link-btn" data-act="guestOff">Remove</button></div>
     <div class="field${showErr('gname') && detailErrors().gname ? ' has-err' : ''}"><label for="bk-gname">Their name <span class="req" aria-hidden="true">*</span></label><input id="bk-gname" data-bind="bk.guest.name" data-touch="gname" value="${esc(g.name)}" autocomplete="off" placeholder="e.g. Miguel" required aria-required="true" data-live>${showErr('gname') && detailErrors().gname ? `<p class="field-err">${esc(detailErrors().gname)}</p>` : ''}</div>
     <div><p class="small" style="font-weight:700;margin:0 0 8px">Their services</p>
@@ -536,6 +551,7 @@ function booker() {
       ${barberFirst()}
       <div class="tabs" role="tablist">${groupTabs().map(([k, l]) => `<button role="tab" type="button" aria-selected="${b.group === k}" data-act="bkGroup" data-v="${k}">${l}</button>`).join('')}</div>
       ${hasTiers(b.group) ? tierPicker() : `<div class="pick">${svcs().filter(s => (s.group || 'him') === b.group).map(s => svcCard(s)).join('')}</div>`}
+      ${picked.length ? addOnPicker() : ''}
     </section>
     <section class="step" id="st-2" ${st.picked ? '' : 'aria-disabled="true"'}><div class="step-h"><span class="n ${st.picked ? 'ok' : ''}">${st.picked ? ic('check') : 2}</span><h3>Choose your ${staffWord(b.group)}</h3></div>
       <div class="pick barbers-pick">
@@ -546,7 +562,7 @@ function booker() {
     <section class="step" id="st-3" ${st.picked ? '' : 'aria-disabled="true"'}><div class="step-h"><span class="n ${st.when ? 'ok' : ''}">${st.when ? ic('check') : 3}</span><h3>Pick a date and time</h3>${st.when ? `<span class="done">${fmtDate(b.date)}, ${fmtTime(b.time)}</span>` : ''}</div>
       ${st.picked ? nextFreeCard() : ''}
       ${monthGrid({ dates, selected: b.date, act: 'bkDate', month: S.calM, navAct: 'calNav', disabled: !st.picked })}
-      ${st.picked && b.date ? (S.slotsLoaded ? `<div class="times-in">${timeChips(times, b.time, 'bkTime')}</div>${waitlistBox(times)}` : '<p class="muted small"><span class="spinner"></span> Checking free times…</p>') : `<p class="muted small">${st.picked ? 'Pick a date to see free times.' : hasTiers(b.group) ? 'Pick a haircut first.' : 'Choose a service first.'}</p>`}
+      ${st.picked && b.date ? (S.slotsLoaded ? `<div class="times-in">${timeChips(times, b.time, 'bkTime')}</div>${b.time ? addOnWhen(times) : ''}${waitlistBox(times)}` : '<p class="muted small"><span class="spinner"></span> Checking free times…</p>') : `<p class="muted small">${st.picked ? 'Pick a date to see free times.' : hasTiers(b.group) ? 'Pick a haircut first.' : 'Choose a service first.'}</p>`}
     </section>
     <section class="step" id="st-4" ${st.when ? '' : 'aria-disabled="true"'}><div class="step-h"><span class="n ${st.details ? 'ok' : ''}">${st.details ? ic('check') : 4}</span><h3>Your details</h3><span class="req-note"><span class="req">*</span> Required</span></div>
       <div class="fgrid">
@@ -812,6 +828,13 @@ const ACT = {
   forgetMe() { forgetMe(); renderBooker(); toast('Your details were removed from this phone'); },
   bkNext(el) { S.bk.date = el.dataset.date; S.bk.time = el.dataset.time; S.err = ''; watchSlots(); renderBooker(); goStep(4); },
   guestOn() { S.bk.guest.on = true; S.bk.guest.group = S.bk.group; const o = guestOptions(availableTimes(info(), { services: chosen(), date: S.bk.date, barberId: S.bk.barber }, S.slots)); if (o.length === 1) S.bk.guest.mode = o[0].mode; renderBooker(); },
+  addOnSvc(el) {
+    let g = S.bk.guest;
+    if (!g.self || g.group !== el.dataset.g) { S.bk.guest = g = { on: true, self: true, mode: '', name: '', own: true, group: el.dataset.g, tier: '', svc: {}, date: '', time: '', barber: '' }; }
+    g.svc[el.dataset.id] = !g.svc[el.dataset.id]; g.mode = '';
+    if (!Object.values(g.svc).some(Boolean)) ACT.guestOff(); else renderBooker();
+  },
+  addOnGroup(el) { S.addOnG = el.dataset.v; if (S.bk.guest.self && S.bk.guest.group !== el.dataset.v) ACT.guestOff(); else renderBooker(); },
   guestSelf() { const grp = addOnGroups()[0]; if (!grp) return; S.bk.guest = { on: true, self: true, mode: '', name: '', own: true, group: grp[0], tier: '', svc: {}, date: '', time: '', barber: '' }; renderBooker(); },
   guestOff() { S.bk.guest = { on: false, mode: '', name: '', own: false, group: 'him', tier: '', svc: {}, date: '', time: '', barber: '' }; renderBooker(); },
   guestMode(el) { const g = S.bk.guest; g.mode = el.dataset.v; if (g.mode === 'pick') { g.date = g.date || S.bk.date; ensureRange(); } renderBooker(); },
