@@ -271,6 +271,7 @@ function morphEl(f, t) {
 
 // ---------- brand: the shop's badge logo + the wordmark with the mirrored E from the logo ----------
 export const LOGO = new URL('./logo-192.png', import.meta.url).href;
+export const BACK_IC = '<svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5"/></svg>';
 export const LOGO_LG = new URL('./logo.png', import.meta.url).href;
 // "R3AL BARBERS" / "REAL BARBERS" -> R + mirrored E + AL BARBERS, like the badge
 export function wordmarkText(text) {

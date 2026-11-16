@@ -1,7 +1,7 @@
 // "Your booking" page, opened from the confirmation email or after paying on PayMongo.
 // Shows the booking status and lets the customer reschedule or cancel within the policy.
 import { db, call, demoBar, resetDemo } from './fb.js';
-import { $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, MONTHS, dowOf, sum, policyOf, availableTimes, bookableDates, timeChips, STARTER, icsFor, brand, LOGO_LG, resizeImage, phNow, monthGrid, shiftMonth } from './shared.js';
+import { $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, MONTHS, dowOf, sum, policyOf, availableTimes, bookableDates, timeChips, STARTER, icsFor, brand, LOGO_LG, resizeImage, phNow, monthGrid, shiftMonth, BACK_IC } from './shared.js';
 import { L, lang, setLang } from './i18n.js';
 
 const q = new URLSearchParams(location.search);
@@ -19,7 +19,7 @@ function render() { const a = document.activeElement, id = a && a.id; $('#app').
 function shell(inner) {
   const shop = info().shop;
   return `${demoBar('admin/')}<header class="site-head"><div class="wrap head-in"><a class="wordmark" href="./">${brand(shop.wordmark || shop.name)}</a><nav class="site-nav"><div class="lang" role="group" aria-label="Language"><button type="button" data-act="lang" data-v="en" aria-pressed="${lang() === 'en'}">EN</button><button type="button" data-act="lang" data-v="tl" aria-pressed="${lang() === 'tl'}">TL</button></div><a class="btn btn-sm" href="./#book">Book again</a></nav></div></header>
-  <main class="sec"><div class="wrap" style="max-width:760px;display:grid;gap:18px">${inner}</div></main>
+  <main class="sec"><div class="wrap" style="max-width:760px;display:grid;gap:18px"><a class="pop-back page-back-link" href="./">${BACK_IC}<span>Back to the website</span></a>${inner}</div></main>
   <footer class="site-foot"><div class="wrap"><span>${esc(shop.name)} · ${esc(shop.phone)}</span><span>${esc(shop.address)}</span></div></footer>`;
 }
 const chipHTML = (kind, icon, label) => `<span class="chip chip-${kind}"><b aria-hidden="true">${icon}</b>${esc(label)}</span>`;
