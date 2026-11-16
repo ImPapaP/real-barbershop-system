@@ -33,7 +33,7 @@ const S = {
   info: null, infoMissing: false, slow: false,
   staff: [], appointments: [], sales: [], expenses: [], customers: [], inventory: [], payouts: [], waitlist: [], attendance: [], promos: [], closings: [], loaded: {}, reminding: '',
   proofImgs: {}, cutImgs: {},
-  schedDate: '', schedBarber: '', showExpired: false, period: 'month', from: '', to: '',
+  schedDate: '', schedBarber: '', schedQ: '', schedStatus: '', schedSrc: '', showExpired: false, period: 'month', from: '', to: '',
   clientQ: '', clientSort: 'recent', stockFilter: 'all', showArchived: false, pos: null, busy: false, uploading: ''
 };
 const unsubs = [];
@@ -406,8 +406,21 @@ function vSchedule() {
   if (!S.schedDate) S.schedDate = today();
   const d = S.schedDate, isToday = d === today();
   const all = apptsOn(d);
-  let appts = all.filter(visible);
-  if (S.schedBarber) appts = appts.filter(a => a.barberId === S.schedBarber || (!a.barberId && S.schedBarber === '__any'));
+  const base = all.filter(visible);
+  // filters: barber, where the booking came from, what state it's in, and a search
+  const q = S.schedQ.trim().toLowerCase(), qd = q.replace(/\D/g, '');
+  const srcOf = a => a.source === 'online' ? 'online' : a.source === 'walk-in' ? 'walkin' : 'phone';
+  const byBarber = a => !S.schedBarber || a.barberId === S.schedBarber || (!a.barberId && S.schedBarber === '__any');
+  const bySrc = a => !S.schedSrc || srcOf(a) === S.schedSrc;
+  const byQ = a => !q || (a.name || '').toLowerCase().includes(q) || (a.code || '').toLowerCase().includes(q) || (qd.length >= 3 && normPhone(a.phone).includes(qd)) || svcNames(a.serviceIds).toLowerCase().includes(q);
+  const STATUS_F = [['', 'All', () => true], ['booked', 'Booked', a => a.status === 'booked' || a.status === 'pending_payment'], ['late', 'Running late', a => isLateNow(a)], ['waiting', 'Waiting', a => a.status === 'waiting'], ['inchair', 'In chair', a => a.status === 'inchair'],
+    ['done', 'Done', a => a.status === 'done'], ['unpaid', 'Done, no payment', a => a.status === 'done' && !a.saleId], ['noshow', 'No-show', a => a.status === 'noshow'], ['cancelled', 'Cancelled', a => a.status === 'cancelled']];
+  const pre = base.filter(a => byBarber(a) && bySrc(a) && byQ(a)), sf = STATUS_F.find(x => x[0] === S.schedStatus) || STATUS_F[0];
+  const appts = pre.filter(sf[2]);
+  const statusChips = STATUS_F.map(([k, l, fn]) => [k, l, pre.filter(fn).length]).filter(([k, , n]) => !k || n || k === S.schedStatus);
+  const anyFilter = S.schedBarber || S.schedSrc || q || S.schedStatus;
+  const dayCount = dd => S.appointments.filter(a => a.date === dd && !['cancelled', 'expired'].includes(a.status)).length;
+  const strip = Array.from({ length: 7 }, (_, i) => addDays(today(), i));
   const queue = isToday ? all.filter(a => a.status === 'waiting').sort((a, b) => (a.queueNo || 0) - (b.queueNo || 0)) : [];
   const counts = Object.keys(APPT).map(k => [k, all.filter(a => a.status === k).length]).filter(x => x[1]);
   const expiredN = all.filter(a => a.status === 'expired').length;
@@ -425,12 +438,22 @@ function vSchedule() {
   ${waitlistPanel(d)}
   <section class="panel">
     <div class="toolbar" style="margin-bottom:14px">
-      <div class="datenav"><button class="btn btn-sm" data-act="dayShift" data-n="-1" aria-label="Previous day">‹</button><input type="date" id="sch-date" data-bind="schedDate" data-live value="${esc(d)}" aria-label="Date"><button class="btn btn-sm" data-act="dayShift" data-n="1" aria-label="Next day">›</button>${isToday ? '' : '<button class="btn btn-sm btn-ghost" data-act="dayToday">Today</button>'}</div>
-      <div class="row"><select id="sch-barber" data-bind="schedBarber" data-live style="width:auto" aria-label="Filter by barber">${opt('', 'All barbers', !S.schedBarber)}${serviceStaff().map(b => opt(b.id, b.name, b.id === S.schedBarber)).join('')}${opt('__any', 'Unassigned', S.schedBarber === '__any')}</select>
-      ${expiredN ? `<label class="row small"><input type="checkbox" id="sch-exp" data-bind="showExpired" data-live ${S.showExpired ? 'checked' : ''}> Show ${expiredN} unpaid hold${expiredN > 1 ? 's' : ''}</label>` : ''}</div>
+      <div class="datenav"><button class="btn btn-sm" data-act="dayShift" data-n="-1" aria-label="Previous day">‹</button>
+        <div class="daystrip" role="group" aria-label="Pick a day">${strip.map((dd, i) => { const n = dayCount(dd); return `<button type="button" class="daychip" data-act="dayPick" data-d="${dd}" aria-pressed="${dd === d}"><span>${i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : DAYS[new Date(dd + 'T00:00:00').getDay()] + ' ' + (+dd.slice(8))}</span><b>${n || '–'}</b></button>`; }).join('')}</div>
+        <button class="btn btn-sm" data-act="dayShift" data-n="1" aria-label="Next day">›</button>
+        <input type="date" id="sch-date" data-bind="schedDate" data-live value="${esc(d)}" aria-label="Pick any date" class="date-pick">
+        ${strip.includes(d) ? '' : `<span class="chip chip-info"><b aria-hidden="true">◷</b>${esc(fmtDate(d))}</span><button class="btn btn-sm btn-ghost" data-act="dayToday">Back to today</button>`}</div>
     </div>
-    ${counts.length ? `<div class="row" style="margin-bottom:12px">${counts.map(([k, n]) => chip({ ...APPT[k], label: `${n} ${APPT[k].label.toLowerCase()}` })).join('')}</div>` : ''}
-    ${appts.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Time</th><th>Client</th><th>Services</th><th>Barber</th><th>Source</th><th>Status</th><th></th></tr></thead><tbody>${appts.map(a => apptRow(a)).join('')}</tbody></table></div>` : `<p class="empty">Nothing scheduled ${isToday ? 'today' : 'on this day'}. Online bookings appear here as soon as the deposit is paid.</p>`}
+    <div class="filters">
+      <input type="search" id="sch-q" data-bind="schedQ" data-live value="${esc(S.schedQ)}" placeholder="Search name, phone or code" aria-label="Search this day">
+      <select id="sch-barber" data-bind="schedBarber" data-live aria-label="Filter by barber">${opt('', `All barbers (${base.length})`, !S.schedBarber)}${serviceStaff().map(b => { const n = base.filter(a => a.barberId === b.id).length; return opt(b.id, `${b.name}${n ? ` (${n})` : ''}`, b.id === S.schedBarber); }).join('')}${opt('__any', `Unassigned (${base.filter(a => !a.barberId).length})`, S.schedBarber === '__any')}</select>
+      <select id="sch-src" data-bind="schedSrc" data-live aria-label="Filter by how they booked">${[['', 'All bookings'], ['online', 'Online'], ['walkin', 'Walk-ins'], ['phone', 'Phone / in person']].map(([k, l]) => opt(k, l, k === S.schedSrc)).join('')}</select>
+    </div>
+    <div class="seg-chips" role="group" aria-label="Filter by status">${statusChips.map(([k, l, n]) => `<button type="button" class="fchip${k === 'late' || k === 'unpaid' ? ' warn' : ''}" data-act="schedStatus" data-v="${k}" aria-pressed="${k === S.schedStatus}">${esc(l)}<b>${n}</b></button>`).join('')}
+      ${expiredN ? `<label class="row small exp-toggle"><input type="checkbox" id="sch-exp" data-bind="showExpired" data-live ${S.showExpired ? 'checked' : ''}> Show ${expiredN} unpaid hold${expiredN > 1 ? 's' : ''}</label>` : ''}</div>
+    ${anyFilter ? `<p class="filter-note">Showing <b>${appts.length}</b> of ${base.length} · <button type="button" class="link-btn" data-act="schedClear">Clear filters</button></p>` : ''}
+    ${appts.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Time</th><th>Client</th><th>Services</th><th>Barber</th><th>Source</th><th>Status</th><th></th></tr></thead><tbody>${appts.map(a => apptRow(a)).join('')}</tbody></table></div>`
+      : anyFilter ? `<p class="empty">No visits match these filters. <button type="button" class="link-btn" data-act="schedClear">Clear filters</button></p>` : `<p class="empty">Nothing scheduled ${isToday ? 'today' : 'on this day'}. Online bookings appear here as soon as the deposit is paid.</p>`}
   </section>
   ${d <= today() ? dayCheck(d) : ''}`;
 }
@@ -1388,6 +1411,9 @@ const ACT = {
   async delAppt(el) { if (!armed(el)) return; if (await del('appointments', el.dataset.id)) { closeModal(); toast('Visit deleted'); } },
   dayShift(el) { S.schedDate = addDays(S.schedDate || today(), +el.dataset.n); render(); },
   dayToday() { S.schedDate = today(); render(); },
+  dayPick(el) { S.schedDate = el.dataset.d; render(); },
+  schedStatus(el) { S.schedStatus = S.schedStatus === el.dataset.v ? '' : el.dataset.v; render(); },
+  schedClear() { Object.assign(S, { schedQ: '', schedStatus: '', schedSrc: '', schedBarber: '' }); render(); },
   async startAppt(el) { await patch('appointments', el.dataset.id, { status: 'inchair' }); },
   checkoutAppt(el) {
     const a = S.appointments.find(x => x.id === el.dataset.id); if (!a) return;
