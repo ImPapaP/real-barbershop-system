@@ -3,7 +3,7 @@
 import { db, call, demo, demoBar, resetDemo } from './fb.js';
 import {
   $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, DAYS_LONG, MONTHS, sum, phNow, dowOf, policyOf, openStatus,
-  availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph, brand, LOGO_LG, dur, isServiceStaff, toMin, fromMin, addDays, blockTimes, slotId, messengerLink, defaultFaq, monthGrid, shiftMonth, bdaySelects, cleanBday, BDAY_TITLE, BDAY_HINT
+  availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph, brand, LOGO_LG, dur, isServiceStaff, toMin, fromMin, addDays, blockTimes, slotId, messengerLink, defaultFaq, monthGrid, shiftMonth, BACK_IC, bdaySelects, cleanBday, BDAY_TITLE, BDAY_HINT
 } from './shared.js';
 import { L, lang, setLang } from './i18n.js';
 import { paintBanners } from './banner.js';
@@ -260,13 +260,26 @@ function galleryGrid() {
     return `<button type="button" class="g-item reveal" data-act="lightbox" data-i="${i}" style="--d:${(i % 4) * 70}ms" aria-label="Open photo${cap ? ': ' + esc(cap) : ''}"><img src="${esc(g.url)}" alt="${esc(g.caption || g.style || 'Haircut at ' + shop.name)}" loading="lazy">${cap ? `<span class="g-cap">${esc(cap)}</span>` : ''}</button>`; }).join('')}</div>`;
 }
 function renderGallery() { const w = $('#gal-wrap'); if (w) { w.innerHTML = L(galleryGrid()); revealOnScroll(); } document.querySelectorAll('[data-act=galTag]').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S.galTag)); }
+// ---------- pop-ups and the phone's back button ----------
+// Opening a profile or a photo adds a step to the browser history, so the phone's back button closes it
+// instead of leaving the site.
+const POP = { open: [], skip: 0, fromPop: false };
+try { history.scrollRestoration = 'manual'; } catch (_) {}
+function popOpened(name) { if (!POP.open.includes(name)) { POP.open.push(name); history.pushState({ rbPop: name }, ''); } }
+function popClosed(name) { const i = POP.open.indexOf(name); if (i < 0) return; POP.open.splice(i, 1); if (!POP.fromPop) { POP.skip++; history.back(); } }
+window.addEventListener('popstate', () => {
+  if (POP.skip) { POP.skip--; return; }
+  const top = POP.open[POP.open.length - 1]; if (!top) return;
+  POP.fromPop = true; if (top === 'lb') { S.lb = -1; lightbox(); } else { S.profile = ''; profile(); } POP.fromPop = false;
+});
 // ---------- barber profile ----------
 function profile() {
   const el = $('#profile'), b = barber(S.profile);
-  if (!b) { el.hidden = true; el.innerHTML = ''; document.body.style.overflow = ''; return; }
+  if (!b) { el.hidden = true; el.innerHTML = ''; document.body.style.overflow = ''; popClosed('pf'); return; }
+  popOpened('pf');
   const photos = galAll().filter(g => g.barberId === b.id).slice(0, 6), bases = svcs().filter(x => x.kind === 'base' && (b.tiers || []).includes(x.tier));
   el.innerHTML = L(`<div class="pf-scrim" data-act="pfClose"><div class="pf" role="dialog" aria-modal="true" aria-labelledby="pf-name">
-    <button type="button" class="icon-btn pf-x" data-act="pfClose" aria-label="Close">${ic('close')}</button>
+    <button type="button" class="pop-back pf-back" data-act="pfClose">${BACK_IC}<span>Back</span></button><button type="button" class="icon-btn pf-x" data-act="pfClose" aria-label="Close">${ic('close')}</button>
     <div class="pf-top"><div class="pf-photo">${b.photo ? `<img src="${esc(b.photo)}" alt="">` : `<span>${esc(initials(b.name))}</span>`}</div>
       <div><p class="eyebrow">${esc(b.title || '')}</p><h3 id="pf-name">${esc(b.name)}</h3>${b.ratingCount ? `<p class="m-rate">${ic('star', 'star')}<b>${Number(b.rating).toFixed(1)}</b><span>${b.ratingCount} rating${b.ratingCount === 1 ? '' : 's'} from booked clients</span></p>` : ''}${b.specialty ? `<p class="muted small">${esc(b.specialty)}</p>` : ''}</div></div>
     ${b.bio ? `<p class="pf-bio">${esc(b.bio)}</p>` : ''}
@@ -759,9 +772,10 @@ function syncStickyBar() {
 }
 function lightbox() {
   const el = $('#lightbox'), g = gallery(), i = S.lb;
-  if (i < 0 || !g[i]) { el.hidden = true; el.innerHTML = ''; document.body.style.overflow = ''; return; }
+  if (i < 0 || !g[i]) { el.hidden = true; el.innerHTML = ''; document.body.style.overflow = ''; popClosed('lb'); return; }
+  popOpened('lb');
   el.innerHTML = `<div class="lb" data-act="lbClose" role="dialog" aria-modal="true" aria-label="Photo ${i + 1} of ${g.length}">
-    <button class="lb-btn lb-x" data-act="lbClose" aria-label="Close">${ic('close')}</button>
+    <button type="button" class="pop-back lb-back" data-act="lbClose">${BACK_IC}<span>Back</span></button><button class="lb-btn lb-x" data-act="lbClose" aria-label="Close">${ic('close')}</button>
     ${g.length > 1 ? `<button class="lb-btn lb-prev" data-act="lbStep" data-d="-1" aria-label="Previous photo">${ic('left')}</button><button class="lb-btn lb-next" data-act="lbStep" data-d="1" aria-label="Next photo">${ic('right')}</button>` : ''}
     <figure><img src="${esc(g[i].url)}" alt="${esc(g[i].caption || g[i].style || 'Gallery photo')}">${g[i].caption || g[i].style ? `<figcaption>${esc(g[i].caption || g[i].style)}</figcaption>` : ''}<span class="lb-n">${i + 1} / ${g.length}</span>
     ${barber(g[i].barberId) ? `<button type="button" class="btn btn-accent lb-book" data-act="lookBook" data-i="${i}">Book this look with ${esc(barber(g[i].barberId).name)}</button>` : ''}</figure></div>`;

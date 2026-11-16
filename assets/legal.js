@@ -1,7 +1,7 @@
 // Booking Terms and Privacy Policy. Filled in from the shop's own settings (deposit, late rule, contact),
 // so they stay in line with what the booking form says.
 import { db, demoBar } from './fb.js';
-import { $, esc, money, policyOf, STARTER, brand } from './shared.js';
+import { $, esc, money, policyOf, STARTER, brand, BACK_IC } from './shared.js';
 
 const PAGE = document.body.dataset.page;
 const UPDATED = '13 November 2026';
@@ -36,9 +36,14 @@ function render(I) {
   const doc = (PAGE === 'privacy' ? privacy : terms)(I), sh = I.shop;
   document.title = `${doc.title} · ${sh.name}`;
   $('#app').innerHTML = `${demoBar ? demoBar('admin/') : ''}<header class="site-head"><div class="wrap head-in"><a class="wordmark" href="./">${brand(sh.wordmark || sh.name)}</a><nav class="site-nav"><a class="btn btn-accent btn-sm" href="./#book">Book now</a></nav></div></header>
-  <main class="wrap legal"><p class="eyebrow">${esc(sh.name)}</p><h1>${esc(doc.title)}</h1><p class="muted small">Last updated ${UPDATED}</p><p class="legal-lead">${esc(doc.lead)}</p>
+  <main class="wrap legal"><a class="pop-back page-back-link" href="./" id="legal-back">${BACK_IC}<span>Back</span></a><p class="eyebrow">${esc(sh.name)}</p><h1>${esc(doc.title)}</h1><p class="muted small">Last updated ${UPDATED}</p><p class="legal-lead">${esc(doc.lead)}</p>
     ${doc.sections.map(([h, ps]) => `<section><h2>${esc(h)}</h2>${ps.map(t => `<p>${t}</p>`).join('')}</section>`).join('')}
     <p class="muted small" style="margin-top:28px">See also: ${PAGE === 'privacy' ? '<a href="terms.html">Booking Terms</a>' : '<a href="privacy.html">Privacy Policy</a>'} · <a href="./">Back to the website</a></p></main>`;
 }
 render({ ...STARTER });
 db.doc('public/info').get().then(s => { if (s.exists) render({ ...STARTER, ...s.data(), shop: { ...STARTER.shop, ...(s.data().shop || {}) } }); }).catch(() => {});
+// Back: return to the page they came from on this site (e.g. the booking form), otherwise the home page
+document.addEventListener('click', e => {
+  const a = e.target.closest && e.target.closest('#legal-back'); if (!a) return;
+  try { if (history.length > 1 && document.referrer && new URL(document.referrer).origin === location.origin) { e.preventDefault(); history.back(); } } catch (_) {}
+});

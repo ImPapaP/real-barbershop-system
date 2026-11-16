@@ -108,6 +108,7 @@ function depositChip(a) {
 }
 
 const ICONS = {
+  back: '<path d="M12.5 4.5 7 10l5.5 5.5"/>',
   overview: '<path d="M3 3h6v6H3zM11 3h6v4h-6zM11 9h6v8h-6zM3 11h6v6H3z"/>',
   schedule: '<rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4"/>',
   checkout: '<path d="M5 2h10v16l-2.5-1.5L10 18l-2.5-1.5L5 18z"/><path d="M8 6h4M8 9h4M8 12h2"/>',
@@ -184,7 +185,12 @@ function loadingNote() {
   return `<div class="banner" role="status"><span>${S.slow ? 'Shop records can’t be reached right now. What you see may be incomplete.' : 'Loading shop records…'}</span></div>`;
 }
 function setupBanner() { return `<div class="banner"><span><b>Set up your shop.</b> Load the REAL Barbers starter menu and team, then edit them in Shop setup. The website takes bookings once this is saved.</span><button class="btn btn-sm btn-primary" data-act="initInfo">Load starter menu</button></div>`; }
-function pageHead(eyebrow, title, actions) { return `<header class="page-head"><div><p class="eyebrow">${esc(eyebrow)}</p><h1>${esc(title)}</h1></div><div class="actions">${actions || ''}</div></header>`; }
+// Pages: a Back button returns to the page you came from (or Overview)
+const NAV = [];
+function trackNav() { const t = route(); if (NAV.length > 1 && NAV[NAV.length - 2] === t) NAV.pop(); else if (NAV[NAV.length - 1] !== t) NAV.push(t); }
+trackNav();
+const backTo = () => { const t = NAV.length > 1 ? NAV[NAV.length - 2] : 'overview'; return (TABS.find(x => x[0] === t) || [, 'Overview'])[1]; };
+function pageHead(eyebrow, title, actions) { const showBack = route() !== 'overview' || NAV.length > 1; return `<header class="page-head"><div>${showBack ? `<button type="button" class="back-btn page-back" data-act="pageBack">${icon('back')}<span>Back to ${esc(backTo())}</span></button>` : ''}<p class="eyebrow">${esc(eyebrow)}</p><h1>${esc(title)}</h1></div><div class="actions">${actions || ''}</div></header>`; }
 
 // ---------- metrics ----------
 function periodRange(p) {
@@ -1014,15 +1020,24 @@ function cpOpen(input) {
   let pop = document.getElementById('cust-pop');
   if (!pop) { pop = document.createElement('div'); pop.id = 'cust-pop'; pop.className = 'cust-pop'; pop.setAttribute('role', 'listbox'); document.body.appendChild(pop); }
   const meta = ({ c, st }) => { const n = bdayDays(c.birthday, today()); return [st.visits ? `${st.visits} visit${st.visits === 1 ? '' : 's'}` : 'New', st.last ? `last ${shortDate(st.last)}` : '', n !== null && Math.abs(n) <= 7 ? `★ birthday ${bdayWhen(n)}` : ''].filter(Boolean).join(' · '); };
-  pop.innerHTML = `${list.length ? `<p class="cp-h">${q.trim() ? 'Matching clients' : 'Recent clients'}</p>` : ''}
+  const addRow = exact ? '' : `<button type="button" class="cp-new cp-add" data-cpnew tabindex="-1"><b class="cp-plus" aria-hidden="true">+</b><span><span>${q.trim() ? `Add <b>${esc(q.trim())}</b> as a new client` : '<b>Add new client</b>'}</span><small>${q.trim() ? 'Saved to your client list when you save' : 'Type their full name, then their phone'}</small></span></button>`;
+  pop.innerHTML = `${addRow}${list.length ? `<p class="cp-h">${q.trim() ? 'Matching clients' : 'Recent clients'}</p>` : ''}
     ${list.map((x, i) => `<button type="button" class="cp-item${i === CP.i ? ' on' : ''}" role="option" aria-selected="${i === CP.i}" data-cp="${i}" tabindex="-1"><span class="avatar">${esc(initials(x.c.name))}</span><span class="cp-t"><b>${cpMark(x.c.name, q)}</b><small>${x.c.phone ? cpMark(x.c.phone, q.replace(/\D/g, '').length >= 3 ? q : '') : 'No phone'}</small></span><span class="cp-m">${esc(meta(x))}</span></button>`).join('')}
-    ${q.trim() && !exact ? `<button type="button" class="cp-new" data-cpnew tabindex="-1"><b class="cp-plus" aria-hidden="true">+</b><span><span>New client: <b>${esc(q.trim())}</b></span><small>Saved to your client list when you save</small></span></button>` : ''}
-    ${!list.length && !q.trim() ? '<div class="cp-new">No clients yet. Type a name to add one.</div>' : ''}`;
+`;
   const r = input.getBoundingClientRect(), w = Math.max(r.width, Math.min(360, innerWidth - 24));
   pop.style.width = w + 'px'; pop.style.left = Math.max(12, Math.min(r.left, innerWidth - w - 12)) + 'px';
   const below = innerHeight - r.bottom, h = Math.min(pop.scrollHeight, 380);
   if (below < h + 12 && r.top > below) { pop.style.top = ''; pop.style.bottom = (innerHeight - r.top + 6) + 'px'; } else { pop.style.bottom = ''; pop.style.top = (r.bottom + 6) + 'px'; }
-  pop.hidden = !(list.length || q.trim()); input.setAttribute('aria-expanded', String(!pop.hidden));
+  pop.hidden = false; input.setAttribute('aria-expanded', String(!pop.hidden));
+}
+function cpAddNew() {
+  const input = CP.input; if (!input) return;
+  const f = input.closest('form'), ph = f ? f.querySelector('[name=phone]') : document.getElementById('pos-phone');
+  if (!input.value.trim()) { cpClose(); input.placeholder = 'New client’s full name'; input.dataset.adding = '1'; input.focus(); CP.input = input; return; }
+  if (f) { // a new person: clear anything filled from a client picked earlier
+    if (ph && ph.value && S.customers.some(c => c.phone && normPhone(c.phone) === normPhone(ph.value))) ph.value = '';
+  }
+  cpClose(); if (ph) ph.focus();
 }
 function cpClose() { const pop = document.getElementById('cust-pop'); if (pop) pop.hidden = true; if (CP.input) CP.input.setAttribute('aria-expanded', 'false'); CP.input = null; CP.i = -1; }
 function cpPick(i) {
@@ -1037,7 +1052,7 @@ function cpPick(i) {
   }
   cpClose(); input.focus();
 }
-document.addEventListener('focusin', e => { if (e.target.matches && e.target.matches('[data-cust]')) { CP.i = -1; cpOpen(e.target); } });
+document.addEventListener('focusin', e => { if (e.target.matches && e.target.matches('[data-cust]') && !e.target.dataset.adding) { CP.i = -1; cpOpen(e.target); } });
 document.addEventListener('input', e => { if (e.target.matches && e.target.matches('[data-cust]')) { CP.i = -1; cpOpen(e.target); } });
 document.addEventListener('keydown', e => {
   if (!CP.input || e.target !== CP.input) return;
@@ -1046,7 +1061,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'Enter' && CP.i >= 0) { e.preventDefault(); cpPick(CP.i); }
   else if (e.key === 'Escape') { e.stopPropagation(); cpClose(); }
 }, true);
-document.addEventListener('mousedown', e => { if (e.target.closest && e.target.closest('[data-cpnew]')) { e.preventDefault(); const f = CP.input && CP.input.closest('form'), nx = f ? f.querySelector('[name=phone]') : document.getElementById('pos-phone'); cpClose(); if (nx) nx.focus(); return; } const b = e.target.closest && e.target.closest('[data-cp]'); if (b) { e.preventDefault(); cpPick(+b.dataset.cp); return; } if (CP.input && !e.target.closest('#cust-pop') && e.target !== CP.input) cpClose(); });
+document.addEventListener('mousedown', e => { if (e.target.closest && e.target.closest('[data-cpnew]')) { e.preventDefault(); cpAddNew(); return; } const b = e.target.closest && e.target.closest('[data-cp]'); if (b) { e.preventDefault(); cpPick(+b.dataset.cp); return; } if (CP.input && !e.target.closest('#cust-pop') && e.target !== CP.input) cpClose(); });
 document.addEventListener('focusout', e => { if (e.target === CP.input) setTimeout(() => { if (CP.input && document.activeElement !== CP.input) cpClose(); }, 120); });
 addEventListener('resize', () => CP.input && cpOpen(CP.input));
 document.addEventListener('scroll', () => CP.input && cpOpen(CP.input), true);
@@ -1097,13 +1112,34 @@ async function handleUpload(input) {
 const TAB_VIEWS = { overview: vOverview, schedule: vSchedule, checkout: vCheckout, money: vMoney, team: vTeam, clients: vClients, stock: vStock, website: vWebsite, setup: vSetup };
 
 // ================= MODALS =================
-function openModal(title, body, wide) {
-  const m = $('#modal');
-  m.innerHTML = `<div class="scrim" data-act="scrim"><div class="modal${wide ? ' wide' : ''}" role="dialog" aria-modal="true" aria-labelledby="mt"><div class="modal-h"><h2 id="mt">${esc(title)}</h2><button type="button" class="icon-btn" data-act="closeModal" aria-label="Close">✕</button></div><div class="modal-b">${body}</div></div></div>`;
+// Pop-up boxes keep a trail: opening one from another (client → Edit client) lets "Back" return to the first.
+// The phone's back button (and the browser's) closes or steps back too.
+const MODAL = { stack: [], cur: null, hist: false, skipPop: false, hash: '' };
+function drawModal() {
+  const { title, body, wide } = MODAL.cur, m = $('#modal'), back = MODAL.stack.length ? MODAL.stack[MODAL.stack.length - 1].title : '';
+  m.innerHTML = `<div class="scrim" data-act="scrim"><div class="modal${wide ? ' wide' : ''}" role="dialog" aria-modal="true" aria-labelledby="mt"><div class="modal-h"><button type="button" class="back-btn" data-act="modalBack" aria-label="${back ? 'Back to ' + esc(back) : 'Back'}">${icon('back')}<span>Back</span></button><h2 id="mt">${esc(title)}</h2><button type="button" class="icon-btn" data-act="closeModal" aria-label="Close">✕</button></div><div class="modal-b">${body}</div></div></div>`;
   m.hidden = false;
-  setTimeout(() => { const f = m.querySelector('input:not([type=checkbox]),select,textarea'); if (f) f.focus(); }, 30);
+  setTimeout(() => { const f = m.querySelector('.modal-b input:not([type=checkbox]),.modal-b select,.modal-b textarea'); if (f) f.focus(); }, 30);
 }
-function closeModal() { cpClose(); const m = $('#modal'); m.hidden = true; m.innerHTML = ''; }
+function openModal(title, body, wide) {
+  const open = !$('#modal').hidden && MODAL.cur;
+  if (open && MODAL.cur.title !== title) MODAL.stack.push(MODAL.cur);
+  if (!open) { MODAL.stack = []; if (!MODAL.hist) { history.pushState({ rbModal: 1 }, ''); MODAL.hist = true; MODAL.hash = location.hash; } }
+  MODAL.cur = { title, body, wide }; drawModal();
+}
+function modalBack() { cpClose(); if (MODAL.stack.length) { MODAL.cur = MODAL.stack.pop(); drawModal(); } else closeModal(); }
+// keepHist: we're navigating away, so don't step the browser back
+function closeModal(keepHist) {
+  cpClose(); const m = $('#modal'); m.hidden = true; m.innerHTML = ''; MODAL.cur = null; MODAL.stack = [];
+  if (MODAL.hist) { MODAL.hist = false; if (keepHist === true) history.replaceState(null, ''); else { MODAL.skipPop = true; history.back(); } }
+}
+window.addEventListener('popstate', () => {
+  if (MODAL.skipPop) { MODAL.skipPop = false; return; }
+  if (!MODAL.hist) return;
+  if (location.hash !== MODAL.hash) { MODAL.hist = false; closeModal(true); return; } // a link changed the page
+  if (MODAL.stack.length) { MODAL.cur = MODAL.stack.pop(); drawModal(); history.pushState({ rbModal: 1 }, ''); }
+  else { MODAL.hist = false; closeModal(true); }
+});
 const svcChecks = sel => { const groups = [...new Set(activeServices().map(s => s.cat || 'Services'))]; return groups.map(g => `<p class="eyebrow" style="margin:4px 0">${esc(g)}</p><div class="checks">${activeServices().filter(s => (s.cat || 'Services') === g).map(s => `<label class="check"><input type="checkbox" name="svc" value="${esc(s.id)}" ${(sel || []).includes(s.id) ? 'checked' : ''}>${esc(s.name)}<span class="p">${esc(priceLabel(s, cur()))}</span></label>`).join('')}</div>`).join(''); };
 const barberSelect = (name, sel, anyLabel) => `<select name="${name}" id="m-${name}">${anyLabel ? opt('', anyLabel, !sel) : ''}${serviceStaff().map(b => opt(b.id, b.name, b.id === sel)).join('')}</select>`;
 const mFoot = (label, extra) => `<div class="modal-f">${extra || ''}<button type="button" class="btn" data-act="closeModal">Cancel</button><button class="btn btn-primary" type="submit">${esc(label)}</button></div>`;
@@ -1262,6 +1298,8 @@ const ACT = {
   resetDemo,
   scrim(el, e) { if (e.target === el) closeModal(); },
   closeModal,
+  modalBack,
+  pageBack() { if (NAV.length > 1) history.back(); else location.hash = '#overview'; },
   async logout() { stopWatches(); await logout(); },
   async forgot() { const email = $('#l-email')?.value.trim(); if (!email) { S.loginErr = 'Type your email first, then tap “Forgot password?”.'; render(); return; } try { await resetPassword(email); S.loginErr = ''; S.loginMsg = 'Password reset email sent. Check your inbox.'; } catch (e) { S.loginErr = 'Couldn’t send the reset email. Check the address.'; } render(); },
   newBooking() { apptModal(null, 'booking'); },
@@ -1353,9 +1391,9 @@ const ACT = {
     p.deposit = depositPaid(a); p.depositMethod = a.deposit && a.deposit.method;
     p.lines = (a.serviceIds || []).map(svcById).filter(Boolean).map(s => ({ kind: 'service', ref: s.id, name: s.name, price: s.price, qty: 1 }));
     if (a.promo) { p.discount = String(a.promo.off); p.discountNote = `Promo ${a.promo.code}`; }
-    S.pos = p; closeModal(); location.hash = '#checkout';
+    S.pos = p; closeModal(true); location.hash = '#checkout';
   },
-  checkoutClient(el) { const c = custById(el.dataset.id); if (!c) return; const p = blankPos(); p.name = c.name; p.phone = c.phone || ''; S.pos = p; closeModal(); location.hash = '#checkout'; },
+  checkoutClient(el) { const c = custById(el.dataset.id); if (!c) return; const p = blankPos(); p.name = c.name; p.phone = c.phone || ''; S.pos = p; closeModal(true); location.hash = '#checkout'; },
   posPick(el) { S.pos.pick = el.dataset.v; render(); },
   posAdd(el) {
     const p = S.pos, kind = el.dataset.kind, ref = el.dataset.ref;
@@ -1662,7 +1700,7 @@ const FORM = {
 function setPath(path, val) { const k = path.split('.'); let o = S; for (let i = 0; i < k.length - 1; i++) { o = o[k[i]] = o[k[i]] || {}; } o[k[k.length - 1]] = val; }
 document.addEventListener('click', e => { const el = e.target.closest('[data-act]'); if (!el) return; const fn = ACT[el.dataset.act]; if (fn) fn(el, e); });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && !$('#modal').hidden) closeModal();
+  if (e.key === 'Escape' && !$('#modal').hidden) modalBack();
   if (e.key === 'Enter' && e.target.matches('tr.click[data-act]')) ACT[e.target.dataset.act](e.target, e);
 });
 document.addEventListener('input', e => {
@@ -1681,7 +1719,7 @@ document.addEventListener('submit', e => { const f = e.target; if (f.dataset && 
 const tipEl = $('#tip');
 document.addEventListener('pointerover', e => { const t = e.target.closest && e.target.closest('[data-tip]'); if (!t) { tipEl.hidden = true; return; } tipEl.textContent = t.dataset.tip; tipEl.hidden = false; });
 document.addEventListener('pointermove', e => { if (tipEl.hidden) return; const w = tipEl.offsetWidth, h = tipEl.offsetHeight; let x = e.clientX + 14, y = e.clientY - h - 12; if (x + w > innerWidth - 8) x = e.clientX - w - 14; if (y < 8) y = e.clientY + 18; tipEl.style.left = x + 'px'; tipEl.style.top = y + 'px'; });
-window.addEventListener('hashchange', () => { closeModal(); render(); window.scrollTo(0, 0); });
+window.addEventListener('hashchange', () => { if (!$('#modal').hidden) closeModal(true); trackNav(); render(); window.scrollTo(0, 0); });
 
 // ================= DATA =================
 // Products on the website: retail items marked "Show on website". Only name, price, description, photo and
