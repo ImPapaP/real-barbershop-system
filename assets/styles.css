@@ -1293,3 +1293,5 @@ input[data-cust][aria-expanded="true"]{background-image:url("data:image/svg+xml,
 .loy-big .meter i{width:14px;height:14px}
 @media (max-width:420px){.head-in{gap:8px}.site-nav{gap:4px}.site-nav .acct-lnk{padding:6px 4px}.site-nav .btn-sm{padding-inline:12px}.head-in .wordmark{min-width:0;font-size:clamp(17px,5.4vw,22px)}}
 @media (max-width:380px){.head-in .wordmark{font-size:16px;gap:7px}.head-in .wordmark .logo-mark{width:32px;height:32px}}
+
+.pickcard .nodep{color:var(--good);font-weight:700}

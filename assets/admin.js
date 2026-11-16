@@ -104,6 +104,7 @@ function depositChip(a) {
   if (d.status === 'paid') return chip({ kind: 'good', icon: '✓', label: `${money(d.amount)} ${methodName(d.method)}` });
   if (d.status === 'kept') return chip({ kind: 'mute', icon: '•', label: `${money(d.amount)} kept` });
   if (d.status === 'refunded') return chip({ kind: 'mute', icon: '↩', label: 'Refunded' });
+  if (d.status === 'none' && a.source === 'online') return chip({ kind: 'mute', icon: '–', label: 'No down payment' });
   return '';
 }
 
@@ -552,7 +553,7 @@ function vCheckout() {
         ${appt && appt.refPhoto ? `<button type="button" class="btn btn-sm" data-act="viewRef" data-id="${esc(appt.id)}" style="justify-self:start">See the cut they want (photo)</button>` : ''}
         ${loyal}${posBday(p) !== null ? `<p class="hint"><b>Birthday ${bdayWhen(posBday(p))}.</b> Their birthday haircut is free. Tap “Birthday free cut” below.</p>` : ''}
         ${field('Barber', `<select id="pos-barber" data-bind="pos.barberId" data-live>${opt('', 'Choose barber', !p.barberId)}${serviceStaff().map(b => opt(b.id, `${b.name} · ${b.rate || 0}%`, b.id === p.barberId)).join('')}</select>`, 'pos-barber')}
-        <div class="lines">${p.lines.length ? p.lines.map((l, i) => `<div class="line"><span class="nm">${esc(l.name)}</span><span class="qty"><button type="button" data-act="posQty" data-i="${i}" data-d="-1" aria-label="One less">−</button><span>${l.qty}</span><button type="button" data-act="posQty" data-i="${i}" data-d="1" aria-label="One more">+</button></span><span class="num">${money(l.price * l.qty)}</span><button type="button" class="icon-btn" data-act="posDel" data-i="${i}" aria-label="Remove ${esc(l.name)}">✕</button></div>`).join('') : '<p class="muted small" style="padding:10px 0">No items yet. Tap a service or product.</p>'}</div>
+        <div class="lines">${p.lines.length ? p.lines.map((l, i) => `<div class="line"><span class="nm">${esc(l.name)}</span>${l.kind === 'service' ? '<span class="qty"></span>' : `<span class="qty"><button type="button" data-act="posQty" data-i="${i}" data-d="-1" aria-label="One less">−</button><span>${l.qty}</span><button type="button" data-act="posQty" data-i="${i}" data-d="1" aria-label="One more">+</button></span>`}<span class="num">${money(l.price * l.qty)}</span><button type="button" class="icon-btn" data-act="posDel" data-i="${i}" aria-label="Remove ${esc(l.name)}">✕</button></div>`).join('') : '<p class="muted small" style="padding:10px 0">No items yet. Tap a service or product.</p>'}</div>
         <p class="muted small">For “from” prices, change the amount with the price field after adding.</p>
         ${p.lines.length ? `<div class="fgrid">${p.lines.map((l, i) => l.kind === 'service' ? field(`Price: ${l.name}`, `<input id="pos-price-${i}" data-bind="pos.lines.${i}.price" data-live inputmode="decimal" value="${esc(l.price)}">`, `pos-price-${i}`) : '').join('')}</div>` : ''}
         <div class="fgrid">
@@ -1230,6 +1231,7 @@ function staffModal(b) {
     <div class="svc-only">${field('Specialty (shown on website)', `<input id="m-sspec" name="specialty" value="${esc(c.specialty || '')}">`, 'm-sspec')}
       ${field('Short bio for their profile (optional)', `<textarea id="m-sbio" name="bio" rows="2" maxlength="300" placeholder="e.g. 8 years behind the chair. Known for clean skin fades and textured crops.">${esc(c.bio || '')}</textarea>`, 'm-sbio')}</div>
     <div class="fgrid">${field('Guaranteed daily pay (₱)', `<input id="m-sdaily" name="dailyPay" type="number" min="0" step="any" value="${esc(c.dailyPay ?? 0)}" required>`, 'm-sdaily', 'Paid for every day worked, even with no clients')}<div class="svc-only">${field('Commission on services (%)', `<input id="m-srate" name="rate" type="number" min="0" max="100" value="${esc(c.rate ?? 60)}">`, 'm-srate', 'Their share, rounded down to the peso. Seniors 50, juniors 60, Dave 55.')}</div></div>
+    <label class="row small svc-only"><input type="checkbox" id="m-snodep" name="noDeposit" ${c.noDeposit ? 'checked' : ''}> No down payment for online bookings with ${esc(c.name || 'this person')} (clients pay everything at the shop)</label>
     <fieldset class="field svc-only"><legend>Product fee</legend>
       <label class="row small"><input type="checkbox" name="pf" ${c.productFee ? 'checked' : ''}> On services that use salon products, the shop takes a fixed amount first, then the rest is split</label>
       <div class="fgrid three">${field('Service price from (₱)', `<input id="m-pft" name="pfThreshold" type="number" min="0" value="${esc(f.threshold)}">`, 'm-pft')}${field('Shop gets below that (₱)', `<input id="m-pfl" name="pfLow" type="number" min="0" value="${esc(f.low)}">`, 'm-pfl')}${field('Shop gets from that up (₱)', `<input id="m-pfh" name="pfHigh" type="number" min="0" value="${esc(f.high)}">`, 'm-pfh')}</div>
@@ -1459,6 +1461,8 @@ const ACT = {
     const p = S.pos, kind = el.dataset.kind, ref = el.dataset.ref;
     const src = kind === 'service' ? svcById(ref) : S.inventory.find(i => i.id === ref); if (!src) return;
     const ex = p.lines.find(l => l.kind === kind && l.ref === ref);
+    // a service is done once per ticket (no quantity); products can be more than one
+    if (ex && kind === 'service') { toast(`${src.name} is already on the ticket`); return; }
     if (ex) ex.qty++; else p.lines.push({ kind, ref, name: src.name, price: Number(src.price) || 0, qty: 1 });
     render();
   },
@@ -1686,7 +1690,7 @@ const FORM = {
     if (rate < 0 || rate > 100) return modalErr(f, 'Commission must be between 0 and 100%.');
     const groups = svcRole ? fd.getAll('groups') : []; if (svcRole && !groups.length) return modalErr(f, 'Pick which services they take bookings for.');
     const productFee = svcRole && fd.has('pf') ? { threshold: Math.max(0, num(fd.get('pfThreshold'))), low: Math.max(0, num(fd.get('pfLow'))), high: Math.max(0, num(fd.get('pfHigh'))) } : null;
-    const data = { name, title: String(fd.get('title') || '').trim(), phone: String(fd.get('phone') || '').trim(), specialty: String(fd.get('specialty') || '').trim(), bio: String(fd.get('bio') || '').trim().slice(0, 300), role, rate, productFee, dailyPay: Math.max(0, Number(fd.get('dailyPay')) || 0), groups, tiers: svcRole ? fd.getAll('tiers') : [], chair: fd.get('chair') ? +fd.get('chair') : '', days: fd.getAll('days').map(Number).sort() };
+    const data = { name, title: String(fd.get('title') || '').trim(), phone: String(fd.get('phone') || '').trim(), specialty: String(fd.get('specialty') || '').trim(), bio: String(fd.get('bio') || '').trim().slice(0, 300), role, rate, productFee, noDeposit: svcRole && fd.has('noDeposit'), dailyPay: Math.max(0, Number(fd.get('dailyPay')) || 0), groups, tiers: svcRole ? fd.getAll('tiers') : [], chair: fd.get('chair') ? +fd.get('chair') : '', days: fd.getAll('days').map(Number).sort() };
     const id = f.dataset.id;
     const ok = id ? await patch('staff', id, { ...data, active: fd.has('active') }) : await put('staff', newId(), { ...data, active: true, since: today() });
     if (ok) { closeModal(); toast(id ? `${name} updated` : `${name} added`); setTimeout(syncPublicBarbers, 400); }

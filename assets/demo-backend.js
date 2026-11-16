@@ -2,7 +2,7 @@
 // Used for the live preview before Firebase is connected. Payments are skipped; bookings confirm instantly.
 import {
   windowOfTime, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, comboError, commissionFor, isServiceStaff, rebookLink, slotId, blockTimes, isActiveSlot, availableTimes, policyOf,
-  startMs, phNow, addDays, sum, promoCheck, cleanCode, cleanBday, queueItems, accountView
+  startMs, phNow, addDays, sum, promoCheck, cleanCode, cleanBday, queueItems, accountView, depositFor
 } from './shared.js';
 
 // The saved demo is keyed by a fingerprint of the starter data, so changing the menu or team
@@ -248,8 +248,13 @@ const FUNCS = {
     const id = 'b' + Date.now().toString(36), token = Math.random().toString(36).slice(2, 14);
     const gid = guest ? id + 'g' : '';
     const holdUntil = Date.now() + Math.max(pol.holdMinutes, 30) * 60e3;
-    const st = manual ? { status: 'pending_payment', payMethod: 'gcash', holdUntil } : { status: 'booked', payMethod: 'online' };
-    const dep = manual ? { amount: pol.deposit, status: 'unpaid' } : { amount: pol.deposit, status: 'paid', method: 'gcash' };
+    // no down payment for junior barbers (same rule as the server)
+    const depMain = depositFor(I, d.barberId || '', services);
+    const depGuest = !guest ? 0 : d.guest.sameClient ? (depMain ? 0 : depositFor(I, d.guest.barberId || '', guest.services)) : depositFor(I, d.guest.barberId || '', guest.services);
+    const free = depMain + depGuest === 0;
+    const st = free ? { status: 'booked', payMethod: 'none' } : manual ? { status: 'pending_payment', payMethod: 'gcash', holdUntil } : { status: 'booked', payMethod: 'online' };
+    const depOf = amt => !amt ? { amount: 0, status: 'none' } : manual ? { amount: amt, status: 'unpaid' } : { amount: amt, status: 'paid', method: 'gcash' };
+    const dep = depOf(depMain);
     const code = Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
     store.set('appointments/' + id, {
       code, token, source: 'online', ...st, ...(promo ? { promo } : {}), notify: true, name: d.name.trim(), phone: d.phone.trim(), email: d.email.trim(), notes: d.notes || '', customerId: '', ...(cleanBday(d.birthday) ? { birthday: cleanBday(d.birthday) } : {}),
@@ -260,10 +265,10 @@ const FUNCS = {
       code: code.slice(0, 5) + '2', token: Math.random().toString(36).slice(2, 14), source: 'online', ...st, notify: false, groupOf: id, bookedBy: d.name.trim(), ...(d.guest.sameClient ? { addOnOf: id } : {}),
       name: guest.name, phone: d.phone.trim(), email: d.email.trim(), notes: d.notes || '', customerId: '',
       serviceIds: guest.services.map(s => s.id), mins: sum(guest.services, s => s.mins), date: guest.date, time: guest.time, startAt: startMs(guest.date, guest.time), barberId: guest.barberId, ...(d.guest.barberId ? {} : { anyBarber: true }),
-      deposit: d.guest.sameClient ? { amount: 0, status: dep.status === 'paid' ? 'paid' : 'unpaid', paidWith: id } : manual ? dep : { ...dep, paidWith: id }, reminders: {}, reschedules: 0, createdAt: Date.now()
+      deposit: depGuest ? { ...depOf(depGuest), ...(manual ? {} : { paidWith: id }) } : d.guest.sameClient && depMain ? { amount: 0, status: dep.status, paidWith: id } : { amount: 0, status: 'none' }, reminders: {}, reschedules: 0, createdAt: Date.now()
     });
     afterWrite('appointments/' + id); if (guest) afterWrite('appointments/' + gid);
-    return { id, token, checkoutUrl: `booking.html?id=${id}&t=${token}${manual ? '' : '&paid=1'}` };
+    return { id, token, checkoutUrl: `booking.html?id=${id}&t=${token}${free ? '&booked=1' : manual ? '' : '&paid=1'}` };
   },
   getBooking(d) {
     const a = byToken(d), I = info(), every = Math.max(0, parseInt(I.shop.loyaltyEvery, 10) || 0);
