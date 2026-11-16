@@ -30,7 +30,7 @@ import {
   validateRequest, policyOf, slotId, isActiveSlot, desiredSlots, slotStateFor, apptMins, startMs,
   verifyPaymongoSignature, rebookLink, newToken, tokenMatches, bookingCode, smsText, emailContent, eligibleBarbers,
   servicesById, blockTimes, phNow, addDays, normalizePhone, validEmail, parseSlotId, waitlistMatches,
-  promoCheck, cleanCode, validProofImage
+  promoCheck, cleanCode, validProofImage, cleanBday
 } from './src/core.js';
 import { createCheckout, expireCheckout, sendSms, sendEmail } from './src/providers.js';
 
@@ -168,7 +168,7 @@ export const createBooking = onCall({ secrets: [PAYMONGO_SECRET_KEY] }, async re
     refs[pick].forEach((r, i) => tx.set(r, { barberId: b, date: v.date, time: v.times[i], state: 'held', holdUntil, bookingId: id }));
     tx.set(apptRef(id), {
       code: bcode, token, source: 'online', status: 'pending_payment', notify: true, payMethod: manual ? 'gcash' : 'online', ...(promo ? { promo } : {}),
-      name: v.name, phone: v.phone, email: v.email, notes: v.notes, customerId: '',
+      name: v.name, phone: v.phone, email: v.email, notes: v.notes, customerId: '', ...(cleanBday(req.data.birthday) ? { birthday: cleanBday(req.data.birthday) } : {}),
       serviceIds: v.serviceIds, mins: v.mins, date: v.date, time: v.time, startAt: v.at, barberId: b,
       blocks: refs[pick].map(r => r.id), holdUntil, guests: gid ? [gid] : [],
       deposit: { amount: pol.deposit, status: 'unpaid' }, reminders: {}, reschedules: 0, createdAt: now
@@ -370,7 +370,7 @@ export const joinQueue = onCall(async req => {
     if (mine) return { id: mine.id, token: mine.data().token, queueNo: mine.data().queueNo, again: true };
     const queueNo = Math.max(0, ...q.docs.map(d => d.data().queueNo || 0)) + 1;
     tx.set(ref, { date: t.date, time: `${String(Math.floor(t.min / 60)).padStart(2, '0')}:${String(t.min % 60).padStart(2, '0')}`, source: 'walk-in', status: 'waiting', name, phone, serviceIds, barberId, queueNo,
-      token, code: bookingCode(), notify: false, customerId: '', fromQr: true, createdAt: now });
+      token, code: bookingCode(), notify: false, customerId: '', fromQr: true, createdAt: now, ...(cleanBday(req.data.birthday) ? { birthday: cleanBday(req.data.birthday) } : {}) });
     return { id: ref.id, token, queueNo };
   });
   if (!out.token) throw new HttpsError('already-exists', 'You’re already in the queue. Ask the front desk.');

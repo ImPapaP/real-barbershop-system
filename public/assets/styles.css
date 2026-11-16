@@ -1157,3 +1157,8 @@ form[data-form=item]:has(select[name=cat] option[value=Supply]:checked) .web-onl
 .addon .pickcard .p{font-size:15px}
 .addon .pickcard .tick{top:9px;right:9px}
 @media (max-width:420px){.addon .pick{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* ---------- birthday (free birthday haircut) ---------- */
+.bday-in{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:8px;max-width:380px}
+.bday .bday-hint{margin:0 0 4px}
+.field .opt{font-weight:500;color:var(--muted)}

@@ -3,7 +3,7 @@
 import { db, call, demo, demoBar, resetDemo } from './fb.js';
 import {
   $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, DAYS_LONG, MONTHS, sum, phNow, dowOf, policyOf, openStatus,
-  availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph, brand, LOGO_LG, dur, isServiceStaff, toMin, fromMin, addDays, blockTimes, slotId, messengerLink, defaultFaq, monthGrid, shiftMonth
+  availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph, brand, LOGO_LG, dur, isServiceStaff, toMin, fromMin, addDays, blockTimes, slotId, messengerLink, defaultFaq, monthGrid, shiftMonth, bdaySelects, cleanBday, BDAY_TITLE, BDAY_HINT
 } from './shared.js';
 import { L, lang, setLang } from './i18n.js';
 import { paintBanners } from './banner.js';
@@ -11,11 +11,11 @@ import { paintBanners } from './banner.js';
 const S = {
   info: null, loaded: false, slow: false, menuTab: 'him', painted: false,
   slots: {}, slotsDate: '', slotsLoaded: false, unsub: null,
-  bk: { group: 'him', tier: '', svc: {}, barber: '', date: '', time: '', name: '', phone: '', email: '', notes: '', consent: false, remember: true, guest: { on: false, mode: '', name: '', own: false, group: 'him', tier: '', svc: {}, date: '', time: '', barber: '' } },
+  bk: { group: 'him', tier: '', svc: {}, barber: '', date: '', time: '', name: '', phone: '', email: '', bm: '', bd: '', notes: '', consent: false, remember: true, guest: { on: false, mode: '', name: '', own: false, group: 'him', tier: '', svc: {}, date: '', time: '', barber: '' } },
   touched: {}, tried: false, pay: 'online',
   promo: { open: false, code: '', applied: null, err: '', busy: false },
   walkin: new URLSearchParams(location.search).get('walkin') === '1',
-  q: { name: '', phone: '', pick: '', barber: '', err: '', busy: false, done: null },
+  q: { name: '', phone: '', bm: '', bd: '', pick: '', barber: '', err: '', busy: false, done: null },
   galTag: 'all', profile: '',
   me: null, byBarber: false, range: { slots: {}, at: 0, loading: false }, urlApplied: false,
   err: '', busy: false, last: null, lb: -1,
@@ -279,6 +279,15 @@ function profile() {
   el.querySelector('.pf-x').focus();
 }
 // ---------- walk-in queue (QR poster at the shop) ----------
+// Optional birthday (month and day) for the free birthday haircut. `k` is the state key: 'bk' or 'q'.
+const bdayOf = o => cleanBday(o.bm && o.bd ? `${o.bm}-${o.bd}` : '');
+function bdayBox(k) {
+  const o = S[k], half = (o.bm || o.bd) && !bdayOf(o);
+  return `<div class="field bday"><label for="${k}-bday-m">${BDAY_TITLE} <span class="opt">(optional)</span></label><p class="muted small bday-hint">${BDAY_HINT}</p>
+    ${bdayPick(o, k)}
+    ${half ? `<p class="muted small">Pick the ${o.bm ? 'day' : 'month'} too.</p>` : ''}</div>`;
+}
+const bdayPick = (o, k) => bdaySelects(`${o.bm || 0}-${o.bd || 0}`, k + '-bday', part => `data-bind="${k}.b${part}" data-live`);
 function walkinBox() {
   const q = S.q, I = info(), t = phNow(), inToday = (I.barbers || []).filter(b => (b.days || []).includes(t.dow));
   if (q.done) return `<div class="walkin done-wl">${ic('check')}<div><p class="eyebrow">Walk-in queue</p><h3>You’re number ${esc(q.done.queueNo)}</h3><p class="muted">We’ll call your name in order. Keep this page open to see how many are ahead of you.</p>
@@ -288,6 +297,7 @@ function walkinBox() {
     <div class="walkin-f">
       <div class="fgrid"><div class="field"><label for="q-name">Your name <span class="req" aria-hidden="true">*</span></label><input id="q-name" data-bind="q.name" value="${esc(q.name)}" autocomplete="name" required></div>
       <div class="field"><label for="q-phone">Mobile number <span class="req" aria-hidden="true">*</span></label><input id="q-phone" type="tel" inputmode="tel" data-bind="q.phone" value="${esc(q.phone)}" autocomplete="tel" placeholder="0917 123 4567" required></div></div>
+      ${bdayBox('q')}
       <p class="small" style="font-weight:700;margin:0">What are you getting?</p>
       <div class="seg" role="group" aria-label="What you’re getting">${picks.map(([k, l]) => `<button type="button" data-act="qPick" data-v="${k}" aria-pressed="${q.pick === k}">${l}</button>`).join('')}</div>
       ${inToday.length ? `<div class="field"><label for="q-barber">Barber</label><select id="q-barber" data-bind="q.barber"><option value="">Whoever’s free first</option>${inToday.map(b => `<option value="${esc(b.id)}" ${q.barber === b.id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select></div>` : ''}
@@ -345,11 +355,11 @@ function saveMe() {
   const b = S.bk;
   try {
     if (!b.remember) { localStorage.removeItem(ME_KEY); return; }
-    localStorage.setItem(ME_KEY, JSON.stringify({ name: b.name.trim(), phone: b.phone.trim(), email: b.email.trim(),
+    localStorage.setItem(ME_KEY, JSON.stringify({ name: b.name.trim(), phone: b.phone.trim(), email: b.email.trim(), birthday: bdayOf(b),
       last: { group: b.group, svc: chosen().map(x => x.id), barber: b.barber }, at: Date.now() }));
   } catch (_) {}
 }
-function forgetMe() { try { localStorage.removeItem(ME_KEY); } catch (_) {} S.me = null; Object.assign(S.bk, { name: '', phone: '', email: '' }); }
+function forgetMe() { try { localStorage.removeItem(ME_KEY); } catch (_) {} S.me = null; Object.assign(S.bk, { name: '', phone: '', email: '', bm: '', bd: '' }); }
 // Pick services + barber (from "Book again", a rebook link, or the remembered last visit), then go to the date step.
 function applySelection({ group, svc = [], barber: bid = '' }) {
   const list = svc.map(id => svcs().find(x => x.id === id)).filter(Boolean);
@@ -571,6 +581,7 @@ function booker() {
         ${fieldIn('Mobile number', 'bk-phone', 'phone', 'tel', 'tel', '0917 123 4567', 'inputmode="tel" maxlength="16"')}
       </div>
       ${fieldIn('Email (for your confirmation and booking link)', 'bk-email', 'email', 'email', 'email', 'you@example.com', 'inputmode="email"')}
+      ${bdayBox('bk')}
       ${st.when ? guestBox(times) : ''}
       <div class="field"><label for="bk-notes">Notes (optional)</label><textarea id="bk-notes" data-bind="bk.notes" rows="2" placeholder="Style, reference photo on Facebook, anything we should know">${esc(b.notes)}</textarea></div>
       <label class="consent remember"><input type="checkbox" id="bk-remember" data-bind="bk.remember" ${b.remember ? 'checked' : ''}><span>Remember my details on this phone for next time</span></label>
@@ -802,7 +813,7 @@ const ACT = {
     const base = q.pick === 'nails' ? svcs().find(x => x.group === 'nails') : svcs().filter(x => x.kind === 'base' && x.tier === q.pick).sort((a, b) => a.price - b.price)[0];
     q.busy = true; schedule();
     try {
-      q.done = await call('joinQueue', { name: q.name.trim(), phone: q.phone, serviceIds: base ? [base.id] : [], barberId: q.barber });
+      q.done = await call('joinQueue', { name: q.name.trim(), phone: q.phone, birthday: bdayOf(q), serviceIds: base ? [base.id] : [], barberId: q.barber });
       try { localStorage.setItem('lastQueue', JSON.stringify({ ...q.done, date: phNow().date })); } catch (_) {}
     } catch (e) { q.err = e.message || 'Couldn’t add you to the queue. Ask the front desk.'; }
     q.busy = false; schedule();
@@ -895,7 +906,7 @@ const ACT = {
     if (b.guest.on && (!gp || (!b.guest.self && !b.guest.name.trim()))) { S.err = gp ? 'Enter the second person’s name.' : b.guest.self ? `Pick when you’d like ${addOnLabel(b.guest.group)}, or remove it.` : 'Pick when the second person comes, or remove them.'; renderBooker(); return; }
     S.busy = true; S.err = ''; renderBooker();
     try {
-      const r = await call('createBooking', { serviceIds: Object.keys(b.svc).filter(k => b.svc[k]), barberId: b.barber, date: b.date, time: b.time, name: b.name, phone: b.phone, email: b.email, notes: b.notes, consent: b.consent,
+      const r = await call('createBooking', { serviceIds: Object.keys(b.svc).filter(k => b.svc[k]), barberId: b.barber, date: b.date, time: b.time, name: b.name, phone: b.phone, email: b.email, birthday: bdayOf(b), notes: b.notes, consent: b.consent,
         payMethod: payChoice() ? S.pay : 'online', promo: S.promo.applied ? S.promo.applied.code : '',
         ...(b.prods ? { notes: [b.notes, `Set aside for me: ${b.prods}`].filter(Boolean).join(' · ') } : {}),
         ...(gp ? { guest: { name: b.guest.self ? b.name.trim() : b.guest.name.trim(), ...(b.guest.self ? { sameClient: true } : {}), time: gp.time, barberId: gp.barberId, ...(gp.mode === 'pick' && gp.date !== b.date ? { date: gp.date } : {}), ...(b.guest.own ? { serviceIds: guestSvcs().map(x => x.id) } : {}) } } : {}) });
@@ -934,7 +945,7 @@ renderAll();
     S.info = s.exists ? s.data() : null; S.loaded = true;
     if (!S.urlApplied) {
       S.urlApplied = true;
-      S.me = loadMe(); if (S.me) Object.assign(S.bk, { name: S.me.name || '', phone: S.me.phone || '', email: S.me.email || '' });
+      S.me = loadMe(); if (S.me) { const bd = cleanBday(S.me.birthday); Object.assign(S.bk, { name: S.me.name || '', phone: S.me.phone || '', email: S.me.email || '', bm: bd ? String(+bd.slice(0, 2)) : '', bd: bd ? String(+bd.slice(3)) : '' }); }
       const q = new URLSearchParams(location.search), svc = (q.get('svc') || '').split(',').filter(Boolean), bid = q.get('barber') || '';
       if ((svc.length || bid) && applySelection({ svc, barber: bid })) { S.fromLink = true; history.replaceState(null, '', location.pathname + '#book'); }
     }

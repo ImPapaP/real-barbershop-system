@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import {
   validateRequest, normalizePhone, blockTimes, slotId, isActiveSlot, desiredBlocks, eligibleBarbers,
-  verifyPaymongoSignature, phNow, startMs, smsText, emailContent
+  verifyPaymongoSignature, phNow, startMs, smsText, emailContent, cleanBday
 } from '../src/core.js';
 
 const info = {
@@ -191,4 +191,13 @@ test('payment screenshots must be small images', () => {
   assert.equal(validProofImage('data:image/jpeg;base64,AAAA'), true);
   assert.equal(validProofImage('data:text/html;base64,AAAA'), false);
   assert.equal(validProofImage('data:image/jpeg;base64,' + 'A'.repeat(900000)), false);
+});
+
+test('cleanBday keeps a valid month-day and drops anything else', () => {
+  assert.equal(cleanBday('3-7'), '03-07');
+  assert.equal(cleanBday('02-29'), '02-29');
+  assert.equal(cleanBday('02-30'), '');
+  assert.equal(cleanBday('13-01'), '');
+  assert.equal(cleanBday('0-5'), '');
+  assert.equal(cleanBday(''), '');
 });

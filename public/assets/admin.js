@@ -4,7 +4,7 @@ import { db, demo, demoBar, resetDemo, login, logout, resetPassword, onAuth, upl
 import { buildXlsx, xlDate, xlTime, colName } from './xlsx.js';
 import { qrSvg } from './qr.js';
 import { drawBanner, bannerBlob } from './banner.js';
-import { esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, DEFAULT_POLICY, startMs, canServe, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE, defaultFaq, cleanCode } from './shared.js';
+import { bdaySelects, cleanBday, fmtBday, bdayDays, BDAY_TITLE, esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, DEFAULT_POLICY, startMs, canServe, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE, defaultFaq, cleanCode } from './shared.js';
 
 // ---------- constants ----------
 const METHODS = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer'];
@@ -300,13 +300,20 @@ function matchCustomer(name, phone) {
   const n = String(name || '').trim().toLowerCase(); if (!n || n === 'walk-in') return null;
   return S.customers.find(c => c.name.trim().toLowerCase() === n) || null;
 }
-async function ensureCustomer(name, phone, email, save) {
-  const found = matchCustomer(name, phone);
-  if (found) return found.id;
+async function ensureCustomer(name, phone, email, save, birthday) {
+  const found = matchCustomer(name, phone), bd = cleanBday(birthday);
+  if (found) { if (bd && found.birthday !== bd) await patch('customers', found.id, { birthday: bd }); return found.id; }
   if (!save || !String(name || '').trim() || name.trim().toLowerCase() === 'walk-in') return '';
   const id = newId();
-  return await put('customers', id, { name: name.trim(), phone: String(phone || '').trim(), phoneKey: phoneKey(phone), email: email || '', notes: '', createdAt: Date.now() }) ? id : '';
+  return await put('customers', id, { name: name.trim(), phone: String(phone || '').trim(), phoneKey: phoneKey(phone), email: email || '', notes: '', ...(bd ? { birthday: bd } : {}), createdAt: Date.now() }) ? id : '';
 }
+// Birthdays: the client's (or the one given on the booking) and how close it is
+const custOf = a => (a.customerId && S.customers.find(c => c.id === a.customerId)) || matchCustomer(a.name, a.phone);
+const bdayFor = a => cleanBday(a.birthday) || cleanBday((custOf(a) || {}).birthday);
+const bdayWhen = n => n === 0 ? 'today' : n > 0 ? `in ${n} day${n === 1 ? '' : 's'}` : `${-n} day${n === -1 ? '' : 's'} ago`;
+const bdayChip = a => { const n = bdayDays(bdayFor(a), a.date || today()); return n === 0 ? ' ' + chip({ kind: 'info', icon: '★', label: 'Birthday today' }) : ''; };
+const bdayField = v => `<div class="field"><label for="m-bday-m">Birthday <span class="opt">(optional · for the free birthday haircut)</span></label>${bdaySelects(v || '', 'm-bday', part => `name="b${part}"`)}</div>`;
+const bdayFrom = fd => cleanBday(`${fd.get('bm') || ''}-${fd.get('bd') || ''}`);
 
 // ---------- appointments ----------
 const apptsOn = d => S.appointments.filter(a => a.date === d).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
@@ -316,11 +323,11 @@ function apptRow(a, compact) {
   const giveAway = isLateNow(a) && waitingWalkins().length ? `<button class="btn btn-sm btn-danger" data-act="giveSlot" data-id="${esc(a.id)}">Give slot to walk-in</button>` : '';
   const actions = `${giveAway}${canCheckout ? `<button class="btn btn-sm btn-primary" data-act="checkoutAppt" data-id="${esc(a.id)}">Checkout</button>` : ''}${a.status === 'done' && a.saleId ? `<button class="btn btn-sm" data-act="showSale" data-id="${esc(a.saleId)}">Receipt</button>` : ''}`;
   const flag = a.conflict && ['booked', 'pending_payment'].includes(a.status) ? ' ' + chip({ kind: 'bad', icon: '!', label: 'Overlaps another booking' }) : '';
-  if (compact) return `<li>${a.barberId ? av(staffById(a.barberId)) : ''}<span class="t">${a.source === 'walk-in' ? `#${esc(a.queueNo || '')}` : fmtTime(a.time)}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${lateChip(a)}<div class="sub">${esc(svcNames(a.serviceIds))} · ${esc(staffName(a.barberId))}</div></div>${chip(APPT[a.status] || APPT.booked)}</li>`;
+  if (compact) return `<li>${a.barberId ? av(staffById(a.barberId)) : ''}<span class="t">${a.source === 'walk-in' ? `#${esc(a.queueNo || '')}` : fmtTime(a.time)}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${lateChip(a)}${bdayChip(a)}<div class="sub">${esc(svcNames(a.serviceIds))} · ${esc(staffName(a.barberId))}</div></div>${chip(APPT[a.status] || APPT.booked)}</li>`;
   const choices = STATUS_CHOICES.includes(a.status) ? STATUS_CHOICES : [a.status, ...STATUS_CHOICES];
   return `<tr>
     <td class="num nowrap"><b>${a.source === 'walk-in' ? `Walk-in #${esc(a.queueNo || '')}` : fmtTime(a.time)}</b>${a.source === 'walk-in' ? `<div class="muted small">arrived ${fmtTime(a.time)}</div>` : ''}</td>
-    <td><b>${esc(a.name || 'Walk-in')}</b>${a.code ? ` <span class="muted small">${esc(a.code)}</span>` : ''}${lateChip(a)}${a.promo ? ' ' + chip({ kind: 'info', icon: '%', label: `${a.promo.code} −${money(a.promo.off)}` }) : ''}${a.phone ? `<div class="muted small">${esc(a.phone)}</div>` : ''}</td>
+    <td><b>${esc(a.name || 'Walk-in')}</b>${a.code ? ` <span class="muted small">${esc(a.code)}</span>` : ''}${lateChip(a)}${bdayChip(a)}${a.promo ? ' ' + chip({ kind: 'info', icon: '%', label: `${a.promo.code} −${money(a.promo.off)}` }) : ''}${a.phone ? `<div class="muted small">${esc(a.phone)}</div>` : ''}</td>
     <td>${esc(svcNames(a.serviceIds))}${a.notes ? `<div class="muted small">${esc(a.notes)}</div>` : ''}${flag}</td>
     <td>${esc(staffName(a.barberId))}</td>
     <td><span class="muted small">${a.source === 'online' ? 'Online' : a.source === 'walk-in' ? 'Walk-in' : 'Phone / in person'}</span><div>${depositChip(a)}</div></td>
@@ -470,6 +477,12 @@ function posTotals(p) {
   const total = round2(svc + prod - disc + tip), deposit = Math.min(p.deposit || 0, total);
   return { svc, prod, sub: svc + prod, disc, tip, total, deposit, collect: round2(total - deposit) };
 }
+// Birthday within a week of today (the client's on file, or the one given on the booking): days away, or null
+function posBday(p) {
+  const appt = p.apptId ? S.appointments.find(a => a.id === p.apptId) : null, c = matchCustomer(p.name, p.phone);
+  const n = bdayDays(cleanBday(appt && appt.birthday) || cleanBday(c && c.birthday), today());
+  return n !== null && Math.abs(n) <= 7 ? n : null;
+}
 function vCheckout() {
   if (!S.pos) S.pos = blankPos();
   const p = S.pos, T = posTotals(p), cust = matchCustomer(p.name, p.phone), st = cust ? custStats()[cust.id] : null, N = loyaltyN();
@@ -496,7 +509,7 @@ function vCheckout() {
           ${field('Client', `<input id="pos-name" data-bind="pos.name" data-live list="cust-list" value="${esc(p.name)}" placeholder="Walk-in" autocomplete="off">`, 'pos-name')}
           ${field('Phone', `<input id="pos-phone" data-bind="pos.phone" data-live value="${esc(p.phone)}" inputmode="tel" placeholder="Optional">`, 'pos-phone')}
         </div>
-        ${loyal}
+        ${loyal}${posBday(p) !== null ? `<p class="hint"><b>Birthday ${bdayWhen(posBday(p))}.</b> Their birthday haircut is free. Tap “Birthday free cut” below.</p>` : ''}
         ${field('Barber', `<select id="pos-barber" data-bind="pos.barberId" data-live>${opt('', 'Choose barber', !p.barberId)}${serviceStaff().map(b => opt(b.id, `${b.name} · ${b.rate || 0}%`, b.id === p.barberId)).join('')}</select>`, 'pos-barber')}
         <div class="lines">${p.lines.length ? p.lines.map((l, i) => `<div class="line"><span class="nm">${esc(l.name)}</span><span class="qty"><button type="button" data-act="posQty" data-i="${i}" data-d="-1" aria-label="One less">−</button><span>${l.qty}</span><button type="button" data-act="posQty" data-i="${i}" data-d="1" aria-label="One more">+</button></span><span class="num">${money(l.price * l.qty)}</span><button type="button" class="icon-btn" data-act="posDel" data-i="${i}" aria-label="Remove ${esc(l.name)}">✕</button></div>`).join('') : '<p class="muted small" style="padding:10px 0">No items yet. Tap a service or product.</p>'}</div>
         <p class="muted small">For “from” prices, change the amount with the price field after adding.</p>
@@ -505,7 +518,7 @@ function vCheckout() {
           ${field('Discount (' + cur() + ')', `<input id="pos-disc" data-bind="pos.discount" data-live inputmode="decimal" value="${esc(p.discount)}" placeholder="0">`, 'pos-disc')}
           ${field('Tip for barber (' + cur() + ')', `<input id="pos-tip" data-bind="pos.tip" data-live inputmode="decimal" value="${esc(p.tip)}" placeholder="0">`, 'pos-tip')}
         </div>
-        <div class="row"><button type="button" class="btn btn-sm" data-act="posDisc" data-v="sc">Senior / PWD 20%</button><button type="button" class="btn btn-sm" data-act="posDisc" data-v="student">Student 10%</button><button type="button" class="btn btn-sm" data-act="posDisc" data-v="free">Loyalty free cut</button>${p.discountNote ? `<span class="muted small">${esc(p.discountNote)}</span>` : ''}</div>
+        <div class="row"><button type="button" class="btn btn-sm" data-act="posDisc" data-v="sc">Senior / PWD 20%</button><button type="button" class="btn btn-sm" data-act="posDisc" data-v="student">Student 10%</button><button type="button" class="btn btn-sm" data-act="posDisc" data-v="free">Loyalty free cut</button>${posBday(p) !== null ? `<button type="button" class="btn btn-sm" data-act="posDisc" data-v="bday">Birthday free cut</button>` : ''}${p.discountNote ? `<span class="muted small">${esc(p.discountNote)}</span>` : ''}</div>
         <div class="totals">
           <div><span>Services</span><span>${money(T.svc, 1)}</span></div>
           ${T.prod ? `<div><span>Products</span><span>${money(T.prod, 1)}</span></div>` : ''}
@@ -719,12 +732,15 @@ function vClients() {
   list.sort(sorts[S.clientSort] || sorts.recent);
   const lapsed = S.customers.filter(c => st[c.id] && st[c.id].last && st[c.id].last < addDays(today(), -45)).length;
   const due = dueForTrim(st);
+  const bdays = S.customers.map(c => ({ c, n: bdayDays(c.birthday, today()) })).filter(x => x.n !== null && x.n >= -1 && x.n <= 14).sort((a, b) => a.n - b.n);
   return `${pageHead(`${S.customers.length} clients`, 'Clients', `<button class="btn btn-primary" data-act="newClient">+ Client</button>`)}
   <section class="kpis">
     ${kpi('Clients on file', S.customers.length)}
     ${kpi('New this month', S.customers.filter(c => c.createdAt && ymd(new Date(c.createdAt)) >= periodRange('month')[0]).length)}
     ${kpi('Haven’t been back in 45+ days', lapsed, '<span class="d">Worth a message</span>')}
   </section>
+  ${bdays.length ? `<section class="panel"><div class="panel-h"><h2>Birthdays coming up</h2><span class="muted small">Next 2 weeks. Their birthday haircut is free.</span></div>
+    <ul class="list">${bdays.map(({ c, n }) => `<li class="click" data-act="openClient" data-id="${esc(c.id)}" tabindex="0"><span class="avatar">${esc(initials(c.name))}</span><div class="grow"><b>${esc(c.name)}</b><div class="sub">${esc(fmtBday(c.birthday))} · ${esc(c.phone || 'No phone')}</div></div>${n === 0 ? chip({ kind: 'info', icon: '★', label: 'Today' }) : `<span class="muted small">${bdayWhen(n)}</span>`}</li>`).join('')}</ul></section>` : ''}
   ${pol().rebookDays ? `<section class="panel"><div class="panel-h"><h2>Due for a trim</h2><span class="muted small">Last visit ${pol().rebookDays}+ days ago, nothing booked. Texts go out automatically at 10 AM on day ${pol().rebookDays}.</span></div>
     ${due.length ? `<div class="tbl-wrap"><table class="tbl"><tbody>${due.slice(0, 12).map(({ c, last, days }) => { const sent = (c.rebookSentFor || '') >= last; return `<tr><td><div class="row" style="flex-wrap:nowrap"><span class="avatar">${esc(initials(c.name))}</span><div><b>${esc(c.name)}</b><div class="muted small">${esc(c.phone || 'No phone')}</div></div></div></td><td class="num">${days} days since ${shortDate(last)}</td><td>${sent ? chip({ kind: 'good', icon: '✓', label: 'Reminded' }) : c.noReminders ? chip({ kind: 'mute', icon: '–', label: 'Opted out' }) : ''}</td>
       <td><div class="acts">${!sent && !c.noReminders && (c.phone || c.email) ? `<button class="btn btn-sm btn-primary" data-act="remind" data-id="${esc(c.id)}" data-last="${esc(last)}" ${S.reminding === c.id ? 'disabled' : ''}>${S.reminding === c.id ? 'Sending…' : 'Send reminder'}</button>` : ''}<button class="btn btn-sm btn-ghost" data-act="openClient" data-id="${esc(c.id)}">Open</button></div></td></tr>`; }).join('')}</tbody></table></div>` : '<p class="empty">Nobody is due right now.</p>'}</section>` : ''}
@@ -1042,7 +1058,8 @@ function apptModal(a, mode) {
   const c = a || {}, walk = mode === 'walkin' || c.source === 'walk-in', d = c.deposit || {};
   openModal(a ? 'Edit visit' : walk ? 'Add walk-in' : 'New booking', `<form class="stack" data-form="appt" data-id="${esc(c.id || '')}" data-mode="${mode}">
     ${c.status === 'needs_attention' ? '<p class="hint"><b>This client paid but lost the slot.</b> Pick a new time, set the status to Booked and save. Or refund the deposit in PayMongo and mark it refunded below.</p>' : ''}
-    <div class="fgrid">${field('Client name', `<input id="m-name" name="name" list="cust-list" value="${esc(c.name || '')}" autocomplete="off" ${walk ? 'placeholder="Walk-in"' : 'required'}>`, 'm-name')}${field('Phone', `<input id="m-phone" name="phone" inputmode="tel" value="${esc(c.phone || '')}">`, 'm-phone')}</div>
+    <div class="fgrid">${field('Client name', `<input id="m-name" name="name" list="cust-list" value="${esc(c.name || '')}" autocomplete="off" required placeholder="${walk ? 'Saved as a client' : ''}">`, 'm-name')}${field('Phone', `<input id="m-phone" name="phone" inputmode="tel" value="${esc(c.phone || '')}" placeholder="Optional">`, 'm-phone')}</div>
+    ${bdayField(c.birthday || (a ? (custOf(c) || {}).birthday : ''))}
     <fieldset class="field"><legend>Services</legend>${svcChecks(c.serviceIds)}</fieldset>
     <div class="fgrid${walk ? '' : ' three'}">${field('Barber', barberSelect('barberId', c.barberId, 'Any barber'), 'm-barberId')}
       ${walk ? '' : field('Date', `<input type="date" id="m-date" name="date" value="${esc(c.date || S.schedDate || today())}" required>`, 'm-date') + field('Time', `<input type="time" id="m-time" name="time" value="${esc(c.time || '')}" step="1800" required>`, 'm-time')}</div>
@@ -1134,6 +1151,7 @@ function clientModal(c) {
   const x = c || {};
   openModal(c ? 'Edit client' : 'Add client', `<form class="stack" data-form="client" data-id="${esc(x.id || '')}">
     <div class="fgrid">${field('Name', `<input id="m-cname" name="name" value="${esc(x.name || '')}" required>`, 'm-cname')}${field('Phone', `<input id="m-cphone" name="phone" inputmode="tel" value="${esc(x.phone || '')}">`, 'm-cphone')}</div>
+    ${bdayField(x.birthday)}
     ${field('Notes', `<textarea id="m-cnotes" name="notes" rows="3" placeholder="Usual cut, guard number, preferences">${esc(x.notes || '')}</textarea>`, 'm-cnotes')}
     <label class="row small"><input type="checkbox" name="noReminders" ${x.noReminders ? 'checked' : ''}> Don’t send this client “time for a trim” texts</label>
     <p class="err" id="m-err" hidden></p>${mFoot(c ? 'Save changes' : 'Add client', c ? `<button type="button" class="btn btn-danger" data-act="delClient" data-id="${esc(x.id)}" style="margin-right:auto">Delete</button>` : '')}</form>`);
@@ -1145,6 +1163,7 @@ function clientDrawer(c) {
   openModal(c.name, `<div class="stack">
     <div class="kpis">${kpi('Visits', st.visits)}${kpi('Spent', money(st.spent))}${kpi('Last visit', st.last ? shortDate(st.last) : '—')}</div>
     <p class="row"><b>${esc(c.phone || 'No phone')}</b>${c.email ? `<span class="muted">${esc(c.email)}</span>` : ''}${usualBarber(st) ? `<span class="muted">· Usually with ${esc(usualBarber(st))}</span>` : ''}</p>
+    ${c.birthday ? (n => `<p class="${Math.abs(n) <= 7 ? 'hint' : 'muted small'}">Birthday: <b>${esc(fmtBday(c.birthday))}</b>${Math.abs(n) <= 7 ? ` · ${bdayWhen(n)}. Their birthday haircut is free.` : ''}</p>`)(bdayDays(c.birthday, today())) : ''}
     ${N ? `<p class="hint">${(st.visits + 1) % N === 0 ? `<b>Next visit is free</b> (visit #${st.visits + 1}).` : `${N - ((st.visits + 1) % N)} more visit${N - ((st.visits + 1) % N) === 1 ? '' : 's'} after the next one to a free cut.`}</p>` : ''}
     ${next ? `<p class="note">Next booking: <b>${fmtDate(next.date)} at ${fmtTime(next.time)}</b> with ${esc(staffName(next.barberId))}</p>` : ''}
     ${c.notes ? `<div class="note">${esc(c.notes)}</div>` : ''}
@@ -1298,7 +1317,7 @@ const ACT = {
     const p = S.pos, T = posTotals(p), v = el.dataset.v;
     if (v === 'sc') { p.discount = String(round2(T.sub * 0.2)); p.discountNote = 'Senior / PWD 20%'; }
     if (v === 'student') { p.discount = String(round2(T.sub * 0.1)); p.discountNote = 'Student 10%'; }
-    if (v === 'free') { p.discount = String(Math.max(0, ...p.lines.filter(l => l.kind === 'service').map(l => l.price))); p.discountNote = 'Loyalty free cut'; }
+    if (v === 'free' || v === 'bday') { p.discount = String(Math.max(0, ...p.lines.filter(l => l.kind === 'service').map(l => l.price))); p.discountNote = v === 'bday' ? 'Birthday free cut' : 'Loyalty free cut'; }
     render();
   },
   posClear() { S.pos = blankPos(); render(); },
@@ -1308,7 +1327,7 @@ const ACT = {
     S.busy = true; el.disabled = true;
     try {
       const appt = p.apptId ? S.appointments.find(a => a.id === p.apptId) : null;
-      const customerId = (appt && appt.customerId) || await ensureCustomer(p.name, p.phone, appt && appt.email, p.save);
+      const customerId = await ensureCustomer(p.name, p.phone, appt && appt.email, p.save || !!(appt && appt.birthday), appt && appt.birthday) || (appt && appt.customerId) || '';
       const b = staffById(p.barberId), rate = Number(b && b.rate) || 0;
       const { commission, fees: productFees } = commissionFor(b, p.lines, T.disc, svcById); // product fee first, then the split, rounded down
       const id = newId();
@@ -1461,10 +1480,13 @@ const FORM = {
   async appt(f) {
     const fd = new FormData(f), mode = f.dataset.mode, id = f.dataset.id || newId();
     const name = String(fd.get('name') || '').trim(), phone = String(fd.get('phone') || '').trim(), svc = fd.getAll('svc');
-    if (mode !== 'walkin' && !name) return modalErr(f, 'Enter the client’s name.');
+    if (!name || name.toLowerCase() === 'walk-in') return modalErr(f, mode === 'walkin' ? 'Enter the walk-in’s name. They’re saved as a client so their visits count.' : 'Enter the client’s name.');
+    const birthday = bdayFrom(fd);
+    if ((fd.get('bm') ? 1 : 0) + (fd.get('bd') ? 1 : 0) === 1) return modalErr(f, 'Pick both the birthday month and day, or leave both empty.');
     if (!svc.length) return modalErr(f, 'Pick at least one service.');
-    const cust = matchCustomer(name, phone);
-    const base = { name: name || 'Walk-in', phone, serviceIds: svc, mins: svcMins(svc), barberId: String(fd.get('barberId') || ''), notes: String(fd.get('notes') || '').trim(), customerId: cust ? cust.id : '' };
+    const custId = mode === 'edit' ? ((S.appointments.find(x => x.id === id) || {}).customerId || (matchCustomer(name, phone) || {}).id || '') : await ensureCustomer(name, phone, '', true, birthday);
+    if (mode === 'edit' && custId && birthday) await patch('customers', custId, { birthday });
+    const base = { name, phone, ...(birthday ? { birthday } : {}), serviceIds: svc, mins: svcMins(svc), barberId: String(fd.get('barberId') || ''), notes: String(fd.get('notes') || '').trim(), customerId: custId || '' };
     if (fd.has('date')) { const t = String(fd.get('time')); if (t && toMin(t) % pol().step !== 0) return modalErr(f, `Use a time on the ${pol().step}-minute mark, like 2:00 or 2:30.`); }
     let ok;
     if (mode === 'walkin') {
@@ -1513,7 +1535,8 @@ const FORM = {
   async client(f) {
     const fd = new FormData(f), name = String(fd.get('name') || '').trim();
     if (!name) return modalErr(f, 'Enter a name.');
-    const data = { name, phone: String(fd.get('phone') || '').trim(), phoneKey: phoneKey(fd.get('phone')), notes: String(fd.get('notes') || '').trim(), noReminders: fd.has('noReminders') };
+    const data = { name, phone: String(fd.get('phone') || '').trim(), phoneKey: phoneKey(fd.get('phone')), notes: String(fd.get('notes') || '').trim(), noReminders: fd.has('noReminders'), birthday: bdayFrom(fd) };
+    if ((fd.get('bm') ? 1 : 0) + (fd.get('bd') ? 1 : 0) === 1) return modalErr(f, 'Pick both the birthday month and day, or leave both empty.');
     const ok = f.dataset.id ? await patch('customers', f.dataset.id, data) : await put('customers', newId(), { ...data, createdAt: Date.now() });
     if (ok) { closeModal(); toast(f.dataset.id ? 'Client updated' : `${name} added`); }
   },

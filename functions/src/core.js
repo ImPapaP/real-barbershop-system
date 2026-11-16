@@ -257,6 +257,12 @@ export function promoCheck(promo, total, today) {
   if (!off) return { ok: false, error: 'That promo code isn’t valid.' };
   return { ok: true, off, label: promo.kind === 'amount' ? `₱${v} off` : `${v}% off` };
 }
+// Birthday as "MM-DD" (no year). Anything else becomes ''. Feb 29 is allowed.
+export function cleanBday(v) {
+  const m = /^(\d{1,2})-(\d{1,2})$/.exec(String(v || '').trim()); if (!m) return '';
+  const mo = +m[1], d = +m[2], max = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1];
+  return max && d >= 1 && d <= max ? `${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}` : '';
+}
 export const cleanCode = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20);
 // Payment screenshots are stored as small JPEG data URLs (no Firebase Storage needed).
 export const validProofImage = s => typeof s === 'string' && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(s) && s.length < 900000;
