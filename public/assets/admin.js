@@ -4,7 +4,7 @@ import { db, demo, demoBar, resetDemo, login, logout, resetPassword, onAuth, upl
 import { buildXlsx, xlDate, xlTime, colName } from './xlsx.js';
 import { qrSvg } from './qr.js';
 import { drawBanner, bannerBlob } from './banner.js';
-import { bdaySelects, cleanBday, fmtBday, bdayDays, BDAY_TITLE, esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, DEFAULT_POLICY, startMs, canServe, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE, defaultFaq, cleanCode } from './shared.js';
+import { withOption, lateLimit, hasDeposit, bdaySelects, cleanBday, fmtBday, bdayDays, BDAY_TITLE, esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, DEFAULT_POLICY, startMs, canServe, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE, defaultFaq, cleanCode } from './shared.js';
 
 // ---------- constants ----------
 const METHODS = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer'];
@@ -62,7 +62,7 @@ const opt = (v, l, sel) => `<option value="${esc(v)}"${sel ? ' selected' : ''}>$
 const services = () => info().services || [];
 const activeServices = () => services().filter(s => s.active !== false);
 const svcById = id => services().find(s => s.id === id);
-const svcNames = ids => (ids || []).map(id => svcById(id)?.name || 'Removed service').join(', ');
+const svcNames = (ids, opts) => (ids || []).map(id => { const v = svcById(id); return v ? withOption(v, opts).name : 'Removed service'; }).join(', ');
 const svcMins = ids => sum((ids || []).map(svcById).filter(Boolean), s => s.mins || pol().step) || pol().step;
 const staffAll = () => S.staff;
 const activeStaff = () => staffAll().filter(b => b.active !== false).sort((a, b) => (a.chair || 99) - (b.chair || 99) || a.name.localeCompare(b.name));
@@ -88,22 +88,26 @@ function proofsPanel(compact) {
       return `<article class="proof">
         <button type="button" class="proof-img" data-act="viewProof" data-id="${esc(a.id)}" aria-label="View screenshot from ${esc(a.name)}">${img && img !== 'none' ? `<img src="${esc(img)}" alt="">` : img === 'none' ? '<span class="muted small">No image</span>' : '<span class="spinner"></span>'}</button>
         <div class="grow"><b>${esc(a.name)}</b> <span class="muted small">${esc(a.phone || '')}</span>
-          <div class="sub">${fmtDate(a.date)} · ${fmtTime(a.time)} · ${esc(svcNames(a.serviceIds))} · ${esc(staffName(a.barberId))}${ppl > 1 ? ` · +${ppl - 1} more person` : ''}</div>
+          <div class="sub">${fmtDate(a.date)} · ${fmtTime(a.time)} · ${esc(svcNames(a.serviceIds, a.options))} · ${esc(staffName(a.barberId))}${ppl > 1 ? ` · +${ppl - 1} more person` : ''}</div>
           <div class="proof-meta"><span>Expect <b>${money(amt)}</b></span>${a.proof.ref ? `<span>Ref. <b>${esc(a.proof.ref)}</b></span>` : ''}<span class="muted">Sent ${ago(a.proof.at)}</span></div>
           <div class="acts"><button class="btn btn-sm btn-primary" data-act="approveProof" data-id="${esc(a.id)}">Approve</button><button class="btn btn-sm btn-danger" data-act="rejectProof" data-id="${esc(a.id)}">Reject</button>${compact ? '' : `<button class="btn btn-sm btn-ghost" data-act="viewProof" data-id="${esc(a.id)}">View</button>`}</div></div>
       </article>`; }).join('')}</div></section>`;
 }
 const ago = t => { const m = Math.max(0, Math.round((Date.now() - t) / 60000)); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} hr ago` : `${Math.round(m / 1440)} days ago`; };
 // 5-minute rule: a booked client who hasn't arrived this many minutes after their time can lose the slot to a walk-in
-const isLateNow = a => a.status === 'booked' && a.source !== 'walk-in' && a.date === today() && a.time && Date.now() >= startMs(a.date, a.time) + pol().lateMinutes * 60e3;
+// Late after the grace period for this booking: 5 min for junior barbers (no down payment), 20 min for seniors
+const minsLate = a => Math.round((Date.now() - startMs(a.date, a.time)) / 60000);
+const isLateNow = a => a.status === 'booked' && a.source !== 'walk-in' && a.date === today() && a.time && Date.now() >= startMs(a.date, a.time) + lateLimit(a, pol()) * 60e3;
+const owesLateFee = a => isLateNow(a) && hasDeposit(a);
 const waitingWalkins = () => S.appointments.filter(x => x.source === 'walk-in' && x.status === 'waiting' && x.date === today()).sort((x, y) => (x.queueNo || 0) - (y.queueNo || 0));
-const lateChip = a => isLateNow(a) ? ' ' + chip({ kind: 'bad', icon: '⏱', label: `${Math.round((Date.now() - startMs(a.date, a.time)) / 60000)} min late` }) : a.late && a.date === today() && ['booked', 'waiting'].includes(a.status) ? ' ' + chip({ kind: 'warn', icon: '⏱', label: `${a.late.mins} min late` }) : '';
+const lateChip = a => isLateNow(a) ? ' ' + chip({ kind: 'bad', icon: '⏱', label: `${minsLate(a)} min late${hasDeposit(a) ? ' · full price owed' : ''}` }) : a.late && a.date === today() && ['booked', 'waiting'].includes(a.status) ? ' ' + chip({ kind: 'warn', icon: '⏱', label: `${a.late.mins} min late` }) : '';
 function depositChip(a) {
   const d = a.deposit || {};
   if (a.status === 'pending_payment' && a.payMethod === 'gcash') return a.proof && a.proof.status === 'review' ? chip({ kind: 'warn', icon: '!', label: 'GCash screenshot to check' }) : chip({ kind: 'mute', icon: '◷', label: 'Waiting for GCash' });
   if (d.status === 'paid') return chip({ kind: 'good', icon: '✓', label: `${money(d.amount)} ${methodName(d.method)}` });
   if (d.status === 'kept') return chip({ kind: 'mute', icon: '•', label: `${money(d.amount)} kept` });
   if (d.status === 'refunded') return chip({ kind: 'mute', icon: '↩', label: 'Refunded' });
+  if (d.status === 'refund_due') return `${chip({ kind: 'warn', icon: '↩', label: `Send back ${money(d.amount)}` })} <button type="button" class="link-btn small" data-act="markRefunded" data-id="${esc(a.id)}">Mark refunded</button>`;
   if (d.status === 'none' && a.source === 'online') return chip({ kind: 'mute', icon: '–', label: 'No down payment' });
   return '';
 }
@@ -220,9 +224,10 @@ let payCache = { ref: null };
 function payIndex() {
   if (payCache.ref === S.sales && payCache.att === S.attendance) return payCache;
   const saleDays = new Set(S.sales.map(x => `${x.date}_${x.barberId}`));
+  const commDay = new Map(); S.sales.forEach(x => { const k = `${x.date}_${x.barberId}`; commDay.set(k, (commDay.get(k) || 0) + (Number(x.commission) || 0)); });
   const first = S.sales.reduce((m, x) => (!m || x.date < m ? x.date : m), '') || today();
   const marks = new Map(S.attendance.map(a => [a.id, a.present]));
-  return (payCache = { ref: S.sales, att: S.attendance, saleDays, first, marks });
+  return (payCache = { ref: S.sales, att: S.attendance, saleDays, first, marks, commDay });
 }
 const payStart = b => { const f = payIndex().first; return b.since && b.since > f ? b.since : f; };
 const scheduledIn = (b, d) => (b.days || []).includes(parseYmd(d).getDay()) && b.active !== false && d >= payStart(b);
@@ -233,30 +238,67 @@ function workedOn(b, d) {
   const m = P.marks.get(`${d}_${b.id}`);
   return m === undefined ? scheduledIn(b, d) : m;
 }
+// ---------- pay plans ----------
+// How each person is paid (Staff → Edit → How they're paid):
+//  daily   – daily pay for each day worked + commission on their services      (barbers; Airyl ₱700 + 70% of braids)
+//  quota   – a daily minimum OR their commission, whichever is higher; on a slow day the shop tops up to the minimum
+//            (Luz and Liza: ₱500 or 40%. ₱2,000 of services → ₱800. ₱320 → ₱128 commission + ₱372 from the shop = ₱500)
+//  monthly – a fixed monthly salary, spread over the days of the month         (Alex: ₱20,000 a month)
+// On top of any plan: half of a forfeited down payment goes to the barber of that booking (late cancel / over 20 min late).
+const payType = b => ['quota', 'monthly'].includes(b.payType) ? b.payType : 'daily';
+const monthDays = d => new Date(+d.slice(0, 4), +d.slice(5, 7), 0).getDate();
+const commOn = (b, d) => payIndex().commDay.get(`${d}_${b.id}`) || 0;
+// What the shop pays on day d besides commission
+function basePayFor(b, d) {
+  const t = payType(b), amt = Number(b.dailyPay) || 0;
+  if (t === 'monthly') return d <= today() && d >= payStart(b) && b.active !== false ? round2((Number(b.monthlyPay) || 0) / monthDays(d)) : 0;
+  if (!workedOn(b, d)) return 0;
+  return t === 'quota' ? round2(Math.max(0, amt - commOn(b, d))) : amt;
+}
+const DEPOSIT_SHARE = 0.5; // barber's half of a forfeited down payment
+const keptFor = (b, r) => S.appointments.filter(a => a.barberId === b.id && inR(a.date, r) && a.deposit && a.deposit.status === 'kept');
+// Plain-words pay rule, used on the Staff page, the edit form and exports
+function payRule(b) {
+  const t = payType(b), rate = Number(b.rate) || 0, amt = Number(b.dailyPay) || 0, of = isServiceStaff(b) ? ' of their services' : '';
+  if (t === 'monthly') return `${money(Number(b.monthlyPay) || 0)} a month${rate ? ` + ${rate}%${of}` : ''}`;
+  if (t === 'quota') return `${money(amt)} a day minimum, or ${rate}%${of} if that’s more`;
+  return `${money(amt)} a day${rate ? ` + ${rate}%${of}` : ''}`;
+}
+function payExample(b) {
+  const t = payType(b), rate = Number(b.rate) || 0, amt = Number(b.dailyPay) || 0, c = v => Math.floor(v * rate / 100);
+  if (t === 'monthly') return `About ${money(round2((Number(b.monthlyPay) || 0) / 30))} a day, paid whether or not there are clients.`;
+  if (t === 'quota') { const hi = amt && rate ? Math.ceil(amt * 100 / rate / 1000) * 1000 : 2000, lo = Math.round(hi * 0.16 / 10) * 10 || 320; // ₱500 / 40% → the owner's own examples: ₱2,000 and ₱320
+    return rate ? `Services of ${money(hi)} → ${money(c(hi))} (${rate}%). Services of ${money(lo)} → ${money(c(lo))} commission + ${money(Math.max(0, amt - c(lo)))} from the shop = ${money(Math.max(amt, c(lo)))}.` : `Always ${money(amt)} a day worked.`; }
+  return rate ? `A day with ${money(1000)} of services → ${money(amt)} + ${money(c(1000))} = ${money(amt + c(1000))}.` : `${money(amt)} for every day worked.`;
+}
 function daysIn(r) { const out = [], end = r[1] < today() ? r[1] : today(); for (let d = r[0]; d <= end; d = addDays(d, 1)) out.push(d); return out; }
 function payFor(b, r) {
   const x = S.sales.filter(v => v.barberId === b.id && inR(v.date, r));
-  const worked = daysIn(r).filter(d => workedOn(b, d)), days = worked.length, daily = Number(b.dailyPay) || 0;
-  const comm = round2(sum(x, v => v.commission)), tips = sum(x, v => v.tip), base = days * daily;
+  const t = payType(b), worked = daysIn(r).filter(d => t === 'monthly' ? basePayFor(b, d) > 0 : workedOn(b, d)), days = worked.length;
+  const comm = round2(sum(x, v => v.commission)), tips = sum(x, v => v.tip), base = round2(sum(worked, d => basePayFor(b, d)));
+  const daily = t === 'monthly' ? (days ? round2(base / days) : 0) : Number(b.dailyPay) || 0;
+  const topUps = t === 'quota' ? worked.filter(d => basePayFor(b, d) > 0).length : 0;
+  const dep = round2(sum(keptFor(b, r), a => (a.deposit.amount || 0) * DEPOSIT_SHARE));
   const svcOf = v => Math.max(0, (v.svcTotal || 0) - (v.discount || 0)), svc = sum(x, svcOf);
   // Does he earn his keep? The shop's share of his services (100% − his rate) has to cover his daily pay.
   const keepRate = Math.max(0, 1 - (Number(b.rate) || 0) / 100), share = round2(svc - comm);
   const need = keepRate ? daily / keepRate : 0; // services needed per day to cover the daily pay
   const covered = worked.filter(d => sum(x.filter(v => v.date === d), svcOf) * keepRate >= daily - 0.005).length;
-  return { x, days, daily, base, comm, tips, svc, share, need, covered, net: round2(share - base), fills: round2(Math.max(0, base - share)),
-    perDay: days ? svc / days : 0, pay: round2(base + comm), total: round2(base + comm + tips) };
+  return { x, t, days, daily, base, comm, dep, topUps, tips, svc, share, need, covered, net: round2(share - base), fills: round2(Math.max(0, base - share)),
+    perDay: days ? svc / days : 0, pay: round2(base + comm + dep), total: round2(base + comm + dep + tips) };
 }
-const basePayOn = d => sum(staffAll(), b => workedOn(b, d) ? Number(b.dailyPay) || 0 : 0);
+const basePayOn = d => sum(staffAll(), b => basePayFor(b, d));
 function summary(r) {
   const sales = S.sales.filter(s => inR(s.date, r)), exps = S.expenses.filter(e => inR(e.date, r));
   const kept = S.appointments.filter(a => inR(a.date, r) && a.deposit && a.deposit.status === 'kept');
   const keptAmt = sum(kept, a => a.deposit.amount);
   const net = sum(sales, netOf), comm = sum(sales, s => s.commission), exp = sum(exps, e => e.amount);
-  const base = sum(daysIn(r), basePayOn), staffPay = round2(comm + base);
+  const depShare = round2(sum(kept.filter(a => a.barberId), a => (a.deposit.amount || 0) * DEPOSIT_SHARE));
+  const base = sum(daysIn(r), basePayOn), staffPay = round2(comm + base + depShare);
   return {
     sales, exps, kept, keptAmt, net, comm, base, staffPay, exp, tips: sum(sales, s => s.tip), disc: sum(sales, s => s.discount),
     svc: sum(sales, s => s.svcTotal), prod: sum(sales, s => s.prodTotal), deposits: sum(sales, s => s.depositCredit),
-    income: net + keptAmt, profit: round2(net + keptAmt - comm - base - exp), count: sales.length, avg: sales.length ? net / sales.length : 0
+    depShare, income: net + keptAmt, profit: round2(net + keptAmt - comm - base - depShare - exp), count: sales.length, avg: sales.length ? net / sales.length : 0
   };
 }
 function rangeLabel(r) { return r[0] === r[1] ? fmtDate(r[0], true) : `${fmtDate(r[0])} – ${fmtDate(r[1], true)}`; }
@@ -313,6 +355,7 @@ async function ensureCustomer(name, phone, email, save, birthday) {
   const id = newId();
   return await put('customers', id, { name: name.trim(), phone: String(phone || '').trim(), phoneKey: phoneKey(phone), email: email || '', notes: '', ...(bd ? { birthday: bd } : {}), createdAt: Date.now() }) ? id : '';
 }
+const bdayPromoText = () => { const sv = svcById(pol().birthdaySvc || 'h8'); return sv ? `Birthday promo: ${sv.name} for ${money(pol().birthdayPrice || 0)} (usually ${money(sv.price)}).` : 'Birthday promo.'; };
 // Birthdays: the client's (or the one given on the booking) and how close it is
 const custOf = a => (a.customerId && S.customers.find(c => c.id === a.customerId)) || matchCustomer(a.name, a.phone);
 const bdayFor = a => cleanBday(a.birthday) || cleanBday((custOf(a) || {}).birthday);
@@ -337,15 +380,16 @@ function freeBarbersFor(a) {
 const assignSelect = a => { const free = freeBarbersFor(a); return `<select class="assign-sel" data-change="assignBarber" data-id="${esc(a.id)}" aria-label="Assign a barber for ${esc(a.name || '')}"><option value="">Assign barber…</option>${free.map(b => opt(b.id, b.name + (b.id === a.barberId ? ' (chair held)' : ''), false)).join('')}${free.length ? '' : '<option value="" disabled>No one free at this time</option>'}</select>`; };
 function apptRow(a, compact) {
   const canCheckout = ['booked', 'waiting', 'inchair'].includes(a.status);
-  const giveAway = isLateNow(a) && waitingWalkins().length ? `<button class="btn btn-sm btn-danger" data-act="giveSlot" data-id="${esc(a.id)}">Give slot to walk-in</button>` : '';
+  const giveAway = (isLateNow(a) && waitingWalkins().length ? `<button class="btn btn-sm btn-danger" data-act="giveSlot" data-id="${esc(a.id)}">Give slot to walk-in</button>` : '')
+    + (owesLateFee(a) ? `<button class="btn btn-sm" data-act="lateFee" data-id="${esc(a.id)}" title="Over ${lateLimit(a, pol())} min late: down payment kept, full price owed">Collect late fee</button>` : '');
   const actions = `${giveAway}${canCheckout ? `<button class="btn btn-sm btn-primary" data-act="checkoutAppt" data-id="${esc(a.id)}">Checkout</button>` : ''}${a.status === 'done' && a.saleId ? `<button class="btn btn-sm" data-act="showSale" data-id="${esc(a.saleId)}">Receipt</button>` : ''}`;
   const flag = a.conflict && ['booked', 'pending_payment'].includes(a.status) ? ' ' + chip({ kind: 'bad', icon: '!', label: 'Overlaps another booking' }) : '';
-  if (compact) return `<li>${a.barberId ? av(staffById(a.barberId)) : ''}<span class="t">${a.source === 'walk-in' ? `#${esc(a.queueNo || '')}` : fmtTime(a.time)}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${lateChip(a)}${bdayChip(a)}${refChip(a)}<div class="sub">${esc(svcNames(a.serviceIds))} · ${needsBarber(a) ? '<b class="needs-b">Any barber, assign one</b>' : esc(staffName(a.barberId))}</div></div>${chip(APPT[a.status] || APPT.booked)}</li>`;
+  if (compact) return `<li>${a.barberId ? av(staffById(a.barberId)) : ''}<span class="t">${a.source === 'walk-in' ? `#${esc(a.queueNo || '')}` : fmtTime(a.time)}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${lateChip(a)}${bdayChip(a)}${refChip(a)}<div class="sub">${esc(svcNames(a.serviceIds, a.options))} · ${needsBarber(a) ? '<b class="needs-b">Any barber, assign one</b>' : esc(staffName(a.barberId))}</div></div>${chip(APPT[a.status] || APPT.booked)}</li>`;
   const choices = STATUS_CHOICES.includes(a.status) ? STATUS_CHOICES : [a.status, ...STATUS_CHOICES];
   return `<tr>
     <td class="num nowrap"><b>${a.source === 'walk-in' ? `Walk-in #${esc(a.queueNo || '')}` : fmtTime(a.time)}</b>${a.source === 'walk-in' ? `<div class="muted small">arrived ${fmtTime(a.time)}</div>` : ''}</td>
     <td><b>${esc(a.name || 'Walk-in')}</b>${a.code ? ` <span class="muted small">${esc(a.code)}</span>` : ''}${lateChip(a)}${bdayChip(a)}${refChip(a)}${a.promo ? ' ' + chip({ kind: 'info', icon: '%', label: `${a.promo.code} −${money(a.promo.off)}` }) : ''}${a.phone ? `<div class="muted small">${esc(a.phone)}</div>` : ''}</td>
-    <td>${esc(svcNames(a.serviceIds))}${a.notes ? `<div class="muted small">${esc(a.notes)}</div>` : ''}${flag}</td>
+    <td>${esc(svcNames(a.serviceIds, a.options))}${a.notes ? `<div class="muted small">${esc(a.notes)}</div>` : ''}${flag}</td>
     <td>${needsBarber(a) ? `<div class="assign"><span class="chip chip-warn"><b aria-hidden="true">?</b>Any barber</span>${assignSelect(a)}</div>` : esc(staffName(a.barberId))}</td>
     <td><span class="muted small">${a.source === 'online' ? 'Online' : a.source === 'walk-in' ? 'Walk-in' : 'Phone / in person'}</span><div>${depositChip(a)}</div></td>
     <td><select data-change="apptStatus" data-id="${esc(a.id)}" aria-label="Status for ${esc(a.name || 'walk-in')}">${choices.map(k => opt(k, (APPT[k] || APPT.booked).label, k === a.status)).join('')}</select></td>
@@ -394,7 +438,7 @@ function vOverview() {
     <section class="panel"><div class="panel-h"><h2>Needs attention</h2></div>
       <ul class="list">
         ${issues.map(a => `<li><span class="grow"><b>${esc(a.name)}</b><span class="sub" style="display:block">${a.status === 'needs_attention' ? 'Paid deposit but the slot was taken. Call to rebook or refund.' : 'Booking overlaps another one'} · ${fmtDate(a.date)} ${fmtTime(a.time)}</span></span><button class="btn btn-sm" data-act="editAppt" data-id="${esc(a.id)}">Open</button></li>`).join('')}
-        ${S.appointments.filter(a => needsBarber(a) && a.date >= today()).sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time)).slice(0, 5).map(a => `<li><span class="grow"><b>${esc(a.name)}</b><span class="sub" style="display:block">Booked “any barber” · ${fmtDate(a.date)} ${fmtTime(a.time)} · ${esc(svcNames(a.serviceIds))}</span></span>${assignSelect(a)}</li>`).join('')}
+        ${S.appointments.filter(a => needsBarber(a) && a.date >= today()).sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time)).slice(0, 5).map(a => `<li><span class="grow"><b>${esc(a.name)}</b><span class="sub" style="display:block">Booked “any barber” · ${fmtDate(a.date)} ${fmtTime(a.time)} · ${esc(svcNames(a.serviceIds, a.options))}</span></span>${assignSelect(a)}</li>`).join('')}
         ${lates.map(a => `<li><span class="grow"><b>${esc(a.name)}</b><span class="sub" style="display:block">Running ${a.late.mins} min late for ${fmtTime(a.time)} with ${esc(staffName(a.barberId))} · told us ${ago(a.late.at)}</span></span>${chip({ kind: 'warn', icon: '⏱', label: 'Late' })}</li>`).join('')}
         ${low.slice(0, 4).map(i => `<li><span class="grow"><b>${esc(i.name)}</b><span class="sub" style="display:block">${i.stock} ${esc(i.unit || 'left')} · reorder at ${i.reorder}</span></span>${chip(i.stock <= 0 ? { kind: 'bad', icon: '✕', label: 'Out' } : { kind: 'warn', icon: '!', label: 'Low' })}</li>`).join('')}
         ${!issues.length && !low.length && !lates.length && !S.appointments.some(a => needsBarber(a) && a.date >= today()) ? '<li class="muted">All clear. No booking problems and nothing to restock.</li>' : ''}
@@ -425,7 +469,7 @@ function vSchedule() {
   const srcOf = a => a.source === 'online' ? 'online' : a.source === 'walk-in' ? 'walkin' : 'phone';
   const byBarber = a => !S.schedBarber || a.barberId === S.schedBarber || (!a.barberId && S.schedBarber === '__any');
   const bySrc = a => !S.schedSrc || srcOf(a) === S.schedSrc;
-  const byQ = a => !q || (a.name || '').toLowerCase().includes(q) || (a.code || '').toLowerCase().includes(q) || (qd.length >= 3 && normPhone(a.phone).includes(qd)) || svcNames(a.serviceIds).toLowerCase().includes(q);
+  const byQ = a => !q || (a.name || '').toLowerCase().includes(q) || (a.code || '').toLowerCase().includes(q) || (qd.length >= 3 && normPhone(a.phone).includes(qd)) || svcNames(a.serviceIds, a.options).toLowerCase().includes(q);
   const STATUS_F = [['', 'All', () => true], ['booked', 'Booked', a => a.status === 'booked' || a.status === 'pending_payment'], ['assign', 'Needs a barber', a => needsBarber(a)], ['late', 'Running late', a => isLateNow(a)], ['waiting', 'Waiting', a => a.status === 'waiting'], ['inchair', 'In chair', a => a.status === 'inchair'],
     ['done', 'Done', a => a.status === 'done'], ['unpaid', 'Done, no payment', a => a.status === 'done' && !a.saleId], ['noshow', 'No-show', a => a.status === 'noshow'], ['cancelled', 'Cancelled', a => a.status === 'cancelled']];
   const pre = base.filter(a => byBarber(a) && bySrc(a) && byQ(a)), sf = STATUS_F.find(x => x[0] === S.schedStatus) || STATUS_F[0];
@@ -441,10 +485,10 @@ function vSchedule() {
   return `${pageHead(isToday ? 'Today' : fmtDate(d, true), 'Schedule', `<button class="btn" data-act="walkinQr">Walk-in QR</button><button class="btn" data-act="newWalkin">+ Walk-in</button><button class="btn btn-primary" data-act="newBooking">+ Booking</button>`)}
   ${proofsPanel()}
   ${issues.length ? `<section class="panel"><div class="panel-h"><h2>Paid, but the slot was taken</h2><span class="muted small">Call these clients to rebook, or refund them in PayMongo</span></div><div class="tbl-wrap"><table class="tbl"><tbody>
-    ${issues.map(a => `<tr><td class="num nowrap"><b>${fmtDate(a.date)}</b><div class="muted small">${fmtTime(a.time)}</div></td><td><b>${esc(a.name)}</b><div class="muted small">${esc(a.phone)} · ${esc(a.email || '')}</div></td><td>${esc(svcNames(a.serviceIds))}</td><td>${depositChip(a)}</td><td><div class="acts"><button class="btn btn-sm btn-primary" data-act="editAppt" data-id="${esc(a.id)}">Rebook</button></div></td></tr>`).join('')}
+    ${issues.map(a => `<tr><td class="num nowrap"><b>${fmtDate(a.date)}</b><div class="muted small">${fmtTime(a.time)}</div></td><td><b>${esc(a.name)}</b><div class="muted small">${esc(a.phone)} · ${esc(a.email || '')}</div></td><td>${esc(svcNames(a.serviceIds, a.options))}</td><td>${depositChip(a)}</td><td><div class="acts"><button class="btn btn-sm btn-primary" data-act="editAppt" data-id="${esc(a.id)}">Rebook</button></div></td></tr>`).join('')}
   </tbody></table></div></section>` : ''}
   ${isToday ? `<section class="panel"><div class="panel-h"><h2>Walk-in queue</h2><span class="muted small">Served in order of arrival</span></div>
-    ${queue.length ? `<ul class="list">${queue.map(a => `<li><span class="qno">#${esc(a.queueNo || '')}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${a.fromQr ? ` ${chip({ kind: 'info', icon: '▦', label: 'Joined by QR' })}` : ''}${refChip(a)}<div class="sub">${a.phone ? esc(a.phone) + ' · ' : ''}${esc(svcNames(a.serviceIds) || 'Not sure yet')} · waiting ${Math.max(0, Math.round((Date.now() - (a.createdAt || Date.now())) / 60000))} min</div></div>
+    ${queue.length ? `<ul class="list">${queue.map(a => `<li><span class="qno">#${esc(a.queueNo || '')}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${a.fromQr ? ` ${chip({ kind: 'info', icon: '▦', label: 'Joined by QR' })}` : ''}${refChip(a)}<div class="sub">${a.phone ? esc(a.phone) + ' · ' : ''}${esc(svcNames(a.serviceIds, a.options) || 'Not sure yet')} · waiting ${Math.max(0, Math.round((Date.now() - (a.createdAt || Date.now())) / 60000))} min</div></div>
       <select data-change="apptBarber" data-id="${esc(a.id)}" aria-label="Barber for #${esc(a.queueNo || '')}" style="width:auto">${opt('', 'Any barber', !a.barberId)}${serviceStaff().map(b => opt(b.id, b.name, b.id === a.barberId)).join('')}</select>
       <button class="btn btn-sm btn-primary" data-act="startAppt" data-id="${esc(a.id)}">Start</button></li>`).join('')}</ul>` : '<p class="empty">Nobody waiting. Add a walk-in when someone arrives.</p>'}</section>` : ''}
   ${whosIn(d)}
@@ -494,7 +538,7 @@ function dayCheck(d) {
       <div class="dc-box"><h3>Bookings</h3><div class="totals">${row('Booked', booked.length)}${row('Served and paid', booked.filter(a => paid.includes(a)).length)}${row('Missed or cancelled', booked.filter(a => ['noshow', 'cancelled'].includes(a.status)).length)}${row('Still to come', booked.filter(a => a.status === 'booked').length)}</div></div>
       <div class="dc-box"><h3>Money in</h3><div class="totals">${byMethod.length ? byMethod.map(([m, v]) => row(m, money(v))).join('') : row('No sales yet', '—')}${row('Total', money(sum(byMethod, x => x[1])), 'tot')}</div><p class="muted small">Down payments made online are not counted again here.</p></div>
     </div>
-    ${flagged.length ? `<h3 class="dc-h">To check</h3><ul class="list">${flagged.map(([a, why]) => `<li><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${a.queueNo ? ` <span class="muted small">#${esc(a.queueNo)}</span>` : ''}<div class="sub">${fmtTime(a.time)} · ${esc(svcNames(a.serviceIds) || 'Service not set')} · ${esc(staffName(a.barberId))} · ${why}</div></div><button class="btn btn-sm btn-primary" data-act="checkoutAppt" data-id="${esc(a.id)}">Ring up payment</button></li>`).join('')}</ul>` : ''}
+    ${flagged.length ? `<h3 class="dc-h">To check</h3><ul class="list">${flagged.map(([a, why]) => `<li><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${a.queueNo ? ` <span class="muted small">#${esc(a.queueNo)}</span>` : ''}<div class="sub">${fmtTime(a.time)} · ${esc(svcNames(a.serviceIds, a.options) || 'Service not set')} · ${esc(staffName(a.barberId))} · ${why}</div></div><button class="btn btn-sm btn-primary" data-act="checkoutAppt" data-id="${esc(a.id)}">Ring up payment</button></li>`).join('')}</ul>` : ''}
     <h3 class="dc-h">Cash drawer</h3>
     <form class="dc-cash" data-form="closing" data-date="${d}">
       <div class="fgrid three">${field('Starting cash (float)', `<input id="cl-float" name="float" inputmode="decimal" value="${esc(c.float ?? '')}" placeholder="0">`, 'cl-float')}${field('Cash counted at closing', `<input id="cl-count" name="counted" inputmode="decimal" value="${esc(c.counted ?? '')}" placeholder="Count the drawer">`, 'cl-count')}${field('Note', `<input id="cl-note" name="note" value="${esc(c.note || '')}" placeholder="e.g. ₱500 change from the bank">`, 'cl-note')}</div>
@@ -550,8 +594,9 @@ function vCheckout() {
           ${field('Client', `<input id="pos-name" data-bind="pos.name" data-live data-cust role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="cust-pop" value="${esc(p.name)}" placeholder="Walk-in" autocomplete="off">`, 'pos-name')}
           ${field('Phone', `<input id="pos-phone" data-bind="pos.phone" data-live value="${esc(p.phone)}" inputmode="tel" placeholder="Optional">`, 'pos-phone')}
         </div>
+        ${p.lateFee ? `<p class="hint"><b>Late fee.</b> More than ${lateLimit(appt || {}, pol())} minutes late for a senior barber: the down payment is kept (half goes to the barber) and the client pays the full price of the service for the barber’s time.</p>` : ''}
         ${appt && appt.refPhoto ? `<button type="button" class="btn btn-sm" data-act="viewRef" data-id="${esc(appt.id)}" style="justify-self:start">See the cut they want (photo)</button>` : ''}
-        ${loyal}${posBday(p) !== null ? `<p class="hint"><b>Birthday ${bdayWhen(posBday(p))}.</b> Their birthday haircut is free. Tap “Birthday free cut” below.</p>` : ''}
+        ${loyal}${posBday(p) !== null ? `<p class="hint"><b>Birthday ${bdayWhen(posBday(p))}.</b> ${esc(bdayPromoText())} Tap “Birthday promo” below.</p>` : ''}
         ${field('Barber', `<select id="pos-barber" data-bind="pos.barberId" data-live>${opt('', 'Choose barber', !p.barberId)}${serviceStaff().map(b => opt(b.id, `${b.name} · ${b.rate || 0}%`, b.id === p.barberId)).join('')}</select>`, 'pos-barber')}
         <div class="lines">${p.lines.length ? p.lines.map((l, i) => `<div class="line"><span class="nm">${esc(l.name)}</span>${l.kind === 'service' ? '<span class="qty"></span>' : `<span class="qty"><button type="button" data-act="posQty" data-i="${i}" data-d="-1" aria-label="One less">−</button><span>${l.qty}</span><button type="button" data-act="posQty" data-i="${i}" data-d="1" aria-label="One more">+</button></span>`}<span class="num">${money(l.price * l.qty)}</span><button type="button" class="icon-btn" data-act="posDel" data-i="${i}" aria-label="Remove ${esc(l.name)}">✕</button></div>`).join('') : '<p class="muted small" style="padding:10px 0">No items yet. Tap a service or product.</p>'}</div>
         <p class="muted small">For “from” prices, change the amount with the price field after adding.</p>
@@ -560,7 +605,7 @@ function vCheckout() {
           ${field('Discount (' + cur() + ')', `<input id="pos-disc" data-bind="pos.discount" data-live inputmode="decimal" value="${esc(p.discount)}" placeholder="0">`, 'pos-disc')}
           ${field('Tip for barber (' + cur() + ')', `<input id="pos-tip" data-bind="pos.tip" data-live inputmode="decimal" value="${esc(p.tip)}" placeholder="0">`, 'pos-tip')}
         </div>
-        <div class="row"><button type="button" class="btn btn-sm" data-act="posDisc" data-v="sc">Senior / PWD 20%</button><button type="button" class="btn btn-sm" data-act="posDisc" data-v="student">Student 10%</button><button type="button" class="btn btn-sm" data-act="posDisc" data-v="free">Loyalty free cut</button>${posBday(p) !== null ? `<button type="button" class="btn btn-sm" data-act="posDisc" data-v="bday">Birthday free cut</button>` : ''}${p.discountNote ? `<span class="muted small">${esc(p.discountNote)}</span>` : ''}</div>
+        <div class="row"><button type="button" class="btn btn-sm" data-act="posDisc" data-v="sc">Senior / PWD 20%</button><button type="button" class="btn btn-sm" data-act="posDisc" data-v="student">Student 10%</button><button type="button" class="btn btn-sm" data-act="posDisc" data-v="free">Loyalty free cut</button>${posBday(p) !== null ? `<button type="button" class="btn btn-sm" data-act="posDisc" data-v="bday">Birthday promo</button>` : ''}${p.discountNote ? `<span class="muted small">${esc(p.discountNote)}</span>` : ''}</div>
         <div class="totals">
           <div><span>Services</span><span>${money(T.svc, 1)}</span></div>
           ${T.prod ? `<div><span>Products</span><span>${money(T.prod, 1)}</span></div>` : ''}
@@ -607,7 +652,7 @@ function exportRows(r) {
   }));
   const kept = [...s.kept].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)).map(a => ({
     type: a.status === 'no_show' ? 'Kept deposit (no-show)' : 'Kept deposit', date: a.date, time: a.time || '', client: a.name || '', barber: staffName(a.barberId),
-    services: svcNames(a.serviceIds), products: '', method: methodName(a.deposit.method), svc: 0, prod: 0, disc: 0, tip: 0,
+    services: svcNames(a.serviceIds, a.options), products: '', method: methodName(a.deposit.method), svc: 0, prod: 0, disc: 0, tip: 0,
     total: a.deposit.amount, online: a.deposit.amount, shop: 0, comm: 0
   }));
   const exps = [...s.exps].sort((a, b) => a.date.localeCompare(b.date)).map(e => ({ date: e.date, cat: e.cat, desc: e.desc || '', method: e.method || '', amount: e.amount || 0 }));
@@ -641,9 +686,9 @@ function exportXlsx() {
   sum1.push([{ v: 'Expenses by category', s: 'section' }, { v: '', s: 'section' }], ...(byCat.length ? byCat.map(([k, v]) => [k, M(v)]) : [['No expenses']]), []);
   const payRows = staffAll().map(b => ({ b, P: payFor(b, r) })).filter(({ P }) => P.days || P.x.length).sort((a, b) => b.P.total - a.P.total);
   sum1.push(['By barber', 'Days worked', 'Clients', 'Brings in', 'Daily pay', 'Commission', 'Shop pays him', 'Pay % of sales', 'Left for the shop', 'Tips (from clients)'].map((t, i) => ({ v: t, s: i ? 'sectionR' : 'section' })),
-    ...payRows.map(({ b, P }) => [`${b.name} (${money(P.daily)}/day + ${b.rate || 0}%)`, { v: P.days, s: 'int' }, { v: P.x.length, s: 'int' }, M(P.svc), M(P.base), M(P.comm), M(P.pay),
+    ...payRows.map(({ b, P }) => [`${b.name} (${payRule(b)})`, { v: P.days, s: 'int' }, { v: P.x.length, s: 'int' }, M(P.svc), M(P.base), M(P.comm), M(P.pay),
       P.svc ? { v: `${Math.round(P.pay / P.svc * 100)}%`, s: 'text' } : '–', M(P.svc - P.pay), M(P.tips)]));
-  sum1.push([], [{ v: `Exported ${new Date().toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}. Income excludes tips, which go to the barbers. Barber pay = guaranteed daily pay for each day worked + commission on services.`, s: 'sub' }]);
+  sum1.push([], [{ v: `Exported ${new Date().toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}. Income excludes tips, which go to the barbers. Staff pay = base pay (daily pay, daily-minimum top-ups or monthly salary) + commission on services + half of forfeited down payments.`, s: 'sub' }]);
 
   // Daily
   const days = [], end = r[1] < today() ? r[1] : today(); for (let d = r[0]; d <= end; d = addDays(d, 1)) days.push(d); // no future days
@@ -745,6 +790,19 @@ function keepPanel(list, r) {
       <p class="muted small" style="margin:0">${money(P.base)} daily pay + ${money(P.comm)} commission</p></li>`).join('')}</ul>
     <p class="muted small" style="margin-top:12px">A barber pays for himself once his services pass his daily pay ÷ the shop’s % each day: ${[...new Map(rows.filter(x => x.P.daily).map(x => [`${x.P.daily}_${x.b.rate}`, x])).values()].sort((x, y) => x.P.daily - y.P.daily).map(({ b, P }) => `${money(P.need)} a day on ${money(P.daily)}/day + ${esc(b.rate || 0)}%`).join(', ')}.</p></section>`;
 }
+// How each person is paid, with an example and what it came to in this period
+function payRulesPanel(list, r) {
+  if (!list.length) return '';
+  const typeName = { daily: 'Daily pay + commission', quota: 'Daily minimum or commission', monthly: 'Monthly salary' };
+  return `<section class="panel"><div class="panel-h"><h2>How each person is paid</h2><span class="muted small">Change it in Edit → How they’re paid</span></div>
+    <div class="tbl-wrap"><table class="tbl pay-rules"><thead><tr><th>Name</th><th>Pay plan</th><th>Example</th><th class="r">This period</th></tr></thead><tbody>
+    ${list.map(b => { const P = payFor(b, r), parts = [P.base ? `${money(P.base)} ${P.t === 'quota' ? 'top-up' : P.t === 'monthly' ? 'salary' : 'daily pay'}` : '', P.comm ? `${money(P.comm)} commission` : '', P.dep ? `${money(P.dep)} deposits` : ''].filter(Boolean);
+      return `<tr><td><div class="row" style="flex-wrap:nowrap">${av(b)}<div><b>${esc(b.name)}</b><div class="muted small">${esc(b.title || roleName(b))}</div></div></div></td>
+      <td><b>${esc(typeName[payType(b)])}</b><div class="muted small">${esc(payRule(b))}${b.productFee ? `. On services with salon products the shop takes ${money(b.productFee.low)} (under ${money(b.productFee.threshold)}) or ${money(b.productFee.high)} first` : ''}</div></td>
+      <td class="muted small" style="max-width:340px">${esc(payExample(b))}</td>
+      <td class="r"><b>${money(P.pay)}</b><div class="muted small">${parts.length ? esc(parts.join(' + ')) : 'Nothing yet'}</div></td></tr>`; }).join('')}
+    </tbody></table></div></section>`;
+}
 function owedFor(id) { const b = staffById(id); const earned = b ? payFor(b, [payStart(b), today()]).total : 0; const paid = sum(S.payouts.filter(p => p.barberId === id), p => p.amount); return round2(earned - paid); }
 function vTeam() {
   const r = periodRange(S.period), s = summary(r);
@@ -753,13 +811,14 @@ function vTeam() {
   return `${pageHead(rangeLabel(r), 'Staff', `<button class="btn btn-primary" data-act="newStaff">+ Staff member</button>`)}
   ${periodBar()}
   <section class="panel"><div class="panel-h"><h2>Pay and commissions</h2><label class="row small"><input type="checkbox" id="t-arch" data-bind="showArchived" data-live ${S.showArchived ? 'checked' : ''}> Show former staff</label></div>
-    ${list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th class="r">Days worked</th><th class="r">Daily pay</th><th class="r">Clients</th><th class="r">Service sales</th><th class="r">Commission</th><th class="r">Tips</th><th class="r">Earned</th><th class="r">Owed now</th><th></th></tr></thead><tbody>
+    ${list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th class="r">Days worked</th><th class="r">Base pay</th><th class="r">Clients</th><th class="r">Service sales</th><th class="r">Commission</th><th class="r">Tips</th><th class="r">Earned</th><th class="r">Owed now</th><th></th></tr></thead><tbody>
     ${list.map(b => { const P = payFor(b, r), owed = owedFor(b.id);
-      return `<tr><td><div class="row" style="flex-wrap:nowrap">${av(b)}<div><b>${esc(b.name)}</b>${b.active === false ? ' <span class="muted small">(former)</span>' : ''}<div class="muted small nowrap">${esc(b.title || roleName(b))}${b.chair ? ' · Chair ' + esc(b.chair) : ''}</div><div class="muted small nowrap">${money(P.daily)}/day${isServiceStaff(b) ? ` + ${esc(b.rate || 0)}%${b.productFee ? ' · product fee' : ''}` : ' · no commission'}</div></div></div></td>
-      <td class="r">${P.days}</td><td class="r">${money(P.base)}</td><td class="r">${P.x.length}</td><td class="r">${money(P.svc)}</td><td class="r">${money(P.comm, 1)}</td><td class="r">${money(P.tips)}</td><td class="r"><b>${money(P.total, 1)}</b></td><td class="r"><b class="${owed > 0 ? '' : 'muted'}">${money(owed, 1)}</b></td>
+      return `<tr><td><div class="row" style="flex-wrap:nowrap">${av(b)}<div><b>${esc(b.name)}</b>${b.active === false ? ' <span class="muted small">(former)</span>' : ''}<div class="muted small nowrap">${esc(b.title || roleName(b))}${b.chair ? ' · Chair ' + esc(b.chair) : ''}</div><div class="pay-rule">${esc(payRule(b))}${b.productFee ? ' · product fee' : ''}</div></div></div></td>
+      <td class="r">${P.days}</td><td class="r">${money(P.base)}${P.t === 'quota' && P.topUps ? `<div class="muted small nowrap">top-up on ${P.topUps} day${P.topUps === 1 ? '' : 's'}</div>` : P.t === 'monthly' ? '<div class="muted small">salary</div>' : ''}${P.dep ? `<div class="muted small nowrap">+ ${money(P.dep)} deposits</div>` : ''}</td><td class="r">${P.x.length}</td><td class="r">${money(P.svc)}</td><td class="r">${money(P.comm, 1)}</td><td class="r">${money(P.tips)}</td><td class="r"><b>${money(P.total, 1)}</b></td><td class="r"><b class="${owed > 0 ? '' : 'muted'}">${money(owed, 1)}</b></td>
       <td><div class="acts"><button class="btn btn-sm btn-primary" data-act="payStaff" data-id="${esc(b.id)}" ${owed <= 0 ? 'disabled' : ''}>Pay</button><button class="btn btn-sm btn-ghost" data-act="editStaff" data-id="${esc(b.id)}">Edit</button></div></td></tr>`; }).join('')}
     </tbody></table></div>` : '<p class="empty">No staff yet. Use “+ Staff member”, or load the starter team in Shop setup.</p>'}
-    <p class="muted small" style="margin-top:12px">Earned = guaranteed daily pay for each day worked + commission (their rate × service sales after discounts) + tips. A day counts as worked when they had a sale, or it’s one of their days in and they weren’t marked absent in Schedule → Who’s in. “Owed now” is everything earned minus payouts.</p></section>
+    <p class="muted small" style="margin-top:12px">Earned = base pay + commission (their rate × service sales after discounts) + their half of forfeited down payments + tips. Base pay depends on how each person is paid (see below). A day counts as worked when they had a sale, or it’s one of their days in and they weren’t marked absent in Schedule → Who’s in. “Owed now” is everything earned minus payouts.</p></section>
+  ${payRulesPanel(list.filter(b => b.active !== false), r)}
   ${keepPanel(list.filter(b => b.active !== false && isServiceStaff(b)), r)}
   <section class="panel"><div class="panel-h"><h2>Payout history</h2></div>
     ${pays.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Paid on</th><th>Name</th><th>Note</th><th class="r">Amount</th><th></th></tr></thead><tbody>${pays.map(p => `<tr><td class="num">${fmtDate(p.date)}</td><td>${esc(staffName(p.barberId))}</td><td>${esc(p.note || '')}</td><td class="r"><b>${money(p.amount, 1)}</b></td><td><div class="acts"><button class="btn btn-sm btn-danger" data-act="delPayout" data-id="${esc(p.id)}">Delete</button></div></td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">No payouts recorded yet.</p>'}</section>`;
@@ -781,7 +840,7 @@ function vClients() {
     ${kpi('New this month', S.customers.filter(c => c.createdAt && ymd(new Date(c.createdAt)) >= periodRange('month')[0]).length)}
     ${kpi('Haven’t been back in 45+ days', lapsed, '<span class="d">Worth a message</span>')}
   </section>
-  ${bdays.length ? `<section class="panel"><div class="panel-h"><h2>Birthdays coming up</h2><span class="muted small">Next 2 weeks. Their birthday haircut is free.</span></div>
+  ${bdays.length ? `<section class="panel"><div class="panel-h"><h2>Birthdays coming up</h2><span class="muted small">Next 2 weeks. ${esc(bdayPromoText())}</span></div>
     <ul class="list">${bdays.map(({ c, n }) => `<li class="click" data-act="openClient" data-id="${esc(c.id)}" tabindex="0"><span class="avatar">${esc(initials(c.name))}</span><div class="grow"><b>${esc(c.name)}</b><div class="sub">${esc(fmtBday(c.birthday))} · ${esc(c.phone || 'No phone')}</div></div>${n === 0 ? chip({ kind: 'info', icon: '★', label: 'Today' }) : `<span class="muted small">${bdayWhen(n)}</span>`}</li>`).join('')}</ul></section>` : ''}
   ${pol().rebookDays ? `<section class="panel"><div class="panel-h"><h2>Due for a trim</h2><span class="muted small">Last visit ${pol().rebookDays}+ days ago, nothing booked. Texts go out automatically at 10 AM on day ${pol().rebookDays}.</span></div>
     ${due.length ? `<div class="tbl-wrap"><table class="tbl"><tbody>${due.slice(0, 12).map(({ c, last, days }) => { const sent = (c.rebookSentFor || '') >= last; return `<tr><td><div class="row" style="flex-wrap:nowrap"><span class="avatar">${esc(initials(c.name))}</span><div><b>${esc(c.name)}</b><div class="muted small">${esc(c.phone || 'No phone')}</div></div></div></td><td class="num">${days} days since ${shortDate(last)}</td><td>${sent ? chip({ kind: 'good', icon: '✓', label: 'Reminded' }) : c.noReminders ? chip({ kind: 'mute', icon: '–', label: 'Opted out' }) : ''}</td>
@@ -790,7 +849,7 @@ function vClients() {
     <div class="toolbar" style="margin-bottom:12px"><input type="search" id="c-q" data-bind="clientQ" data-live value="${esc(S.clientQ)}" placeholder="Search name or phone" aria-label="Search clients">
       <select id="c-sort" data-bind="clientSort" data-live style="width:auto" aria-label="Sort">${[['recent', 'Last visit'], ['spend', 'Top spenders'], ['visits', 'Most visits'], ['name', 'Name']].map(([k, l]) => opt(k, 'Sort: ' + l, k === S.clientSort)).join('')}</select></div>
     ${list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Client</th><th class="r">Visits</th><th class="r">Spent</th><th>Last visit</th>${N ? `<th>Loyalty (every ${N})</th>` : ''}<th>Usual barber</th></tr></thead><tbody>
-      ${list.map(c => { const prog = c.st.visits % (N || 1); return `<tr class="click" data-act="openClient" data-id="${esc(c.id)}" tabindex="0"><td><b>${esc(c.name)}</b><div class="muted small">${esc(c.phone || 'No phone')}</div></td><td class="r">${c.st.visits}</td><td class="r">${money(c.st.spent)}</td><td class="num">${c.st.last ? fmtDate(c.st.last) : '<span class="muted">—</span>'}</td>
+      ${list.map(c => { const prog = c.st.visits % (N || 1); return `<tr class="click" data-act="openClient" data-id="${esc(c.id)}" tabindex="0"><td><b>${esc(c.name)}</b>${c.st.visits >= (pol().regularVisits || 3) ? ' ' + chip({ kind: 'good', icon: '★', label: 'Regular' }) : ''}<div class="muted small">${esc(c.phone || 'No phone')}</div></td><td class="r">${c.st.visits}</td><td class="r">${money(c.st.spent)}</td><td class="num">${c.st.last ? fmtDate(c.st.last) : '<span class="muted">—</span>'}</td>
         ${N ? `<td><span class="meter" aria-label="${prog} of ${N} visits">${N <= 12 ? Array.from({ length: N }, (_, i) => `<i class="${i < prog ? 'on' : ''}"></i>`).join('') : `${prog}/${N}`}</span></td>` : ''}<td>${esc(usualBarber(c.st))}</td></tr>`; }).join('')}
     </tbody></table></div>` : `<p class="empty">${q ? 'No client matches that search.' : 'No clients yet. They’re added at checkout, or use “+ Client”.'}</p>`}
   </section>`;
@@ -856,7 +915,7 @@ function vSetup() {
         ${field('Deposit (' + cur() + ')', `<input id="po-dep" name="deposit" type="number" min="100" step="1" value="${esc(p.deposit)}">`, 'po-dep')}
         ${field('Hold slot while paying (min)', `<input id="po-hold" name="holdMinutes" type="number" min="5" max="60" value="${esc(p.holdMinutes)}">`, 'po-hold')}
         ${field('Reschedule up to (hours before)', `<input id="po-res" name="rescheduleHours" type="number" min="0" max="168" value="${esc(p.rescheduleHours)}">`, 'po-res')}
-        ${field('Late: slot can go to a walk-in after (min)', `<input id="po-late" name="lateMinutes" type="number" min="0" max="120" value="${esc(p.lateMinutes)}">`, 'po-late')}
+        ${field('Junior barbers: slot can go to a walk-in after (min late)', `<input id="po-late" name="lateMinutes" type="number" min="0" max="120" value="${esc(p.lateMinutes)}">`, 'po-late')}${field('Senior barbers: down payment kept and full price owed after (min late)', `<input id="po-late2" name="lateMinutesDeposit" type="number" min="0" max="120" value="${esc(p.lateMinutesDeposit ?? 20)}">`, 'po-late2')}${field('Down payment back if they cancel at least (hours before)', `<input id="po-cancel" name="cancelHours" type="number" min="0" max="336" value="${esc(p.cancelHours ?? 48)}">`, 'po-cancel')}
         ${field('Earliest booking from now (min)', `<input id="po-lead" name="leadMinutes" type="number" min="0" max="1440" value="${esc(p.leadMinutes)}">`, 'po-lead')}
         ${field('Book up to (days ahead)', `<input id="po-ahead" name="bookAheadDays" type="number" min="1" max="365" value="${esc(p.bookAheadDays)}">`, 'po-ahead')}
         ${field('Last booking starts at', `<input id="po-last" name="lastBooking" type="time" step="3600" value="${esc(p.lastBooking ?? '19:00')}">`, 'po-last', 'Online bookings can’t start later than this. Leave empty to allow any time that finishes by closing.')}
@@ -1107,6 +1166,16 @@ document.addEventListener('mousedown', e => { if (e.target.closest && e.target.c
 document.addEventListener('focusout', e => { if (e.target === CP.input) setTimeout(() => { if (CP.input && document.activeElement !== CP.input) cpClose(); }, 120); });
 addEventListener('resize', () => CP.input && cpOpen(CP.input));
 document.addEventListener('scroll', e => { if (CP.input && !(e.target.closest && e.target.closest('#cust-pop'))) cpOpen(CP.input); }, true);
+// Staff form: keep the pay explanation in step with what's typed
+function payFormSync(f) {
+  const fd = new FormData(f), b = { payType: fd.get('payType'), dailyPay: fd.get('dailyPay'), monthlyPay: fd.get('monthlyPay'), rate: fd.get('rate'), role: fd.get('role') }, t = payType(b);
+  const ex = f.querySelector('#pay-explain'); if (ex) ex.textContent = `${payRule(b)}. ${payExample(b)}`;
+  const l = f.querySelector('label[for=m-sdaily]'); if (l) l.textContent = t === 'quota' ? 'Daily minimum (₱)' : 'Daily pay (₱)';
+  f.querySelector('#m-sdaily')?.closest('.field')?.toggleAttribute('hidden', t === 'monthly');
+  f.querySelector('#m-smonth')?.closest('.field')?.toggleAttribute('hidden', t !== 'monthly');
+}
+document.addEventListener('input', e => { const f = e.target.closest && e.target.closest('form[data-form=staff]'); if (f) payFormSync(f); });
+document.addEventListener('change', e => { const f = e.target.closest && e.target.closest('form[data-form=staff]'); if (f) payFormSync(f); });
 document.addEventListener('input', e => { if (e.target.closest('form[data-form=happen]')) { if (e.target.id === 'hp-code') autoBadge(); happenPreview(); } });
 document.addEventListener('change', e => { if (e.target.closest('form[data-form=happen]')) { if (e.target.id === 'hp-code') autoBadge(); happenPreview(); } });
 // Picking a promo code fills the banner's big text with its discount
@@ -1161,6 +1230,7 @@ function drawModal() {
   const { title, body, wide } = MODAL.cur, m = $('#modal'), back = MODAL.stack.length ? MODAL.stack[MODAL.stack.length - 1].title : '';
   m.innerHTML = `<div class="scrim" data-act="scrim"><div class="modal${wide ? ' wide' : ''}" role="dialog" aria-modal="true" aria-labelledby="mt"><div class="modal-h"><button type="button" class="back-btn" data-act="modalBack" aria-label="${back ? 'Back to ' + esc(back) : 'Back'}">${icon('back')}<span>Back</span></button><h2 id="mt">${esc(title)}</h2><button type="button" class="icon-btn" data-act="closeModal" aria-label="Close">✕</button></div><div class="modal-b">${body}</div></div></div>`;
   m.hidden = false;
+  const sf = m.querySelector('form[data-form=staff]'); if (sf) payFormSync(sf);
   setTimeout(() => { const f = m.querySelector('.modal-b input:not([type=checkbox]),.modal-b select,.modal-b textarea'); if (f) f.focus(); }, 30);
 }
 function openModal(title, body, wide) {
@@ -1230,13 +1300,18 @@ function staffModal(b) {
     <div class="fgrid">${field('Title', `<input id="m-stitle" name="title" value="${esc(c.title || '')}" placeholder="Senior barber, Stylist">`, 'm-stitle')}${field('Phone', `<input id="m-sphone" name="phone" value="${esc(c.phone || '')}">`, 'm-sphone')}</div>
     <div class="svc-only">${field('Specialty (shown on website)', `<input id="m-sspec" name="specialty" value="${esc(c.specialty || '')}">`, 'm-sspec')}
       ${field('Short bio for their profile (optional)', `<textarea id="m-sbio" name="bio" rows="2" maxlength="300" placeholder="e.g. 8 years behind the chair. Known for clean skin fades and textured crops.">${esc(c.bio || '')}</textarea>`, 'm-sbio')}</div>
-    <div class="fgrid">${field('Guaranteed daily pay (₱)', `<input id="m-sdaily" name="dailyPay" type="number" min="0" step="any" value="${esc(c.dailyPay ?? 0)}" required>`, 'm-sdaily', 'Paid for every day worked, even with no clients')}<div class="svc-only">${field('Commission on services (%)', `<input id="m-srate" name="rate" type="number" min="0" max="100" value="${esc(c.rate ?? 60)}">`, 'm-srate', 'Their share, rounded down to the peso. Seniors 50, juniors 60, Dave 55.')}</div></div>
+    <fieldset class="field pay-plan"><legend>How they’re paid</legend>
+      <div class="seg-pick" role="radiogroup">${[['daily', 'Daily pay + commission', 'A set amount every day worked, plus their % of services'], ['quota', 'Daily minimum or commission', 'Whichever is higher; the shop tops up slow days'], ['monthly', 'Monthly salary', 'A fixed amount each month']].map(([k, l, d]) => `<label class="pp-opt"><input type="radio" name="payType" value="${k}" ${payType(c) === k ? 'checked' : ''}><span><b>${l}</b><small>${d}</small></span></label>`).join('')}</div>
+      <div class="fgrid">${field(payType(c) === 'quota' ? 'Daily minimum (₱)' : 'Daily pay (₱)', `<input id="m-sdaily" name="dailyPay" type="number" min="0" step="any" value="${esc(c.dailyPay ?? 0)}">`, 'm-sdaily')}${field('Monthly salary (₱)', `<input id="m-smonth" name="monthlyPay" type="number" min="0" step="any" value="${esc(c.monthlyPay ?? 0)}">`, 'm-smonth')}${field('Commission on their services (%)', `<input id="m-srate" name="rate" type="number" min="0" max="100" value="${esc(c.rate ?? 0)}">`, 'm-srate')}</div>
+      <p class="hint pp-explain" id="pay-explain">${esc(payRule(c))}. ${esc(payExample(c))}</p>
+      <p class="muted small" style="margin:0">Half of a forfeited down payment (late cancel, or over 20 minutes late) also goes to the barber of that booking.</p>
+    </fieldset>
     <label class="row small svc-only"><input type="checkbox" id="m-snodep" name="noDeposit" ${c.noDeposit ? 'checked' : ''}> No down payment for online bookings with ${esc(c.name || 'this person')} (clients pay everything at the shop)</label>
     <fieldset class="field svc-only"><legend>Product fee</legend>
       <label class="row small"><input type="checkbox" name="pf" ${c.productFee ? 'checked' : ''}> On services that use salon products, the shop takes a fixed amount first, then the rest is split</label>
       <div class="fgrid three">${field('Service price from (₱)', `<input id="m-pft" name="pfThreshold" type="number" min="0" value="${esc(f.threshold)}">`, 'm-pft')}${field('Shop gets below that (₱)', `<input id="m-pfl" name="pfLow" type="number" min="0" value="${esc(f.low)}">`, 'm-pfl')}${field('Shop gets from that up (₱)', `<input id="m-pfh" name="pfHigh" type="number" min="0" value="${esc(f.high)}">`, 'm-pfh')}</div>
       <p class="muted small">Example with ₱50 / ₱100 at ₱1,500 and 55%: a ₱1,200 color → shop ₱50 first, then 55% of ₱1,150 = ₱632 for the stylist. Services without products are a straight split. Mark which services use products in Shop setup → Services.</p></fieldset>
-    <fieldset class="field svc-only"><legend>Takes bookings for</legend><div class="row">${[['him', 'Men’s services'], ['her', 'Women’s services'], ['nails', 'Nails']].map(([k, l]) => `<label class="check"><input type="checkbox" name="groups" value="${k}" ${(c.groups || ['him']).includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</div></fieldset>
+    <fieldset class="field svc-only"><legend>Takes bookings for</legend><div class="row">${[['him', 'Men’s services'], ['her', 'Women’s services'], ['nails', 'Nails'], ['braids', 'Braids']].map(([k, l]) => `<label class="check"><input type="checkbox" name="groups" value="${k}" ${(c.groups || ['him']).includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</div></fieldset>
     <fieldset class="field svc-only barber-only"><legend>Men’s haircuts they do</legend><div class="row">${[['deluxe', 'Deluxe (senior barber)'], ['regular', 'Regular']].map(([k, l]) => `<label class="check"><input type="checkbox" name="tiers" value="${k}" ${(c.tiers || []).includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</div><p class="muted small">Online, clients can only book this barber for these haircuts. Add-ons work with either.</p></fieldset>
     <fieldset class="field"><legend>Days in</legend><div class="row">${[1, 2, 3, 4, 5, 6, 0].map(d => `<label class="check"><input type="checkbox" name="days" value="${d}" ${(c.days || []).includes(d) ? 'checked' : ''}>${DAYS[d]}</label>`).join('')}</div></fieldset>
     <p class="muted small support-only">Receptionists and maintenance staff don’t take bookings or earn commission. They get their daily pay for each day in (Schedule → Who’s in).</p>
@@ -1271,10 +1346,11 @@ function serviceModal(s) {
   const cats = [...new Set(services().map(x => x.cat).filter(Boolean))];
   openModal(s ? 'Edit service' : 'Add service', `<form class="stack" data-form="service" data-id="${esc(c.id || '')}">
     <div class="fgrid">${field('Service name', `<input id="m-vname" name="name" value="${esc(c.name || '')}" required>`, 'm-vname')}${field('Menu section', `<input id="m-vcat" name="cat" list="svc-cats" value="${esc(c.cat || '')}"><datalist id="svc-cats">${cats.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`, 'm-vcat')}</div>
-    <div class="fgrid three">${field('For', `<select id="m-vgroup" name="group">${opt('him', 'Him', !c.group || c.group === 'him')}${opt('her', 'Her', c.group === 'her')}${opt('nails', 'Nails', c.group === 'nails')}</select>`, 'm-vgroup')}${field('Price (' + cur() + ')', `<input id="m-vprice" name="price" inputmode="decimal" value="${esc(c.price ?? '')}" required>`, 'm-vprice')}${field('Minutes', `<input id="m-vmins" name="mins" type="number" min="30" step="30" value="${esc(c.mins)}">`, 'm-vmins')}</div>
+    <div class="fgrid three">${field('For', `<select id="m-vgroup" name="group">${opt('him', 'Him', !c.group || c.group === 'him')}${opt('her', 'Her', c.group === 'her')}${opt('nails', 'Nails', c.group === 'nails')}${opt('braids', 'Braids', c.group === 'braids')}</select>`, 'm-vgroup')}${field('Price (' + cur() + ')', `<input id="m-vprice" name="price" inputmode="decimal" value="${esc(c.price ?? '')}" required>`, 'm-vprice')}${field('Minutes', `<input id="m-vmins" name="mins" type="number" min="30" step="30" value="${esc(c.mins)}">`, 'm-vmins')}</div>
     <div class="fgrid">${field('Booking type (men)', `<select id="m-vkind" name="kind">${opt('', 'Regular service', !c.kind)}${opt('base', 'Haircut (client picks one)', c.kind === 'base')}${opt('extra', 'Add-on to a haircut', c.kind === 'extra')}</select>`, 'm-vkind')}${field('Haircut level', `<select id="m-vtier" name="tier">${opt('', 'Any barber', !c.tier)}${opt('deluxe', 'Deluxe (senior barbers)', c.tier === 'deluxe')}${opt('regular', 'Regular barbers', c.tier === 'regular')}</select>`, 'm-vtier')}</div>
     ${field('Description', `<input id="m-vdesc" name="desc" value="${esc(c.desc || '')}">`, 'm-vdesc')}
     ${field('Included tags (optional, separate with commas)', `<input id="m-vperks" name="perks" value="${esc((c.perks || []).join(', '))}" placeholder="e.g. Shampoo and rinse included">`, 'm-vperks')}
+    ${field('Options clients pick, one per line: name | extra price (optional)', `<textarea id="m-vopts" name="options" rows="3" placeholder="Regular polish | 30&#10;L’Oréal/Orly polish | 50">${esc((c.options || []).map(o => `${o.name} | ${o.add}`).join('\n'))}</textarea>`, 'm-vopts')}
     <label class="row small"><input type="checkbox" name="usesProduct" ${c.usesProduct ? 'checked' : ''}> Uses salon products (color, rebond, treatments): staff with a product fee give the shop that amount first</label>
     <label class="row small"><input type="checkbox" name="priceFrom" ${c.priceFrom ? 'checked' : ''}> Show as “from” price (final price depends on hair length)</label>
     <label class="row small"><input type="checkbox" name="active" ${c.active !== false ? 'checked' : ''}> Show on website and at checkout</label>
@@ -1296,7 +1372,7 @@ function clientDrawer(c) {
   openModal(c.name, `<div class="stack">
     <div class="kpis">${kpi('Visits', st.visits)}${kpi('Spent', money(st.spent))}${kpi('Last visit', st.last ? shortDate(st.last) : '—')}</div>
     <p class="row"><b>${esc(c.phone || 'No phone')}</b>${c.email ? `<span class="muted">${esc(c.email)}</span>` : ''}${usualBarber(st) ? `<span class="muted">· Usually with ${esc(usualBarber(st))}</span>` : ''}</p>
-    ${c.birthday ? (n => `<p class="${Math.abs(n) <= 7 ? 'hint' : 'muted small'}">Birthday: <b>${esc(fmtBday(c.birthday))}</b>${Math.abs(n) <= 7 ? ` · ${bdayWhen(n)}. Their birthday haircut is free.` : ''}</p>`)(bdayDays(c.birthday, today())) : ''}
+    ${c.birthday ? (n => `<p class="${Math.abs(n) <= 7 ? 'hint' : 'muted small'}">Birthday: <b>${esc(fmtBday(c.birthday))}</b>${Math.abs(n) <= 7 ? ` · ${bdayWhen(n)}. ${esc(bdayPromoText())}` : ''}</p>`)(bdayDays(c.birthday, today())) : ''}
     ${N ? `<p class="hint">${(st.visits + 1) % N === 0 ? `<b>Next visit is free</b> (visit #${st.visits + 1}).` : `${N - ((st.visits + 1) % N)} more visit${N - ((st.visits + 1) % N) === 1 ? '' : 's'} after the next one to a free cut.`}</p>` : ''}
     ${next ? `<p class="note">Next booking: <b>${fmtDate(next.date)} at ${fmtTime(next.time)}</b> with ${esc(staffName(next.barberId))}</p>` : ''}
     ${c.notes ? `<div class="note">${esc(c.notes)}</div>` : ''}
@@ -1447,11 +1523,20 @@ const ACT = {
   schedStatus(el) { S.schedStatus = S.schedStatus === el.dataset.v ? '' : el.dataset.v; render(); },
   schedClear() { Object.assign(S, { schedQ: '', schedStatus: '', schedSrc: '', schedBarber: '' }); render(); },
   async startAppt(el) { await patch('appointments', el.dataset.id, { status: 'inchair', startedAt: Date.now() }); },
+  // Senior barber booking over 20 min late: the down payment is kept and the full price is owed for the barber's time
+  lateFee(el) {
+    const a = S.appointments.find(x => x.id === el.dataset.id); if (!a) return;
+    const p = blankPos(); p.apptId = a.id; p.lateFee = true; p.name = a.name || ''; p.phone = a.phone || ''; p.barberId = a.barberId || '';
+    p.deposit = 0; p.discountNote = '';
+    p.lines = (a.serviceIds || []).map(svcById).filter(Boolean).map(s => withOption(s, a.options)).map(s => ({ kind: 'service', ref: s.id, name: `Late fee: ${s.name}`, price: s.price, qty: 1 }));
+    S.pos = p; closeModal(true); location.hash = '#checkout';
+  },
+  async markRefunded(el) { const a = S.appointments.find(x => x.id === el.dataset.id); if (a && await patch('appointments', a.id, { deposit: { ...a.deposit, status: 'refunded', refundedAt: Date.now() } })) toast('Marked as refunded'); },
   checkoutAppt(el) {
     const a = S.appointments.find(x => x.id === el.dataset.id); if (!a) return;
     const p = blankPos(); p.apptId = a.id; p.name = a.name || ''; p.phone = a.phone || ''; p.barberId = a.barberId || '';
     p.deposit = depositPaid(a); p.depositMethod = a.deposit && a.deposit.method;
-    p.lines = (a.serviceIds || []).map(svcById).filter(Boolean).map(s => ({ kind: 'service', ref: s.id, name: s.name, price: s.price, qty: 1 }));
+    p.lines = (a.serviceIds || []).map(svcById).filter(Boolean).map(s => withOption(s, a.options)).map(s => ({ kind: 'service', ref: s.id, name: s.name, price: s.price, qty: 1 }));
     // products the client asked us to set aside on the website ("Set aside for me: Liquid Pomade ×2; Sea Salt Spray")
     const aside = /Set aside for me: ([^·]+)/.exec(a.notes || '');
     if (aside) aside[1].split(';').map(x => x.trim()).filter(Boolean).forEach(x => {
@@ -1479,7 +1564,12 @@ const ACT = {
     const p = S.pos, T = posTotals(p), v = el.dataset.v;
     if (v === 'sc') { p.discount = String(round2(T.sub * 0.2)); p.discountNote = 'Senior / PWD 20%'; }
     if (v === 'student') { p.discount = String(round2(T.sub * 0.1)); p.discountNote = 'Student 10%'; }
-    if (v === 'free' || v === 'bday') { p.discount = String(Math.max(0, ...p.lines.filter(l => l.kind === 'service').map(l => l.price))); p.discountNote = v === 'bday' ? 'Birthday free cut' : 'Loyalty free cut'; }
+    if (v === 'free') { p.discount = String(Math.max(0, ...p.lines.filter(l => l.kind === 'service').map(l => l.price))); p.discountNote = 'Loyalty free cut'; }
+    if (v === 'bday') { // birthday promo: Signature Haircut (shampoo and rinse) at the Regular price
+      const sv = svcById(pol().birthdaySvc || 'h8'); if (!sv) { toast('Set the birthday promo service in Shop setup'); return; }
+      if (!p.lines.some(l => l.kind === 'service' && l.ref === sv.id)) p.lines.push({ kind: 'service', ref: sv.id, name: sv.name, price: Number(sv.price) || 0, qty: 1 });
+      p.discount = String(Math.max(0, (Number(sv.price) || 0) - (Number(pol().birthdayPrice) || 0))); p.discountNote = `Birthday promo: ${sv.name} for ${money(pol().birthdayPrice || 0)}`;
+    }
     render();
   },
   posClear() { S.pos = blankPos(); render(); },
@@ -1496,21 +1586,22 @@ const ACT = {
       const sale = {
         date: today(), time: nowHM(), at: Date.now(), customerId, name: p.name.trim() || 'Walk-in', phone: p.phone.trim(), phoneKey: phoneKey(p.phone), barberId: p.barberId,
         lines: p.lines.map(l => ({ ...l, price: Number(l.price) || 0 })), svcTotal: T.svc, prodTotal: T.prod, discount: T.disc, discountNote: T.disc ? (p.discountNote || '') : '',
-        tip: T.tip, total: T.total, depositCredit: T.deposit, method: p.method, cash: p.method === 'Cash' ? num(p.cash) : 0, apptId: p.apptId || '', rate, commission, productFees, rtoken
+        tip: T.tip, total: T.total, depositCredit: T.deposit, method: p.method, cash: p.method === 'Cash' ? num(p.cash) : 0, apptId: p.apptId || '', rate, commission, productFees, rtoken, ...(p.lateFee ? { lateFee: true } : {})
       };
       if (!await put('sales', id, sale)) return;
       for (const l of p.lines.filter(x => x.kind === 'product')) {
         const it = S.inventory.find(i => i.id === l.ref); if (!it) continue;
         await patch('inventory', it.id, { stock: (it.stock || 0) - l.qty, log: [...(it.log || []), { at: Date.now(), delta: -l.qty, note: `Sold to ${sale.name}` }].slice(-20) });
       }
-      if (p.apptId) await patch('appointments', p.apptId, { status: 'done', saleId: id, customerId: customerId || '', receipt: { id, t: rtoken } });
+      if (p.apptId && p.lateFee) { const la = S.appointments.find(x => x.id === p.apptId) || {}; await patch('appointments', p.apptId, { status: 'noshow', lateFeeSale: id, saleId: id, customerId: customerId || '', receipt: { id, t: rtoken }, ...(la.deposit && la.deposit.status === 'paid' ? { deposit: { ...la.deposit, status: 'kept' } } : {}) }); }
+      else if (p.apptId) await patch('appointments', p.apptId, { status: 'done', saleId: id, customerId: customerId || '', receipt: { id, t: rtoken } });
       S.pos = blankPos();
       toast(`Sale saved · ${money(sale.total, 1)}`); receiptModal({ id, ...sale }, true);
     } finally { S.busy = false; render(); }
   },
   async viewRef(el) {
     const a = S.appointments.find(x => x.id === el.dataset.id); if (!a) return; const rk = a.id + ':' + ((a.refPhoto && a.refPhoto.at) || ''); // a replaced photo gets a new key
-    const show = img => openModal('Reference photo', `<div class="stack"><p><b>${esc(a.name || 'Walk-in')}</b> · ${a.source === 'walk-in' ? 'walk-in #' + esc(a.queueNo || '') : `${fmtDate(a.date)} ${fmtTime(a.time)}`} · ${esc(svcNames(a.serviceIds))} · ${esc(staffName(a.barberId))}</p>
+    const show = img => openModal('Reference photo', `<div class="stack"><p><b>${esc(a.name || 'Walk-in')}</b> · ${a.source === 'walk-in' ? 'walk-in #' + esc(a.queueNo || '') : `${fmtDate(a.date)} ${fmtTime(a.time)}`} · ${esc(svcNames(a.serviceIds, a.options))} · ${esc(staffName(a.barberId))}</p>
       ${img ? `<img class="ref-full" src="${esc(img)}" alt="The cut ${esc(a.name || 'the client')} wants">` : img === false ? '<p class="muted">The client removed this photo.</p>' : '<p class="muted"><span class="spinner"></span> Loading…</p>'}${a.refPhoto && a.refPhoto.note ? `<p class="note">${esc(a.refPhoto.note)}</p>` : ''}
       <p class="muted small">Sent by the client with their booking. Only the shop can see it.</p></div>`, true);
     show(S.refImgs[rk]);
@@ -1575,7 +1666,7 @@ const ACT = {
     const staff = S.staff.length ? S.staff : STARTER_STAFF;
     if (!S.staff.length) for (const b of STARTER_STAFF) { const { id, ...rest } = b; await put('staff', id, { ...rest, since: today() }); }
     // the shop's own products, ready to show on the website once the owner sets price and stock
-    if (!S.inventory.length) for (const p of STARTER_PRODUCTS) await put('inventory', p.id, { name: p.name, cat: 'Retail', stock: 0, reorder: 3, cost: 0, price: 0, unit: p.unit, log: [], web: true, webDesc: `${p.size} · ${p.desc}`, webTag: p.tag, photo: p.photo });
+    if (!S.inventory.length) for (const p of STARTER_PRODUCTS) await put('inventory', p.id, { name: p.name, cat: 'Retail', stock: 0, reorder: 3, cost: 0, price: p.price || 0, unit: p.unit, log: [], web: true, webDesc: `${p.size} · ${p.desc}`, webTag: p.tag, photo: p.photo });
     if (await put('public', 'info', { ...JSON.parse(JSON.stringify(STARTER)), barbers: staff.filter(b => b.active !== false && isServiceStaff(b)).map(publicBarber) })) toast('Starter menu and team saved. Edit them in Shop setup and Barbers.');
   }
 };
@@ -1696,7 +1787,7 @@ const FORM = {
     if (rate < 0 || rate > 100) return modalErr(f, 'Commission must be between 0 and 100%.');
     const groups = svcRole ? fd.getAll('groups') : []; if (svcRole && !groups.length) return modalErr(f, 'Pick which services they take bookings for.');
     const productFee = svcRole && fd.has('pf') ? { threshold: Math.max(0, num(fd.get('pfThreshold'))), low: Math.max(0, num(fd.get('pfLow'))), high: Math.max(0, num(fd.get('pfHigh'))) } : null;
-    const data = { name, title: String(fd.get('title') || '').trim(), phone: String(fd.get('phone') || '').trim(), specialty: String(fd.get('specialty') || '').trim(), bio: String(fd.get('bio') || '').trim().slice(0, 300), role, rate, productFee, noDeposit: svcRole && fd.has('noDeposit'), dailyPay: Math.max(0, Number(fd.get('dailyPay')) || 0), groups, tiers: svcRole ? fd.getAll('tiers') : [], chair: fd.get('chair') ? +fd.get('chair') : '', days: fd.getAll('days').map(Number).sort() };
+    const data = { name, title: String(fd.get('title') || '').trim(), phone: String(fd.get('phone') || '').trim(), specialty: String(fd.get('specialty') || '').trim(), bio: String(fd.get('bio') || '').trim().slice(0, 300), role, rate, productFee, noDeposit: svcRole && fd.has('noDeposit'), dailyPay: Math.max(0, Number(fd.get('dailyPay')) || 0), payType: ['quota', 'monthly'].includes(fd.get('payType')) ? fd.get('payType') : 'daily', monthlyPay: Math.max(0, Number(fd.get('monthlyPay')) || 0), groups, tiers: svcRole ? fd.getAll('tiers') : [], chair: fd.get('chair') ? +fd.get('chair') : '', days: fd.getAll('days').map(Number).sort() };
     const id = f.dataset.id;
     const ok = id ? await patch('staff', id, { ...data, active: fd.has('active') }) : await put('staff', newId(), { ...data, active: true, since: today() });
     if (ok) { closeModal(); toast(id ? `${name} updated` : `${name} added`); setTimeout(syncPublicBarbers, 400); }
@@ -1735,8 +1826,9 @@ const FORM = {
     const fd = new FormData(f), name = String(fd.get('name') || '').trim(), price = num(fd.get('price'));
     if (!name) return modalErr(f, 'Enter the service name.');
     if (price < 0) return modalErr(f, 'Enter a price.');
-    const mins = Math.max(pol().step, Math.round((parseInt(fd.get('mins'), 10) || 60) / pol().step) * pol().step);
-    const data = { name, cat: String(fd.get('cat') || '').trim() || 'Services', group: String(fd.get('group')), price: round2(price), mins, desc: String(fd.get('desc') || '').trim(), perks: String(fd.get('perks') || '').split(',').map(x => x.trim()).filter(Boolean).slice(0, 4), usesProduct: fd.has('usesProduct'), kind: String(fd.get('kind') || ''), tier: String(fd.get('tier') || ''), priceFrom: fd.has('priceFrom'), active: fd.has('active') };
+    const rawMins = parseInt(fd.get('mins'), 10); // 0 = an add-on done inside the same hour
+    const mins = rawMins === 0 ? 0 : Math.max(pol().step, Math.round((rawMins || 60) / pol().step) * pol().step);
+    const data = { name, cat: String(fd.get('cat') || '').trim() || 'Services', group: String(fd.get('group')), price: round2(price), mins, desc: String(fd.get('desc') || '').trim(), perks: String(fd.get('perks') || '').split(',').map(x => x.trim()).filter(Boolean).slice(0, 4), options: String(fd.get('options') || '').split('\n').map(l => l.split('|').map(x => x.trim())).filter(([n]) => n).slice(0, 6).map(([n, a], i) => ({ id: 'o' + (i + 1), name: n.slice(0, 40), add: Math.max(0, Number(String(a || '0').replace(/[^\d.]/g, '')) || 0) })), usesProduct: fd.has('usesProduct'), kind: String(fd.get('kind') || ''), tier: String(fd.get('tier') || ''), priceFrom: fd.has('priceFrom'), active: fd.has('active') };
     const list = services().map(s => ({ ...s }));
     if (f.dataset.id) { const k = list.findIndex(s => s.id === f.dataset.id); if (k >= 0) list[k] = { ...list[k], ...data }; } else list.push({ id: newId(), ...data });
     if (await saveInfo({ services: list })) { closeModal(); toast(f.dataset.id ? 'Service updated' : `${name} added`); }
@@ -1773,7 +1865,7 @@ const FORM = {
   },
   async policy(f) {
     const fd = new FormData(f), n = (k, min, max) => Math.min(max, Math.max(min, parseInt(fd.get(k), 10) || 0));
-    const policy = { ...pol(), deposit: n('deposit', 100, 100000), holdMinutes: n('holdMinutes', 5, 60), rescheduleHours: n('rescheduleHours', 0, 168), lateMinutes: n('lateMinutes', 0, 120), leadMinutes: n('leadMinutes', 0, 1440), bookAheadDays: n('bookAheadDays', 1, 365), rebookDays: n('rebookDays', 0, 120), manualGcash: fd.has('manualGcash'), receiptTexts: fd.has('receiptTexts'), lastBooking: /^\d{2}:\d{2}$/.test(String(fd.get('lastBooking') || '')) ? String(fd.get('lastBooking')) : '', onlineBooking: fd.has('onlineBooking') };
+    const policy = { ...pol(), deposit: n('deposit', 100, 100000), holdMinutes: n('holdMinutes', 5, 60), rescheduleHours: n('rescheduleHours', 0, 168), lateMinutes: n('lateMinutes', 0, 120), lateMinutesDeposit: n('lateMinutesDeposit', 0, 120), cancelHours: n('cancelHours', 0, 336), leadMinutes: n('leadMinutes', 0, 1440), bookAheadDays: n('bookAheadDays', 1, 365), rebookDays: n('rebookDays', 0, 120), manualGcash: fd.has('manualGcash'), receiptTexts: fd.has('receiptTexts'), lastBooking: /^\d{2}:\d{2}$/.test(String(fd.get('lastBooking') || '')) ? String(fd.get('lastBooking')) : '', onlineBooking: fd.has('onlineBooking') };
     if (await saveInfo({ policy })) toast('Booking rules saved');
   }
 };

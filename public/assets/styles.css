@@ -1310,3 +1310,31 @@ input[data-cust][aria-expanded="true"]{background-image:url("data:image/svg+xml,
 .prod-qty .stepper button{flex:1;min-width:0}
 .prod-qty .prod-added{justify-content:center}
 .prod-b{min-width:0}
+
+/* pay plan picker (Staff → Edit) */
+.pay-plan{display:grid;gap:10px}
+.seg-pick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.pp-opt{display:flex;gap:8px;align-items:flex-start;padding:10px;border:1px solid var(--line);border-radius:10px;cursor:pointer}
+.pp-opt:has(input:checked){border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.pp-opt input{margin-top:3px}
+.pp-opt span{display:grid;gap:2px}.pp-opt small{color:var(--muted);font-size:12px;line-height:1.3}
+.pp-explain{margin:0}
+@media (max-width:640px){.seg-pick{grid-template-columns:1fr}}
+.pay-rule{font-size:12.5px;color:var(--ink-2)}
+
+/* service options (e.g. polish) */
+.optbox{display:grid;gap:10px;margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.optrow{display:grid;gap:6px}.optrow > b{font-size:14px}
+.chips-row{display:flex;flex-wrap:wrap;gap:6px}
+.ochip{padding:8px 12px;border:1px solid var(--line-2);border-radius:999px;background:none;color:var(--ink);font:600 13px/1 var(--f-body,inherit);cursor:pointer}
+.ochip span{color:var(--muted);font-weight:500}
+.ochip[aria-checked="true"]{background:var(--ink);border-color:var(--ink);color:var(--surface)}
+.ochip[aria-checked="true"] span{color:inherit;opacity:.8}
+
+/* senior barber booking rules pop-up */
+.agree-scrim{position:fixed;inset:0;z-index:1000;background:rgba(8,10,14,.55);display:grid;place-items:center;padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.agree-card{background:var(--surface);color:var(--ink);border-radius:18px;max-width:480px;width:100%;padding:22px 20px;display:grid;gap:12px;box-shadow:0 30px 80px -20px rgba(0,0,0,.5);max-height:90vh;overflow:auto}
+.agree-card h2{margin:0;font:400 24px/1.1 var(--f-slab)}
+.agree-card .eyebrow{margin:0}
+.agree-list{margin:0;padding-left:18px;display:grid;gap:8px;line-height:1.45}
+.mi-opts{display:block;margin-top:2px;color:var(--muted)}

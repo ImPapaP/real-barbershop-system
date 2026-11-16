@@ -240,3 +240,17 @@ test('no down payment for junior barbers, including "any available" when only ju
   assert.equal(depositFor(info, '', regular), 0);
   assert.equal(depositFor(info, '', deluxe), 200);
 });
+
+test('late limit and refund depend on whether the booking has a down payment', async () => {
+  const { lateLimit, refundOnCancel, cleanOptions, withOption } = await import('../src/core.js');
+  const pol = { lateMinutes: 5, lateMinutesDeposit: 20, cancelHours: 48 };
+  const senior = { deposit: { amount: 200, status: 'paid' }, startAt: Date.now() + 72 * 3600e3 }, junior = { deposit: { amount: 0, status: 'none' } };
+  assert.equal(lateLimit(senior, pol), 20); assert.equal(lateLimit(junior, pol), 5);
+  assert.equal(refundOnCancel(senior, pol), true);
+  assert.equal(refundOnCancel({ ...senior, startAt: Date.now() + 24 * 3600e3 }, pol), false);
+  assert.equal(refundOnCancel(junior, pol), false);
+  const info = { services: [{ id: 'n1', name: 'Manicure', price: 160, options: [{ id: 'reg', name: 'Regular polish', add: 30 }] }] };
+  assert.deepEqual(cleanOptions(info, ['n1'], { n1: 'reg', x: 'y' }), { n1: 'reg' });
+  assert.deepEqual(cleanOptions(info, ['n1'], { n1: 'fake' }), {});
+  const s = withOption(info.services[0], { n1: 'reg' }); assert.equal(s.price, 190); assert.equal(s.name, 'Manicure + Regular polish');
+});

@@ -31,7 +31,7 @@ import {
   validateRequest, policyOf, slotId, isActiveSlot, desiredSlots, slotStateFor, apptMins, startMs,
   verifyPaymongoSignature, rebookLink, newToken, tokenMatches, bookingCode, smsText, emailContent, eligibleBarbers,
   servicesById, blockTimes, phNow, addDays, normalizePhone, validEmail, parseSlotId, waitlistMatches,
-  promoCheck, cleanCode, validProofImage, cleanBday, receiptView, receiptSms, receiptEmail, queueItems, accountView, depositFor
+  promoCheck, cleanCode, validProofImage, cleanBday, receiptView, receiptSms, receiptEmail, queueItems, accountView, depositFor, cleanOptions, withOption, hasDeposit, lateLimit, refundOnCancel
 } from './src/core.js';
 import { createCheckout, expireCheckout, sendSms, sendEmail } from './src/providers.js';
 
@@ -69,8 +69,8 @@ function view(id, a, info) {
   return {
     id, code: a.code, name: a.name, phone: a.phone, email: a.email, date: a.date, time: a.time,
     barberName: apptBarber(info, a),
-    serviceNames: servicesById(info, a.serviceIds).map(s => (s ? s.name : 'Service')),
-    depositMethod: a.deposit && a.deposit.method, depositNone: !!(a.deposit && a.deposit.status === 'none')
+    serviceNames: servicesById(info, a.serviceIds).map(s => (s ? withOption(s, a.options).name : 'Service')),
+    depositMethod: a.deposit && a.deposit.method, depositStatus: (a.deposit && a.deposit.status) || '', depositNone: !!(a.deposit && a.deposit.status === 'none')
   };
 }
 
@@ -187,7 +187,7 @@ export const createBooking = onCall({ secrets: [PAYMONGO_SECRET_KEY] }, async re
     tx.set(apptRef(id), {
       code: bcode, token, source: 'online', status: free ? 'booked' : 'pending_payment', notify: true, payMethod: free ? 'none' : manual ? 'gcash' : 'online', ...(promo ? { promo } : {}),
       name: v.name, phone: v.phone, email: v.email, notes: v.notes, customerId: '', ...(cleanBday(req.data.birthday) ? { birthday: cleanBday(req.data.birthday) } : {}),
-      serviceIds: v.serviceIds, mins: v.mins, date: v.date, time: v.time, startAt: v.at, barberId: b, ...(anyMain ? { anyBarber: true } : {}),
+      serviceIds: v.serviceIds, options: cleanOptions(info, v.serviceIds, req.data.options), mins: v.mins, date: v.date, time: v.time, startAt: v.at, barberId: b, ...(anyMain ? { anyBarber: true } : {}),
       blocks: refs[pick].map(r => r.id), holdUntil: free ? 0 : holdUntil, guests: gid ? [gid] : [],
       deposit: depMain ? { amount: depMain, status: 'unpaid' } : { amount: 0, status: 'none' }, reminders: {}, reschedules: 0, createdAt: now
     });
@@ -197,7 +197,7 @@ export const createBooking = onCall({ secrets: [PAYMONGO_SECRET_KEY] }, async re
       tx.set(apptRef(gid), {
         code: bookingCode(), token: newToken(), source: 'online', status: free ? 'booked' : 'pending_payment', notify: false, groupOf: id, bookedBy: v.name, payMethod: free ? 'none' : manual ? 'gcash' : 'online', ...(sameClient ? { addOnOf: id } : {}),
         name: vg.name, phone: v.phone, email: v.email, notes: v.notes, customerId: '',
-        serviceIds: vg.serviceIds, mins: vg.mins, date: vg.date, time: vg.time, startAt: vg.at, barberId: gb, ...(anyGuest ? { anyBarber: true } : {}),
+        serviceIds: vg.serviceIds, options: cleanOptions(info, vg.serviceIds, req.data.options), mins: vg.mins, date: vg.date, time: vg.time, startAt: vg.at, barberId: gb, ...(anyGuest ? { anyBarber: true } : {}),
         blocks: grefs[gpick].map(r => r.id), holdUntil: free ? 0 : holdUntil,
         deposit: depGuest ? { amount: depGuest, status: 'unpaid' } : { amount: 0, status: 'none' }, reminders: {}, reschedules: 0, createdAt: now
       });
@@ -304,7 +304,7 @@ export const paymongoWebhook = onRequest({ secrets: [PAYMONGO_WEBHOOK_SECRET, ..
 function publicView(id, a, info) {
   const pol = policyOf(info), now = Date.now();
   const startAt = a.startAt || startMs(a.date, a.time);
-  const services = servicesById(info, a.serviceIds);
+  const services = servicesById(info, a.serviceIds).map(s => withOption(s, a.options));
   return {
     id, code: a.code, status: a.status, date: a.date, time: a.time, startAt, mins: a.mins,
     barberId: a.barberId, barberName: apptBarber(info, a), anyBarber: !!a.anyBarber,
@@ -314,7 +314,7 @@ function publicView(id, a, info) {
     checkoutUrl: a.status === 'pending_payment' && (a.holdUntil || 0) > now ? a.checkoutUrl || '' : '',
     canReschedule: a.status === 'booked' && startAt - now >= pol.rescheduleHours * 3600e3 && (a.reschedules || 0) < pol.maxReschedules,
     canCancel: a.status === 'booked' && startAt > now,
-    policy: { deposit: pol.deposit, rescheduleHours: pol.rescheduleHours, lateMinutes: pol.lateMinutes, holdMinutes: pol.holdMinutes },
+    policy: { deposit: pol.deposit, rescheduleHours: pol.rescheduleHours, lateMinutes: lateLimit(a, pol), lateMinutesJunior: pol.lateMinutes, lateMinutesDeposit: pol.lateMinutesDeposit ?? 20, cancelHours: pol.cancelHours ?? 48, holdMinutes: pol.holdMinutes },
     payMethod: a.payMethod || 'online', proof: a.proof ? { status: a.proof.status, at: a.proof.at, note: a.proof.note || '' } : null,
     gcash: a.payMethod === 'gcash' ? { number: (info.shop && info.shop.gcashNumber) || '', name: (info.shop && info.shop.gcashName) || '' } : null,
     promo: a.promo || null, late: a.late || null, rating: a.rating || null, receipt: a.receipt && a.receipt.id ? { id: a.receipt.id, t: a.receipt.t } : null, refPhoto: a.refPhoto ? { at: a.refPhoto.at, note: a.refPhoto.note || '' } : null, groupOf: a.groupOf || '', source: a.source || 'online', gaveToWalkin: !!a.gaveToWalkin
@@ -615,9 +615,10 @@ export const cancelBooking = onCall({ secrets: NOTIFY_SECRETS }, async req => {
   const result = await db.runTransaction(async tx => {
     const a = (await tx.get(apptRef(id))).data();
     if (!publicView(id, a, info).canCancel) throw new HttpsError('failed-precondition', 'This booking can’t be cancelled online. Please call the shop.');
-    const upd = { status: 'cancelled', cancelledBy: 'customer', cancelledAt: Date.now(), 'deposit.status': a.deposit && a.deposit.status === 'paid' ? 'kept' : (a.deposit && a.deposit.status) || 'unpaid' };
+    const pol = policyOf(info), refund = refundOnCancel({ ...a, startAt: a.startAt || startMs(a.date, a.time) }, pol);
+    const upd = { status: 'cancelled', cancelledBy: 'customer', cancelledAt: Date.now(), 'deposit.status': refund ? 'refund_due' : a.deposit && a.deposit.status === 'paid' ? 'kept' : (a.deposit && a.deposit.status) || 'unpaid' };
     tx.update(apptRef(id), upd);
-    return { ...a, status: 'cancelled' };
+    return { ...a, status: 'cancelled', deposit: { ...(a.deposit || {}), status: upd['deposit.status'] } };
   });
   await notify('cancelled', id, result, info, { shop: 'shop_cancelled' });
   return publicView(id, result, info);

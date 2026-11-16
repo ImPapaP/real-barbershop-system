@@ -7,9 +7,11 @@ export const DEFAULT_POLICY = {
   deposit: 200,          // pesos, paid online to confirm a booking
   holdMinutes: 15,       // how long a slot is held while the customer pays
   rescheduleHours: 48,   // customers can reschedule up to this many hours before
-  lateMinutes: 5,        // this late = the slot can go to a walk-in, deposit kept
+  lateMinutes: 5,        // junior barbers (no down payment): this late = the slot can go to a walk-in; fit in later
+  lateMinutesDeposit: 20, // senior barbers (down payment): over this late = deposit kept and the full price is owed
+  cancelHours: 48,       // cancel at least this long before to get the down payment back; later = kept, split barber/shop
   leadMinutes: 60,       // earliest booking is this far from now
-  bookAheadDays: 120,    // how far ahead customers can book
+  bookAheadDays: 365,    // how far ahead customers can book
   step: 60,              // bookings start on the hour; also the slot grid in minutes
   maxReschedules: 2,
   onlineBooking: true,   // the shop can switch online booking off in Shop setup
@@ -166,7 +168,7 @@ export const firstName = n => String(n || '').trim().split(/\s+/)[0] || 'there';
 export function smsText(kind, b, info) {
   const pol = policyOf(info), when = `${fmtDate(b.date)}, ${fmtTime(b.time)}`, who = b.barberName || 'your barber', shop = shopName(info);
   switch (kind) {
-    case 'confirmed': return `${shop}: You're booked with ${who} on ${when}. ${b.depositNone ? 'No down payment needed, pay at the shop.' : `P${pol.deposit} deposit received.`} Code ${b.code}. Arriving ${pol.lateMinutes}+ min late, your slot may go to a walk-in. Details sent to your email.`;
+    case 'confirmed': return `${shop}: You're booked with ${who} on ${when}. ${b.depositNone ? 'No down payment needed, pay at the shop.' : `P${pol.deposit} deposit received.`} Code ${b.code}. ${b.depositNone ? `Arriving ${pol.lateMinutes}+ min late, your slot may go to a walk-in.` : `Over ${pol.lateMinutesDeposit ?? 20} min late: deposit kept and full price owed. Cancel ${pol.cancelHours ?? 48}+ hrs before for a refund.`} Details sent to your email.`;
     case 'reminder': return `${shop}: Reminder, your appointment with ${who} is tomorrow, ${when}. Code ${b.code}. Need to change it? Use the link in your email.`;
     case 'soon': return `${shop}: See you at ${fmtTime(b.time)} today with ${who}. Please arrive on time. Code ${b.code}.`;
     case 'rescheduled': return `${shop}: Your booking ${b.code} is moved to ${when} with ${who}.`;
@@ -203,10 +205,10 @@ export function emailContent(kind, b, info, link) {
     confirmed: [`Hi ${b.name}, you're booked.`, b.depositNone ? 'No down payment needed. You pay the full price at the shop.' : `We received your ₱${pol.deposit} deposit${b.depositMethod ? ' via ' + b.depositMethod : ''}. It goes toward your bill.`],
     reminder: [`Hi ${b.name}, this is a reminder of your appointment tomorrow.`],
     rescheduled: [`Hi ${b.name}, your booking has a new time.`],
-    cancelled: [`Hi ${b.name}, your booking is cancelled.`, `The ₱${pol.deposit} deposit isn't refunded for cancellations.`],
+    cancelled: [`Hi ${b.name}, your booking is cancelled.`, b.depositStatus === 'refund_due' ? `You cancelled more than ${pol.cancelHours ?? 48} hours before, so we'll send your ₱${pol.deposit} down payment back.` : b.depositNone ? 'There was no down payment on this booking.' : `You cancelled less than ${pol.cancelHours ?? 48} hours before, so the ₱${pol.deposit} down payment isn't refunded.`],
     slot_lost: [`Hi ${b.name}, we received your ₱${pol.deposit} deposit, but someone else confirmed that time while you were paying.`, 'The shop will call you to pick a new time or refund your deposit.'],
     shop_new: [`${b.name} (${b.phone}, ${b.email}) booked online and paid the deposit.`],
-    shop_cancelled: [`${b.name} (${b.phone}) cancelled their booking online. The deposit is kept.`],
+    shop_cancelled: [`${b.name} (${b.phone}) cancelled their booking online.`, b.depositStatus === 'refund_due' ? `It was more than ${pol.cancelHours ?? 48} hours ahead: send the ₱${pol.deposit} down payment back, then mark it refunded in the dashboard.` : b.depositNone ? 'No down payment on this booking.' : 'The down payment is kept (half goes to the barber).'],
     shop_attention: [`${b.name} (${b.phone}) paid the deposit after their hold expired and the slot was taken. Call them to rebook or refund it in PayMongo.`],
     rebook: [`Hi ${firstName(b.name)}, it's been about ${Math.round(pol.rebookDays / 7)} weeks since your last visit.`, 'Book your next cut online in a minute.'],
     slot_open: [`Hi ${firstName(b.name)}, you're on our waitlist and a slot just opened.`, 'It goes to whoever books first, so grab it soon.'],
@@ -218,7 +220,7 @@ export function emailContent(kind, b, info, link) {
   const rows = kind === 'rebook' ? [] : kind === 'slot_open' ? [['When', when], ['Barber', b.barberName || 'Any barber']]
     : [['Booking code', b.code], ['When', when], ['Barber', b.barberName || 'Any barber'], ['Services', (b.serviceNames || []).join(', ')]];
   const button = forShopKind(kind) ? 'Open the dashboard' : kind === 'rate' ? 'Rate your visit' : ['rebook', 'slot_open'].includes(kind) ? 'Book now' : 'View or change your booking';
-  const policy = forShop || ['rebook', 'slot_open', 'rate'].includes(kind) ? '' : `<p style="color:#555;font-size:13px">If you're ${pol.lateMinutes} minutes late or more, your slot may go to a walk-in and the deposit is kept. You can reschedule up to ${pol.rescheduleHours} hours before your appointment.</p>`;
+  const policy = forShop || ['rebook', 'slot_open', 'rate'].includes(kind) ? '' : `<p style="color:#555;font-size:13px">${b.depositNone ? `If you're ${pol.lateMinutes} minutes late or more, your slot may go to a walk-in. We'll fit you in at the next free time if we can.` : `If you're more than ${pol.lateMinutesDeposit ?? 20} minutes late, the down payment is kept and the full price of your service is still due, for the barber's time. Cancel at least ${pol.cancelHours ?? 48} hours before to get the down payment back.`} You can reschedule up to ${pol.rescheduleHours} hours before your appointment.</p>`;
   const html = `<div style="font-family:Arial,sans-serif;max-width:520px;color:#111">
 <h2 style="margin:0 0 12px">${esc(shop)}</h2>
 ${lines[kind].map(l => `<p>${esc(l)}</p>`).join('')}
@@ -348,3 +350,20 @@ export function depositFor(info, barberId, services) {
   const can = bs.filter(b => b.active !== false && canServe(b, services || []));
   return can.length && can.every(b => b.noDeposit) ? 0 : pol.deposit;
 }
+
+// Service options (e.g. polish on a manicure): { serviceId: optionId } on a booking. Keeps only real options
+// of services in the booking; withOption folds the pick into the name and price.
+export function cleanOptions(info, ids, raw) {
+  const out = {}; if (!raw || typeof raw !== "object") return out;
+  for (const id of ids || []) { const s = (info.services || []).find(x => x.id === id), o = s && (s.options || []).find(x => x.id === raw[id]); if (o) out[id] = o.id; }
+  return out;
+}
+export const withOption = (s, opts) => { const o = s && (s.options || []).find(x => x.id === (opts || {})[s.id]); return o ? { ...s, name: `${s.name} + ${o.name}`, price: (Number(s.price) || 0) + (Number(o.add) || 0) } : s; };
+
+// Late and cancel rules depend on the barber level. Junior barbers (no down payment): 5 minutes, then the slot can
+// go to a walk-in and the client is fitted in at the next free time. Senior barbers (down payment): 20 minutes;
+// over that the down payment is kept and the full price is owed. Cancelling 48+ hours before gets the down
+// payment back; later, it's kept and split between the barber and the shop.
+export const hasDeposit = a => !!(a && a.deposit && a.deposit.status !== 'none' && (a.deposit.amount || 0) > 0);
+export const lateLimit = (a, pol) => hasDeposit(a) ? (pol.lateMinutesDeposit ?? 20) : (pol.lateMinutes ?? 5);
+export const refundOnCancel = (a, pol, now = Date.now()) => hasDeposit(a) && a.deposit.status === 'paid' && (a.startAt || 0) - now >= (pol.cancelHours ?? 48) * 3600e3;

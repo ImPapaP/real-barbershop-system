@@ -26,11 +26,20 @@ const info = () => S.info || PREVIEW;
 const cur = () => info().shop.currency || '₱';
 const m = n => money(n, cur());
 const svcs = () => (info().services || []).filter(s => s.active !== false);
-const chosen = () => svcs().filter(s => S.bk.svc[s.id]);
+// A service can have options that change the price, e.g. polish on a manicure (+₱30 regular, +₱50 L’Oréal/Orly).
+// The pick is kept in S.bk.opt { serviceId: optionId } and folded into the name and price here.
+const withOpt = s => { const o = (s.options || []).find(x => x.id === (S.bk.opt || {})[s.id]); return o ? { ...s, price: s.price + (Number(o.add) || 0), name: `${s.name} + ${o.name}`, opt: o.id } : s; };
+const chosen = () => svcs().filter(s => S.bk.svc[s.id]).map(withOpt);
+const chosenOpts = () => { const o = {}; [...chosen(), ...(S.bk.guest && S.bk.guest.own ? guestSvcs() : [])].forEach(s => { if (s.opt) o[s.id] = s.opt; }); return o; };
+function optionsBox(list) {
+  const withO = list.filter(s => (s.options || []).length); if (!withO.length) return '';
+  return `<div class="optbox">${withO.map(s => { const cur = (S.bk.opt || {})[s.id] || '';
+    return `<div class="optrow"><b>${esc(s.name)}</b><div class="chips-row" role="radiogroup" aria-label="${esc(s.name)} options">${[{ id: '', name: s.optNone || 'No polish', add: 0 }, ...s.options].map(o => `<button type="button" class="ochip" role="radio" data-act="bkOpt" data-id="${esc(s.id)}" data-v="${esc(o.id)}" aria-checked="${cur === o.id}">${esc(o.name)}${o.add ? ` <span>+${m(o.add)}</span>` : ''}</button>`).join('')}</div></div>`; }).join('')}</div>`;
+}
 // Menu and booking tabs: For him, For her, and Nails once nail services are on the menu
 // What to call the person doing the service
-const staffWord = (g, cap) => { const w = g === 'her' ? 'stylist' : g === 'nails' ? 'nail technician' : 'barber'; return cap ? w[0].toUpperCase() + w.slice(1) : w; };
-const groupTabs = () => [['him', 'For him'], ['her', 'For her'], ['nails', 'Nails']].filter(([k]) => k !== 'nails' || svcs().some(x => x.group === 'nails'));
+const staffWord = (g, cap) => { const w = g === 'her' ? 'stylist' : g === 'nails' ? 'nail technician' : g === 'braids' ? 'braider' : 'barber'; return cap ? w[0].toUpperCase() + w.slice(1) : w; };
+const groupTabs = () => [['him', 'For him'], ['her', 'For her'], ['nails', 'Nails'], ['braids', 'Braids']].filter(([k]) => ['him', 'her'].includes(k) || svcs().some(x => x.group === k));
 const hasTiers = g => svcs().some(s => (s.group || 'him') === g && s.kind === 'base');
 const tierNames = t => (info().barbers || []).filter(b => (b.tiers || []).includes(t)).map(b => b.name);
 const listNames = a => a.length > 1 ? a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1] : (a[0] || '');
@@ -329,6 +338,22 @@ function waitText() {
   return e.mins === 0 ? 'A chair is free now' : `About ${e.mins} min wait${e.waiting ? ` · ${e.waiting} waiting` : ''}`;
 }
 const waitChip = () => { const t = waitText(); return t ? `<span class="chip wait-chip" title="Walk-in wait right now"><b aria-hidden="true">⏱</b>Walk-ins: ${esc(t.charAt(0).toLowerCase() + t.slice(1))}</span>` : ''; };
+// Pop-up before paying for a senior barber booking: the rules that cost money, with a box to tick
+function agreePop() {
+  const p = policyOf(info()), el = document.createElement('div');
+  el.className = 'agree-scrim'; el.id = 'agree-pop';
+  el.innerHTML = `<div class="agree-card" role="dialog" aria-modal="true" aria-labelledby="agree-h"><p class="eyebrow">Before you book</p><h2 id="agree-h">Senior barber booking rules</h2>
+    <ul class="agree-list"><li><b>${m(p.deposit)} down payment</b> to confirm your slot. It comes off your bill.</li>
+      <li><b>${p.lateMinutesDeposit ?? 20}-minute grace period.</b> If you’re more than ${p.lateMinutesDeposit ?? 20} minutes late, the down payment is kept and you still pay the <b>full price of your service</b>, for the barber’s reserved time.</li>
+      <li><b>Cancel at least ${p.cancelHours ?? 48} hours before</b> to get your down payment back. Later than that, it isn’t refunded.</li></ul>
+    <label class="consent"><input type="checkbox" id="agree-tick"><span>I understand and agree to these rules.</span></label>
+    <div class="row" style="justify-content:flex-end"><button type="button" class="btn btn-ghost" data-act="agreeNo">Go back</button><button type="button" class="btn btn-accent" data-act="agreeYes" disabled>Agree and continue</button></div></div>`;
+  document.body.appendChild(el); document.body.style.overflow = 'hidden';
+  const tick = el.querySelector('#agree-tick'), yes = el.querySelector('[data-act=agreeYes]');
+  tick.addEventListener('change', () => { yes.disabled = !tick.checked; });
+  setTimeout(() => tick.focus(), 30);
+}
+const agreeClose = () => { document.getElementById('agree-pop')?.remove(); document.body.style.overflow = ''; };
 function walkinBox() {
   const q = S.q, I = info(), t = phNow(), inToday = (I.barbers || []).filter(b => (b.days || []).includes(t.dow));
   if (q.done) return `<div class="walkin done-wl">${ic('check')}<div><p class="eyebrow">Walk-in queue</p><h3>You’re number ${esc(q.done.queueNo)}</h3><p class="muted">We’ll call your name in order. Keep this page open to see how many are ahead of you.</p>
@@ -351,17 +376,19 @@ function walkinBox() {
 
 function policyCards() {
   const p = policyOf(info()), sh = info().shop, on = p.onlineBooking;
-  const juniors = (info().barbers || []).some(b => b.noDeposit && b.active !== false) ? ' No down payment when you book a junior barber.' : '';
+  const juniors = (info().barbers || []).some(b => b.noDeposit && b.active !== false) ? ' Only bookings with our senior barbers need one; everyone else, you pay at the shop.' : '';
   const pay = on ? `Down payment to confirm your booking, paid online by GCash, Maya or card. It’s deducted from your bill.${juniors}`
     : `Down payment to confirm your booking${sh.gcashNumber ? `, sent by GCash to ${esc(sh.gcashNumber)}${sh.gcashName ? ` (${esc(sh.gcashName)})` : ''}` : ''}. Send the proof on our Facebook page. No down payment, no booking. It’s deducted from your bill.`;
   return `<div class="policy">
     <div class="reveal">${ic('check', 'pic')}<b>${m(p.deposit)}</b><span>${pay}</span></div>
-    <div class="reveal" style="--d:80ms">${ic('clock', 'pic')}<b>${p.lateMinutes} min</b><span>If you’re ${p.lateMinutes} minutes late or more, we may give your slot to a walk-in, and the down payment isn’t refunded.</span></div>
+    <div class="reveal" style="--d:80ms">${ic('clock', 'pic')}<b>${p.lateMinutes} / ${p.lateMinutesDeposit ?? 20} min</b><span>Junior barbers: ${p.lateMinutes} minutes late and your slot may go to a walk-in; we’ll fit you in at the next free time. Senior barbers: over ${p.lateMinutesDeposit ?? 20} minutes late, the down payment is kept and the full price is still due.</span></div>
+    <div class="reveal" style="--d:120ms">${ic('arrow', 'pic')}<b>${p.cancelHours ?? 48} hrs</b><span>Cancel at least ${p.cancelHours ?? 48} hours before to get your down payment back. Later than that, it isn’t refunded.</span></div>
     <div class="reveal" style="--d:160ms">${ic('arrow', 'pic')}<b>${p.rescheduleHours} hrs</b><span>${on ? `Reschedule online up to ${p.rescheduleHours} hours before your appointment, using the link in your confirmation email.` : `Reschedule up to ${p.rescheduleHours} hours before your appointment by messaging us.`}</span></div>
     <div class="reveal" style="--d:240ms">${ic('user', 'pic')}<b>1 person</b><span>Each booking is for one person only. Booking for a friend too? Book a separate slot for them.</span></div>
   </div>`;
 }
 
+const optLine = s => (s.options || []).length ? `<span class="mi-opts">${s.options.map(o => `${esc(o.name)} +${m(o.add)}`).join(' · ')}</span>` : '';
 function menuBoard(group) {
   const list = svcs().filter(s => (s.group || 'him') === group);
   if (!list.length) return '<p class="empty">Menu coming soon.</p>';
@@ -375,10 +402,10 @@ function menuBoard(group) {
     return '';
   };
   const item = s => `<li><div class="mi"><span class="mi-name">${esc(s.name)}</span><span class="leader" aria-hidden="true"></span><span class="mi-price">${esc(priceLabel(s, cur()))}</span></div>${perks(s)}
-    <div class="mi-row"><p class="mi-meta"><span class="mi-time">${ic('clock')}${dur(s.mins)}</span>${s.desc ? ' · ' + esc(s.desc) : ''}</p><button class="mi-book" data-act="bookSvc" data-id="${esc(s.id)}">Book ${ic('arrow')}</button></div></li>`;
+    <div class="mi-row"><p class="mi-meta">${s.mins ? `<span class="mi-time">${ic('clock')}${dur(s.mins)}</span>` : ''}${s.desc ? (s.mins ? ' · ' : '') + esc(s.desc) : ''}${optLine(s)}</p><button class="mi-book" data-act="bookSvc" data-id="${esc(s.id)}">Book ${ic('arrow')}</button></div></li>`;
   const group_ = c => `<div class="mgroup"><h3>${esc(c)}</h3>${note(c)}<ul>${inCat(c).map(item).join('')}</ul></div>`;
   const bundle = s => { const m = /^([A-Z]{1,4}\d+)\s*·\s*(.+)$/.exec(s.name) || [, '', s.name];
-    return `<article class="bundle"><div>${m[1] ? `<p class="b-code">${esc(m[1])}</p>` : ''}<h4>${esc(m[2])}</h4><p class="mi-meta"><span class="mi-time">${ic('clock')}${dur(s.mins)}</span>${s.desc ? ' · ' + esc(s.desc) : ''}</p></div>
+    return `<article class="bundle"><div>${m[1] ? `<p class="b-code">${esc(m[1])}</p>` : ''}<h4>${esc(m[2])}</h4><p class="mi-meta"><span class="mi-time">${ic('clock')}${dur(s.mins)}</span>${s.desc ? ' · ' + esc(s.desc) : ''}${optLine(s)}</p></div>
       <div class="b-foot"><b class="mi-price">${esc(priceLabel(s, cur()))}</b><button class="btn btn-sm" data-act="bookSvc" data-id="${esc(s.id)}">Book</button></div></article>`; };
   const by = r => cats.filter(c => role(c) === r);
   const tiers = by('tier'), bundles = by('bundle'), extras = by('extra'), rest = by('rest');
@@ -421,7 +448,7 @@ function applySelection({ group, svc = [], barber: bid = '' }) {
 // ---------- book for two ----------
 // The second person gets the same services, or picks their own. They come at the same time with another
 // barber/stylist, or right after with the same barber (only when he does their services too).
-const guestSvcs = () => { const g = S.bk.guest; return g.own ? svcs().filter(x => g.svc[x.id]) : chosen(); };
+const guestSvcs = () => { const g = S.bk.guest; return g.own ? svcs().filter(x => g.svc[x.id]).map(withOpt) : chosen(); };
 // "Add nails to this visit": the same client adds a service of another kind, done by someone else (one down payment)
 // Only between For her and Nails (not offered with men's haircuts)
 const addOnGroups = () => groupTabs().filter(([k]) => (S.bk.group === 'her' && k === 'nails') || (S.bk.group === 'nails' && k === 'her'));
@@ -436,6 +463,7 @@ function addOnPicker() {
   return `<div class="addon"><div class="addon-h"><b>${ic('plus')} Add ${addOnLabel(grp)} to this visit?</b><small>${who.length === 1 ? `With ${esc(who[0])}, ` : ''}at the same time or right after. One down payment covers both.</small></div>
     ${groups.length > 1 ? `<div class="tabs sm" role="tablist">${groups.map(([k, l]) => `<button role="tab" type="button" aria-selected="${grp === k}" data-act="addOnGroup" data-v="${k}">${l}</button>`).join('')}</div>` : ''}
     <div class="pick">${svcs().filter(s => (s.group || 'him') === grp).map(s => `<button type="button" class="pickcard sm" data-act="addOnSvc" data-g="${grp}" data-id="${esc(s.id)}" aria-pressed="${!!(g.self && g.svc[s.id])}"><span class="tick" aria-hidden="true">${ic('check')}</span><b>${esc(s.name)}</b><small>${dur(s.mins)}</small><span class="p">${esc(priceLabel(s, cur()))}</span></button>`).join('')}</div>
+    ${g.self ? optionsBox(svcs().filter(s => g.svc[s.id])) : ''}
     ${g.self && guestSvcs().length && comboError(info(), guestSvcs()) ? `<p class="err">${esc(comboError(info(), guestSvcs()))}</p>` : ''}</div>`;
 }
 // Step 3: when the add-on happens (picked after the main time)
@@ -604,7 +632,7 @@ function booker() {
       ${welcomeBack()}
       ${barberFirst()}
       <div class="tabs" role="tablist">${groupTabs().map(([k, l]) => `<button role="tab" type="button" aria-selected="${b.group === k}" data-act="bkGroup" data-v="${k}">${l}</button>`).join('')}</div>
-      ${hasTiers(b.group) ? tierPicker() : `<div class="pick">${svcs().filter(s => (s.group || 'him') === b.group).map(s => svcCard(s)).join('')}</div>`}
+      ${hasTiers(b.group) ? tierPicker() : `<div class="pick">${svcs().filter(s => (s.group || 'him') === b.group).map(s => svcCard(s)).join('')}</div>${optionsBox(svcs().filter(s => S.bk.svc[s.id]))}`}
       ${picked.length ? addOnPicker() : ''}
     </section>
     <section class="step" id="st-2" ${st.picked ? '' : 'aria-disabled="true"'}><div class="step-h"><span class="n ${st.picked ? 'ok' : ''}">${st.picked ? ic('check') : 2}</span><h3>Choose your ${staffWord(b.group)}</h3></div>
@@ -703,8 +731,8 @@ function barberFirst() {
   const b = S.bk, chosenB = barber(b.barber), all = (info().barbers || []).filter(x => isServiceStaff(x) && x.active !== false && bookable(x));
   if (chosenB) return `<div class="bf-chosen">${avatarOf(chosenB)}<span>Booking with <b>${esc(chosenB.name)}</b>${chosenB.tiers && chosenB.tiers.length === 1 ? ` · ${esc(TIERS[chosenB.tiers[0]] || '')} haircuts` : ''}</span><button type="button" class="link-btn" data-act="bfClear">Change</button></div>`;
   if (!S.byBarber) return `<button type="button" class="link-btn bf-open" data-act="bfOpen">${ic('scissors')} Have a favorite barber? Choose him first</button>`;
-  const groups = [['deluxe', 'Deluxe · senior barbers'], ['regular', 'Regular · junior barbers'], ['her', 'Hair stylists'], ['nails', 'Nails']];
-  const inG = (x, k) => k === 'her' || k === 'nails' ? (x.groups || []).includes(k) : (x.groups || ['him']).includes('him') && (x.tiers || []).includes(k);
+  const groups = [['deluxe', 'Deluxe · senior barbers'], ['regular', 'Regular · junior barbers'], ['her', 'Hair stylists'], ['nails', 'Nails'], ['braids', 'Braids']];
+  const inG = (x, k) => ['her', 'nails', 'braids'].includes(k) ? (x.groups || []).includes(k) : (x.groups || ['him']).includes('him') && (x.tiers || []).includes(k);
   return `<div class="bf-pick"><div class="row" style="justify-content:space-between"><b>Choose your barber</b><button type="button" class="link-btn" data-act="bfClose">Close</button></div>
     ${groups.map(([k, l]) => { const xs = all.filter(x => inG(x, k)); return xs.length ? `<p class="bf-label">${esc(l)}</p><div class="bf-row">${xs.map(x => `<button type="button" class="bf-chip" data-act="bfPick" data-id="${esc(x.id)}">${avatarOf(x)}<span>${esc(x.name)}</span></button>`).join('')}</div>` : ''; }).join('')}</div>`;
 }
@@ -719,7 +747,7 @@ function nextFreeCard() {
 // "Included" tags on a service (e.g. Signature Haircut: shampoo and rinse included)
 const perks = s => (s.perks || []).length ? `<span class="perks">${s.perks.map(p => `<span class="perk">${ic('check')}${esc(p)}</span>`).join('')}</span>` : '';
 function svcCard(s, act = 'bkSvc', extra = {}) {
-  return `<button type="button" class="pickcard${extra.radio ? ' radio' : ''}" data-act="${act}" data-id="${esc(s.id)}" aria-pressed="${!!S.bk.svc[s.id]}" ${extra.disabled ? 'disabled' : ''}><span class="tick" aria-hidden="true">${ic('check')}</span><b>${esc(s.name)}</b><small>${extra.note ? esc(extra.note) : `${dur(s.mins)}${s.desc && s.kind === 'base' && /^Save/.test(s.desc) ? ' · ' + esc(s.desc) : ''}`}</small>${perks(s)}<span class="p">${esc(priceLabel(s, cur()))}</span></button>`;
+  return `<button type="button" class="pickcard${extra.radio ? ' radio' : ''}" data-act="${act}" data-id="${esc(s.id)}" aria-pressed="${!!S.bk.svc[s.id]}" ${extra.disabled ? 'disabled' : ''}><span class="tick" aria-hidden="true">${ic('check')}</span><b>${esc(s.name)}</b><small>${extra.note ? esc(extra.note) : `${s.mins ? dur(s.mins) : 'Within the same hour'}${s.desc && s.kind === 'base' && /^Save/.test(s.desc) ? ' · ' + esc(s.desc) : ''}`}</small>${perks(s)}<span class="p">${esc(priceLabel(s, cur()))}</span></button>`;
 }
 // Men's step 1: one haircut (Deluxe or Regular), then optional add-ons.
 // Men's step 1: A) Deluxe or Regular, B) one haircut from that level only, C) optional add-ons.
@@ -921,6 +949,9 @@ const ACT = {
     renderBooker();
   },
   bkBase(el) { const id = el.dataset.id; if (S.bk.svc[id]) return; pickService(id); renderBooker(); },
+  agreeNo() { agreeClose(); },
+  agreeYes() { S.agreed = true; agreeClose(); ACT.pay(); },
+  bkOpt(el) { S.bk.opt = { ...(S.bk.opt || {}), [el.dataset.id]: el.dataset.v }; renderBooker(); },
   bkSvc(el) { const id = el.dataset.id; if (S.bk.svc[id]) { S.bk.svc[id] = false; S.bk.time = ''; } else pickService(id); renderBooker(); },
   bkBarber(el) { S.bk.barber = el.dataset.id; S.bk.time = ''; S.err = ''; const b = barber(S.bk.barber); if (b && S.bk.date && !(b.days || []).includes(dowOf(S.bk.date))) S.bk.date = firstDate(); watchSlots(); renderBooker(); goStep(3); },
   bkDate(el) { S.bk.date = el.dataset.v; S.bk.time = ''; S.err = ''; S.wl.done = ''; S.wl.err = ''; watchSlots(); renderBooker(); },
@@ -958,9 +989,11 @@ const ACT = {
     }
     const gp = guestPick(availableTimes(info(), { services: chosen(), date: b.date, barberId: b.barber }, S.slots));
     if (b.guest.on && (!gp || (!b.guest.self && !b.guest.name.trim()))) { S.err = gp ? 'Enter the second person’s name.' : b.guest.self ? `Pick when you’d like ${addOnLabel(b.guest.group)}, or remove it.` : 'Pick when the second person comes, or remove them.'; renderBooker(); return; }
+    // Senior barber (down payment): the client reads and ticks the late and cancel rules first
+    if (dueFor(gp) > 0 && !S.agreed) { agreePop(); return; }
     S.busy = true; S.err = ''; renderBooker();
     try {
-      const r = await call('createBooking', { serviceIds: Object.keys(b.svc).filter(k => b.svc[k]), barberId: b.barber, date: b.date, time: b.time, name: b.name, phone: b.phone, email: b.email, birthday: bdayOf(b), notes: b.notes, consent: b.consent,
+      const r = await call('createBooking', { serviceIds: Object.keys(b.svc).filter(k => b.svc[k]), barberId: b.barber, date: b.date, time: b.time, options: chosenOpts(), name: b.name, phone: b.phone, email: b.email, birthday: bdayOf(b), notes: b.notes, consent: b.consent,
         payMethod: payChoice() ? S.pay : 'online', promo: S.promo.applied ? S.promo.applied.code : '',
         ...(prodNote() ? { notes: [b.notes, `Set aside for me: ${prodNote()}`].filter(Boolean).join(' · ') } : {}),
         ...(gp ? { guest: { name: b.guest.self ? b.name.trim() : b.guest.name.trim(), ...(b.guest.self ? { sameClient: true } : {}), time: gp.time, barberId: gp.barberId, ...(gp.mode === 'pick' && gp.date !== b.date ? { date: gp.date } : {}), ...(b.guest.own ? { serviceIds: guestSvcs().map(x => x.id) } : {}) } } : {}) });

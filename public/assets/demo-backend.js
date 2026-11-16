@@ -2,12 +2,12 @@
 // Used for the live preview before Firebase is connected. Payments are skipped; bookings confirm instantly.
 import {
   windowOfTime, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, comboError, commissionFor, isServiceStaff, rebookLink, slotId, blockTimes, isActiveSlot, availableTimes, policyOf,
-  startMs, phNow, addDays, sum, promoCheck, cleanCode, cleanBday, queueItems, accountView, depositFor
+  startMs, phNow, addDays, sum, promoCheck, cleanCode, cleanBday, queueItems, accountView, depositFor, cleanOptions, withOption, lateLimit, refundOnCancel
 } from './shared.js';
 
 // The saved demo is keyed by a fingerprint of the starter data, so changing the menu or team
 // (or a browser briefly mixing old and new files) never leaves stale sample data behind.
-const SEED_REV = 23; // bump when seed() itself changes
+const SEED_REV = 24; // bump when seed() itself changes
 const fingerprint = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const KEY = `rb-demo-${SEED_REV}-${fingerprint(JSON.stringify([STARTER, STARTER_STAFF]))}`, USER_KEY = 'rb-demo-user';
 try { Object.keys(localStorage).filter(k => k.startsWith('rb-demo-') && k !== KEY && k !== USER_KEY).forEach(k => localStorage.removeItem(k)); } catch (_) {}
@@ -32,7 +32,7 @@ function seed() {
   let r = 11; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
   const pick = a => a[Math.floor(rnd() * a.length)];
   m.set('public/info', { ...clone(STARTER), policy: { ...STARTER.policy, onlineBooking: true }, barbers: STARTER_STAFF.filter(isServiceStaff).map(publicBarber),
-    products: STARTER_PRODUCTS.map((p, i) => ({ id: 'i' + (i + 1), name: p.name, price: 0, desc: `${p.size} · ${p.desc}`, photo: p.photo, tag: p.tag, inStock: true })),
+    products: STARTER_PRODUCTS.map((p, i) => ({ id: 'i' + (i + 1), name: p.name, price: p.price || 0, desc: `${p.size} · ${p.desc}`, photo: p.photo, tag: p.tag, inStock: true })),
     happenings: [ // samples so the demo shows the Promos & events section
       { id: 'h_s1', kind: 'promo', title: 'First visit? ₱50 off your cut', text: 'New to REAL Barbers? Use the code when you book online and get ₱50 off your first haircut.', start: '', end: day(30), code: 'WELCOME50', badge: '₱50 OFF', sample: true },
       { id: 'h_s2', kind: 'event', title: 'December: open every day', text: 'We’re open daily from 9 AM to 8 PM all December. Book early for the holidays, slots fill up fast.', start: '', end: day(45), sample: true }
@@ -61,12 +61,20 @@ function seed() {
         total: s.price + pt + tip, depositCredit: dep, method: pick(['Cash', 'Cash', 'GCash', 'Maya']), rate: RATE[b], commission: COMM(b, s) });
       ((earned[b] = earned[b] || {})[i] = (earned[b][i] || 0) + COMM(b, s) + tip);
     }
+    // nails (Luz and Liza: ₱500 a day or 40%) and braids (Airyl ₱700 + 70%, Lyndon) so the pay plans have something to show
+    const nails = svc.filter(x => x.group === 'nails'), braids = svc.filter(x => x.group === 'braids');
+    const extra = [...Array(Math.floor(rnd() * 6))].map(() => [pick(nails), pick(['luz', 'liza'])]).concat(rnd() < 0.3 ? [[pick(braids), rnd() < 0.7 ? 'airyl' : 'lyndon']] : []);
+    for (const [s, b] of extra) {
+      m.set(`sales/x${n++}`, { date: d, time: `${String(10 + Math.floor(rnd() * 8)).padStart(2, '0')}:00`, at: Date.now() + i * 864e5, customerId: '', name: 'Walk-in', barberId: b,
+        lines: [{ kind: 'service', ref: s.id, name: s.name, price: s.price, qty: 1 }], svcTotal: s.price, prodTotal: 0, discount: 0, tip: 0, total: s.price, depositCredit: 0, method: pick(['Cash', 'GCash']), rate: RATE[b], commission: COMM(b, s) });
+      ((earned[b] = earned[b] || {})[i] = (earned[b][i] || 0) + COMM(b, s));
+    }
   }
   // weekly payouts: daily pay for every day in + commission + tips, paid up to the day before each payday
   let from = -40;
   [-33, -26, -19, -12, -5].forEach((payday, w) => {
     STARTER_STAFF.forEach(b => {
-      let amt = 0; for (let i = from; i < payday; i++) amt += (b.dailyPay || 0) + ((earned[b.id] || {})[i] || 0);
+      let amt = 0; for (let i = from; i < payday; i++) { const e = (earned[b.id] || {})[i] || 0; amt += b.payType === 'monthly' ? (b.monthlyPay || 0) / 30 + e : b.payType === 'quota' ? Math.max(b.dailyPay || 0, e) : (b.dailyPay || 0) + e; }
       if (amt) m.set(`payouts/w${w}_${b.id}`, { barberId: b.id, amount: Math.round(amt * 100) / 100, date: day(payday), note: `Week of ${day(from)}`, createdAt: Date.now() + payday * 864e5 });
     });
     from = payday;
@@ -77,7 +85,7 @@ function seed() {
   [['e1', day(-18), 'Rent', 'Shop rent', 25000, 'Bank transfer'], ['e2', day(-12), 'Electricity', 'Meralco bill', 6200, 'GCash'], ['e3', day(-9), 'Water', 'Water bill', 780, 'GCash'],
    ['e4', day(-6), 'Supplies', 'Blades, neck strips, alcohol', 1450, 'Cash'], ['e5', day(-3), 'Stock purchase', 'Liquid Pomade ×12', 3000, 'Cash'], ['e6', day(-1), 'Payment fees', 'PayMongo fees', 380, 'Bank transfer']]
     .forEach(([id, date, cat, desc, amount, method]) => m.set('expenses/' + id, { date, cat, desc, amount, method }));
-  STARTER_PRODUCTS.forEach((p, i) => m.set('inventory/i' + (i + 1), { name: p.name, cat: 'Retail', stock: [3, 12, 7][i], reorder: 4, cost: 0, price: 0, unit: p.unit, log: [],
+  STARTER_PRODUCTS.forEach((p, i) => m.set('inventory/i' + (i + 1), { name: p.name, cat: 'Retail', stock: [3, 12, 7][i], reorder: 4, cost: 0, price: p.price || 0, unit: p.unit, log: [],
     web: true, webDesc: `${p.size} · ${p.desc}`, webTag: p.tag, photo: p.photo }));
   [['i4', 'Razor blades (100 pcs)', 'Supply', 1, 2, 450, 0, 'boxes'], ['i5', 'Neck strips', 'Supply', 14, 5, 60, 0, 'rolls'], ['i6', 'Aloe vera gel', 'Supply', 4, 2, 180, 0, 'tubs']]
     .forEach(([id, name, cat, stock, reorder, cost, price, unit]) => m.set('inventory/' + id, { name, cat, stock, reorder, cost, price, unit, log: [] }));
@@ -185,11 +193,11 @@ function publicView(id) {
   return {
     id, code: a.code, status: a.status, date: a.date, time: a.time, startAt, mins: a.mins, barberId: a.barberId,
     barberName: a.anyBarber ? '' : (I.barbers.find(b => b.id === a.barberId) || {}).name || '', anyBarber: !!a.anyBarber, serviceIds: a.serviceIds,
-    services: services.map(s => ({ name: s.name, price: s.price, priceFrom: !!s.priceFrom })), name: a.name,
+    services: services.map(s => withOption(s, a.options)).map(s => ({ name: s.name, price: s.price, priceFrom: !!s.priceFrom })), name: a.name,
     deposit: { ...(a.deposit || { amount: pol.deposit, status: 'unpaid' }) }, holdUntil: a.holdUntil || 0, checkoutUrl: '',
     canReschedule: a.status === 'booked' && startAt - now >= pol.rescheduleHours * 3600e3 && (a.reschedules || 0) < pol.maxReschedules,
     canCancel: a.status === 'booked' && startAt > now,
-    policy: { deposit: pol.deposit, rescheduleHours: pol.rescheduleHours, lateMinutes: pol.lateMinutes, holdMinutes: pol.holdMinutes },
+    policy: { deposit: pol.deposit, rescheduleHours: pol.rescheduleHours, lateMinutes: lateLimit(a, pol), lateMinutesJunior: pol.lateMinutes, lateMinutesDeposit: pol.lateMinutesDeposit ?? 20, cancelHours: pol.cancelHours ?? 48, holdMinutes: pol.holdMinutes },
     payMethod: a.payMethod || 'online', proof: a.proof ? { status: a.proof.status, at: a.proof.at, note: a.proof.note || '' } : null,
     gcash: a.payMethod === 'gcash' ? { number: I.shop.gcashNumber || '', name: I.shop.gcashName || '' } : null,
     promo: a.promo || null, late: a.late || null, rating: a.rating || null, receipt: a.receipt && a.receipt.id ? { id: a.receipt.id, t: a.receipt.t } : null, refPhoto: a.refPhoto ? { at: a.refPhoto.at, note: a.refPhoto.note || '' } : null, groupOf: a.groupOf || '', source: a.source || 'online', gaveToWalkin: !!a.gaveToWalkin
@@ -258,13 +266,13 @@ const FUNCS = {
     const code = Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
     store.set('appointments/' + id, {
       code, token, source: 'online', ...st, ...(promo ? { promo } : {}), notify: true, name: d.name.trim(), phone: d.phone.trim(), email: d.email.trim(), notes: d.notes || '', customerId: '', ...(cleanBday(d.birthday) ? { birthday: cleanBday(d.birthday) } : {}),
-      serviceIds: services.map(s => s.id), mins: sum(services, s => s.mins), date: d.date, time: d.time, startAt: startMs(d.date, d.time), barberId: mainB, ...(d.barberId ? {} : { anyBarber: true }),
+      serviceIds: services.map(s => s.id), options: cleanOptions(I, services.map(s => s.id), d.options), mins: sum(services, s => s.mins), date: d.date, time: d.time, startAt: startMs(d.date, d.time), barberId: mainB, ...(d.barberId ? {} : { anyBarber: true }),
       deposit: dep, reminders: {}, reschedules: 0, createdAt: Date.now(), guests: gid ? [gid] : []
     });
     if (guest) store.set('appointments/' + gid, {
       code: code.slice(0, 5) + '2', token: Math.random().toString(36).slice(2, 14), source: 'online', ...st, notify: false, groupOf: id, bookedBy: d.name.trim(), ...(d.guest.sameClient ? { addOnOf: id } : {}),
       name: guest.name, phone: d.phone.trim(), email: d.email.trim(), notes: d.notes || '', customerId: '',
-      serviceIds: guest.services.map(s => s.id), mins: sum(guest.services, s => s.mins), date: guest.date, time: guest.time, startAt: startMs(guest.date, guest.time), barberId: guest.barberId, ...(d.guest.barberId ? {} : { anyBarber: true }),
+      serviceIds: guest.services.map(s => s.id), options: cleanOptions(I, guest.services.map(s => s.id), d.options), mins: sum(guest.services, s => s.mins), date: guest.date, time: guest.time, startAt: startMs(guest.date, guest.time), barberId: guest.barberId, ...(d.guest.barberId ? {} : { anyBarber: true }),
       deposit: depGuest ? { ...depOf(depGuest), ...(manual ? {} : { paidWith: id }) } : d.guest.sameClient && depMain ? { amount: 0, status: dep.status, paidWith: id } : { amount: 0, status: 'none' }, reminders: {}, reschedules: 0, createdAt: Date.now()
     });
     afterWrite('appointments/' + id); if (guest) afterWrite('appointments/' + gid);
@@ -413,7 +421,8 @@ const FUNCS = {
   cancelBooking(d) {
     const a = byToken(d);
     if (!publicView(d.id).canCancel) fail('failed-precondition', 'This booking can’t be cancelled online. Please call the shop.');
-    store.set('appointments/' + d.id, { ...a, status: 'cancelled', cancelledBy: 'customer', deposit: { ...a.deposit, status: 'kept' } });
+    const refund = refundOnCancel({ ...a, startAt: a.startAt || startMs(a.date, a.time) }, policyOf(info()));
+    store.set('appointments/' + d.id, { ...a, status: 'cancelled', cancelledBy: 'customer', deposit: { ...a.deposit, status: refund ? 'refund_due' : a.deposit && a.deposit.status === 'paid' ? 'kept' : (a.deposit || {}).status || 'unpaid' } });
     afterWrite('appointments/' + d.id);
     return publicView(d.id);
   }

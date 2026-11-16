@@ -2,7 +2,7 @@
 export const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 5, leadMinutes: 60, bookAheadDays: 120, step: 60, maxReschedules: 2, rebookDays: 28, onlineBooking: true, receiptTexts: true, lastBooking: '19:00' };
+export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 5, lateMinutesDeposit: 20, cancelHours: 48, leadMinutes: 60, bookAheadDays: 365, step: 60, maxReschedules: 2, rebookDays: 28, onlineBooking: true, receiptTexts: true, birthdaySvc: 'h8', birthdayPrice: 249, regularVisits: 3, lastBooking: '19:00' };
 
 export const $ = (s, r = document) => r.querySelector(s);
 export const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -107,9 +107,10 @@ export const STARTER = {
     name: 'REAL Barbers', wordmark: 'R3AL BARBERS', tagline: 'Best looks realized.',
     about: 'Deluxe haircuts with shampoo, hot towel and massage, beard sculpting, hair spa and color. Plus a full salon menu for her.',
     address: 'C&B Circle Mall, cor. L. Sumulong Memorial Circle, Antipolo, Rizal 1870',
-    phone: '0906 567 4507', email: 'r3albarbers@gmail.com', facebook: 'https://www.facebook.com/R3ALBarbers', instagram: 'https://www.instagram.com/real__barbers',
+    phone: '0906 567 4507', email: 'r3albarbers@gmail.com', facebook: 'https://www.facebook.com/R3ALBarbers', googleUrl: 'https://share.google/erBDaygzMDDSmdahv',
+    directions: 'Ground floor of C&B Circle Mall, in front of Unciano Colleges. Free parking at the side of the building and in the basement.', instagram: 'https://www.instagram.com/real__barbers',
     gcashNumber: '0966 368 7856', gcashName: 'Alexandra C.',
-    currency: '₱', loyaltyEvery: 10, heroPhoto: '', googleRating: 5.0, googleCount: 45, ratingSource: 'Setmore'
+    currency: '₱', loyaltyEvery: 11, heroPhoto: '', googleRating: 5.0, googleCount: 45, ratingSource: 'Setmore'
   },
   announcement: { active: false, text: '', link: '' },
   gallery: [
@@ -135,21 +136,21 @@ export const STARTER = {
     // Men: pick ONE haircut (kind 'base'), Deluxe or Regular, then any add-ons (kind 'extra').
     // tier decides which barbers can take it: deluxe = senior barbers, regular = regular barbers.
     S60('h1', 'Deluxe Haircut', 399, 'him', 'Deluxe', 'Haircut of choice, shampoo and rinse, hot towel, arm and head massage, aloe vera moisturizing treatment and premiere grooming', { mins: 60, kind: 'base', tier: 'deluxe' }),
-    S60('p1', 'BL1 · Deluxe Haircut + Beard Sculpting', 600, 'him', 'Deluxe promos', 'Save ₱29', { mins: 75, kind: 'base', tier: 'deluxe', includes: ['h7'] }),
-    S60('p2', 'BL2 · Deluxe Haircut + Hair Spa', 900, 'him', 'Deluxe promos', 'Save ₱49', { usesProduct: true, mins: 90, kind: 'base', tier: 'deluxe', includes: ['h2'] }),
-    S60('p3', 'BL3 · Deluxe Haircut + Dandruff Control', 1000, 'him', 'Deluxe promos', 'Save ₱49', { usesProduct: true, mins: 90, kind: 'base', tier: 'deluxe', includes: ['h3'] }),
-    S60('p4', 'BL4 · Deluxe Haircut + L’Oréal Hair Color', 1100, 'him', 'Deluxe promos', 'Save ₱49', { usesProduct: true, mins: 120, kind: 'base', tier: 'deluxe', includes: ['h4'] }),
-    S60('h8', 'Signature Haircut', 299, 'him', 'Regular', 'Any style, hot towel, and grooming with exclusive hair products', { mins: 45, kind: 'base', tier: 'regular', perks: ['Shampoo and rinse included'] }),
-    S60('h9', 'Regular Haircut', 249, 'him', 'Regular', 'Any style, with grooming using exclusive hair products', { mins: 45, kind: 'base', tier: 'regular' }),
-    S60('h2', 'Hair Spa', 550, 'him', 'Add-ons', '', { usesProduct: true, mins: 30, kind: 'extra' }),
-    S60('h3', 'Dandruff Control', 650, 'him', 'Add-ons', '', { usesProduct: true, mins: 30, kind: 'extra' }),
-    S60('h4', 'Hair Color (L’Oréal)', 750, 'him', 'Add-ons', '', { usesProduct: true, mins: 60, kind: 'extra' }),
-    S60('h5', 'Basic Hair Art', 549, 'him', 'Add-ons', '', { mins: 30, kind: 'extra' }),
-    S60('h6', 'Beard Shave with Cream', 200, 'him', 'Add-ons', '', { mins: 15, kind: 'extra' }),
-    S60('h7', 'Beard Sculpting', 230, 'him', 'Add-ons', '', { mins: 20, kind: 'extra' }),
+    S60('p1', 'BL1 · Deluxe Haircut + Beard Sculpting', 600, 'him', 'Deluxe promos', 'Save ₱29', { mins: 60, kind: 'base', tier: 'deluxe', includes: ['h7'] }),
+    S60('p2', 'BL2 · Deluxe Haircut + Hair Spa', 900, 'him', 'Deluxe promos', 'Save ₱49', { usesProduct: true, mins: 60, kind: 'base', tier: 'deluxe', includes: ['h2'] }),
+    S60('p3', 'BL3 · Deluxe Haircut + Dandruff Control', 1000, 'him', 'Deluxe promos', 'Save ₱49', { usesProduct: true, mins: 60, kind: 'base', tier: 'deluxe', includes: ['h3'] }),
+    S60('p4', 'BL4 · Deluxe Haircut + L’Oréal Hair Color', 1100, 'him', 'Deluxe promos', 'Save ₱49', { usesProduct: true, mins: 60, kind: 'base', tier: 'deluxe', includes: ['h4'] }),
+    S60('h8', 'Signature Haircut', 299, 'him', 'Regular', 'Any style, hot towel, and grooming with exclusive hair products', { mins: 60, kind: 'base', tier: 'regular', perks: ['Shampoo and rinse included'] }),
+    S60('h9', 'Regular Haircut', 249, 'him', 'Regular', 'Any style, with grooming using exclusive hair products', { mins: 60, kind: 'base', tier: 'regular' }),
+    S60('h2', 'Hair Spa', 550, 'him', 'Add-ons', '', { usesProduct: true, mins: 0, kind: 'extra' }),
+    S60('h3', 'Dandruff Control', 650, 'him', 'Add-ons', '', { usesProduct: true, mins: 0, kind: 'extra' }),
+    S60('h4', 'Hair Color (L’Oréal)', 750, 'him', 'Add-ons', '', { usesProduct: true, mins: 0, kind: 'extra' }),
+    S60('h5', 'Basic Hair Art', 549, 'him', 'Add-ons', '', { mins: 0, kind: 'extra' }),
+    S60('h6', 'Beard Shave with Cream', 200, 'him', 'Add-ons', '', { mins: 0, kind: 'extra' }),
+    S60('h7', 'Beard Sculpting', 230, 'him', 'Add-ons', '', { mins: 0, kind: 'extra' }),
     S60('f1', 'Hair and Makeup', 1500, 'her', 'For her', '', { mins: 90 }),
-    S60('f2', 'Women’s Regular Haircut', 275, 'her', 'For her', '', { mins: 45 }),
-    S60('f3', 'Blow Dry with Shampoo', 230, 'her', 'For her', '', { mins: 45 }),
+    S60('f2', 'Women’s Regular Haircut', 275, 'her', 'For her', '', { mins: 60 }),
+    S60('f3', 'Blow Dry with Shampoo', 230, 'her', 'For her', '', { mins: 60 }),
     S60('f4', 'Hair Styling', 470, 'her', 'For her', 'Curled or straightened', { mins: 60 }),
     S60('f5', 'Hair Color (Organique)', 1000, 'her', 'Color & treatments', '', { usesProduct: true, mins: 120, priceFrom: true }),
     S60('f6', 'Hair Color (Revlon)', 1200, 'her', 'Color & treatments', '', { usesProduct: true, mins: 120, priceFrom: true }),
@@ -160,42 +161,49 @@ export const STARTER = {
     S60('f11', 'Keratin Blow-out', 1500, 'her', 'Color & treatments', '', { usesProduct: true, mins: 120 }),
     S60('f12', 'Nano-Protein Treatment', 2500, 'her', 'Color & treatments', '', { usesProduct: true, mins: 150 }),
     S60('f13', 'Hair Rebond', 1500, 'her', 'Color & treatments', '', { usesProduct: true, mins: 240, priceFrom: true }),
-    S60('f14', 'Moroccan Hot Oil Treatment', 450, 'her', 'Color & treatments', '', { usesProduct: true, mins: 45 }),
-    S60('f15', 'Semi Di Lino Hot Oil Treatment', 550, 'her', 'Color & treatments', '', { usesProduct: true, mins: 45 }),
-    S60('f16', 'Eyebrow Shaping', 120, 'her', 'For her', '', { mins: 15 }),
-    // Nails (sample menu: replace with the shop's real nail services and prices)
-    S60('n1', 'Manicure', 150, 'nails', 'Nails', 'Clean, shape and polish', { mins: 30 }),
-    S60('n2', 'Pedicure', 200, 'nails', 'Nails', 'Clean, shape and polish', { mins: 45 }),
-    S60('n3', 'Manicure and Pedicure', 320, 'nails', 'Nails', 'Both, one sitting', { mins: 75 }),
-    S60('n4', 'Gel Manicure', 450, 'nails', 'Gel', 'Long-lasting gel polish', { mins: 60, usesProduct: true }),
-    S60('n5', 'Gel Pedicure', 500, 'nails', 'Gel', 'Long-lasting gel polish', { mins: 60, usesProduct: true }),
-    S60('n6', 'Foot Spa', 350, 'nails', 'Spa', 'Soak, scrub and massage', { mins: 45 }),
-    S60('n7', 'Nail Art', 100, 'nails', 'Add-ons', 'Per set, design of your choice', { mins: 15, priceFrom: true })
+    S60('f14', 'Moroccan Hot Oil Treatment', 450, 'her', 'Color & treatments', '', { usesProduct: true, mins: 60 }),
+    S60('f15', 'Semi Di Lino Hot Oil Treatment', 550, 'her', 'Color & treatments', '', { usesProduct: true, mins: 60 }),
+    S60('f16', 'Eyebrow Shaping', 120, 'her', 'For her', '', { mins: 60 }),
+    // Nails (REAL Barbers' menu from the owner, Nov 2026). Polish is an option the client picks; it changes the price.
+    S60('n1', 'Manicure', 160, 'nails', 'Nails', 'Clean and shape', { options: [{ id: 'reg', name: 'Regular polish', add: 30 }, { id: 'orly', name: 'L’Oréal/Orly polish', add: 50 }] }),
+    S60('n2', 'Pedicure', 180, 'nails', 'Nails', 'Clean and shape', { options: [{ id: 'reg', name: 'Regular polish', add: 30 }, { id: 'orly', name: 'L’Oréal/Orly polish', add: 50 }] }),
+    S60('n3', 'Gel Manicure', 450, 'nails', 'Gel', 'Long-lasting gel polish', { usesProduct: true }),
+    S60('n4', 'Gel Pedicure', 550, 'nails', 'Gel', 'Long-lasting gel polish', { usesProduct: true }),
+    S60('n5', 'Gel Polish Removal (done here)', 150, 'nails', 'Gel', 'For gel done at REAL Barbers'),
+    S60('n6', 'Gel Polish Removal (done elsewhere)', 200, 'nails', 'Gel', 'For gel done at another salon'),
+    S60('n7', 'Foot Spa', 350, 'nails', 'Spa', 'Soak, scrub and massage'),
+    S60('dn1', 'DN1 · Manicure and Pedicure', 320, 'nails', 'Promo packages', '', { options: [{ id: 'reg', name: 'Regular polish', add: 60 }, { id: 'orly', name: 'L’Oréal/Orly polish', add: 100 }, { id: 'gel', name: 'Gel polish', add: 630 }] }),
+    S60('dn2', 'DN2 · Pedicure and Foot Spa', 500, 'nails', 'Promo packages', '', { options: [{ id: 'reg', name: 'Regular polish', add: 30 }, { id: 'orly', name: 'L’Oréal/Orly polish', add: 50 }, { id: 'gel', name: 'Gel polish', add: 370 }] }),
+    S60('dn3', 'DN3 · Manicure, Pedicure and Foot Spa', 660, 'nails', 'Promo packages', '', { options: [{ id: 'reg', name: 'Regular polish', add: 50 }, { id: 'orly', name: 'L’Oréal/Orly polish', add: 50 }, { id: 'gel', name: 'Gel polish', add: 640 }] }),
+    // Braids (Airyl and Lyndon). Prices start here; the final price depends on length and style.
+    S60('b1', 'Top Head Braids', 1000, 'braids', 'Braids', '', { mins: 120, priceFrom: true }),
+    S60('b2', 'Full Head Braids', 1300, 'braids', 'Braids', '', { mins: 180, priceFrom: true }),
+    S60('b3', 'Braid Extensions', 2000, 'braids', 'Braids', '', { mins: 240, priceFrom: true, usesProduct: true })
   ],
   barbers: []
 };
 // The shop's own REAL Barbers products, shown on the website. Prices are 0 until the owner sets them
-// (the website then says "Ask for price").
+// (owner's prices, Nov 2026).
 export const STARTER_PRODUCTS = [
-  { id: 'liquid-pomade', name: 'Liquid Pomade', size: '100 ml', unit: 'bottles', desc: 'Firm hold, medium shine. Pump bottle, easy to work through the hair and washes out clean.', tag: '', photo: 'assets/products/liquid-pomade.jpg' },
-  { id: 'styling-powder', name: 'Styling Powder', size: '20 g', unit: 'bottles', desc: 'Firm hold, matte finish. Adds volume and texture at the roots.', tag: '', photo: 'assets/products/styling-powder.jpg' },
-  { id: 'sea-salt-spray', name: 'Sea Salt Spray', size: '100 ml', unit: 'bottles', desc: 'Medium hold, medium shine. Spray on damp hair for a loose, textured look.', tag: '', photo: 'assets/products/sea-salt-spray.jpg' }
+  { id: 'liquid-pomade', name: 'Liquid Pomade', price: 380, size: '100 ml', unit: 'bottles', desc: 'Firm hold, medium shine. Pump bottle, easy to work through the hair and washes out clean.', tag: '', photo: 'assets/products/liquid-pomade.jpg' },
+  { id: 'styling-powder', name: 'Styling Powder', price: 250, size: '20 g', unit: 'bottles', desc: 'Firm hold, matte finish. Adds volume and texture at the roots.', tag: '', photo: 'assets/products/styling-powder.jpg' },
+  { id: 'sea-salt-spray', name: 'Sea Salt Spray', price: 370, size: '100 ml', unit: 'bottles', desc: 'Medium hold, medium shine. Spray on damp hair for a loose, textured look.', tag: '', photo: 'assets/products/sea-salt-spray.jpg' }
 ];
 export const STARTER_STAFF = [
-  { id: 'lyndon', photo: 'assets/staff/lyndon.jpg', name: 'Lyndon', role: 'barber', title: 'Senior barber', specialty: 'Classic cuts and beard sculpting', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 1 },
-  { id: 'rod', photo: 'assets/staff/rod.jpg', name: 'Roderick', role: 'barber', title: 'Senior barber', specialty: 'Hair art and designs', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 2 },
-  { id: 'reymart', photo: 'assets/staff/reymart.jpg', name: 'Reymart', role: 'barber', title: 'Senior barber', specialty: 'Fades and deluxe cuts', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 3 },
-  { id: 'angelo', photo: 'assets/staff/angelo.jpg', name: 'Angelo', role: 'barber', title: 'Senior barber', specialty: 'Haircuts and hair spa', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 4 },
-  { id: 'ed', photo: 'assets/staff/ed.jpg', name: 'Joe Ed', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, noDeposit: true, chair: 5 },
-  { id: 'renz', photo: 'assets/staff/renz.jpg', name: 'Renz', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, noDeposit: true, chair: 6 },
-  { id: 'jay', photo: 'assets/staff/jay.jpg', name: 'Jay', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, noDeposit: true, chair: 7 },
-  { id: 'vince', photo: 'assets/staff/vince.jpg', name: 'Vince', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, noDeposit: true, chair: 8 },
-  { id: 'mac', photo: 'assets/staff/mac.jpg', name: 'Mac', role: 'barber', title: 'Junior barber', specialty: 'Signature and regular cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, noDeposit: true, chair: 9 },
-  { id: 'dave', photo: 'assets/staff/dave.jpg', name: 'Dave', role: 'stylist', title: 'Stylist', specialty: 'Color, rebond and styling', groups: ['her'], rate: 55, dailyPay: 1000, productFee: { threshold: 1500, low: 50, high: 100 }, chair: 10 },
-  { id: 'luz', photo: 'assets/staff/luz.jpg', name: 'Luz', role: 'nails', title: 'Nail technician', specialty: 'Nail care', groups: ['nails'], rate: 60, dailyPay: 0, chair: 11 },
-  { id: 'liza', photo: 'assets/staff/liza.jpg', name: 'Liza', role: 'maintenance', title: 'Maintenance', specialty: '', groups: [], rate: 0, dailyPay: 0 },
-  { id: 'alex', name: 'Alex', role: 'reception', title: 'Receptionist', specialty: '', groups: [], rate: 0, dailyPay: 700 },
-  { id: 'airyl', name: 'Airyl', role: 'reception', title: 'Receptionist', specialty: '', groups: [], rate: 0, dailyPay: 700 },
+  { id: 'lyndon', photo: 'assets/staff/lyndon.jpg', name: 'Lyndon', role: 'barber', title: 'Senior barber', specialty: 'Classic and modern cuts, and braids', groups: ['him', 'braids'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 1 },
+  { id: 'rod', photo: 'assets/staff/rod.jpg', name: 'Roderick', role: 'barber', title: 'Senior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 2 },
+  { id: 'reymart', photo: 'assets/staff/reymart.jpg', name: 'Reymart', role: 'barber', title: 'Senior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 3 },
+  { id: 'angelo', photo: 'assets/staff/angelo.jpg', name: 'Angelo', role: 'barber', title: 'Senior barber', specialty: 'Classic and modern cuts', groups: ['him'], tiers: ['deluxe'], rate: 50, dailyPay: 700, chair: 4 },
+  { id: 'ed', photo: 'assets/staff/ed.jpg', name: 'Joe Ed', role: 'barber', title: 'Junior barber', specialty: 'Classic and modern cuts', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, noDeposit: true, chair: 5 },
+  { id: 'renz', photo: 'assets/staff/renz.jpg', name: 'Renz', role: 'barber', title: 'Junior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, noDeposit: true, chair: 6 },
+  { id: 'jay', photo: 'assets/staff/jay.jpg', name: 'Jay', role: 'barber', title: 'Junior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, noDeposit: true, chair: 7 },
+  { id: 'vince', photo: 'assets/staff/vince.jpg', name: 'Vince', role: 'barber', title: 'Junior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, noDeposit: true, chair: 8 },
+  { id: 'mac', photo: 'assets/staff/mac.jpg', name: 'Mac', role: 'barber', title: 'Junior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['regular'], rate: 60, dailyPay: 500, noDeposit: true, chair: 9 },
+  { id: 'dave', photo: 'assets/staff/dave.jpg', name: 'Dave', role: 'stylist', title: 'Stylist', specialty: 'Women’s services: hair color, rebonding, styling and perming', groups: ['her'], rate: 45, dailyPay: 1000, productFee: { threshold: 1500, low: 50, high: 100 }, noDeposit: true, chair: 10 },
+  { id: 'luz', photo: 'assets/staff/luz.jpg', name: 'Luz', role: 'nails', title: 'Nail technician', specialty: 'Nail care', groups: ['nails'], payType: 'quota', rate: 40, dailyPay: 500, noDeposit: true, chair: 11 },
+  { id: 'liza', photo: 'assets/staff/liza.jpg', name: 'Liza', role: 'nails', title: 'Nail technician', specialty: 'Nail care', groups: ['nails'], payType: 'quota', rate: 40, dailyPay: 500, noDeposit: true, chair: 12 },
+  { id: 'alex', name: 'Alex', role: 'reception', title: 'Receptionist', specialty: '', groups: [], payType: 'monthly', monthlyPay: 20000, rate: 0, dailyPay: 0 },
+  { id: 'airyl', name: 'Airyl', role: 'stylist', title: 'Receptionist · braids', specialty: 'Braids', groups: ['braids'], rate: 70, dailyPay: 700, noDeposit: true, chair: 13 },
 ].map(b => ({ ...b, phone: '', days: [0, 1, 2, 3, 4, 5, 6], active: true }));
 export const publicBarber = b => ({ id: b.id, name: b.name, noDeposit: !!b.noDeposit, role: b.role || 'barber', title: b.title || '', specialty: b.specialty || '', groups: b.groups || ['him'], tiers: b.tiers || [], days: b.days || [], chair: b.chair || '', photo: b.photo || '', bio: b.bio || '', rating: b.rating || 0, ratingCount: b.ratingCount || 0 });
 
@@ -377,8 +385,8 @@ export function bdaySelects(value, idBase, attr) {
   return `<div class="bday-in"><select id="${idBase}-m" ${attr('m')} aria-label="Birthday month"><option value="">Month</option>${MONTHS_LONG.map((n, i) => `<option value="${i + 1}" ${mo === i + 1 ? 'selected' : ''}>${n}</option>`).join('')}</select>
     <select id="${idBase}-d" ${attr('d')} aria-label="Birthday day"><option value="">Day</option>${Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}" ${d === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select></div>`;
 }
-export const BDAY_TITLE = 'Get a free haircut on your birthday';
-export const BDAY_HINT = 'Tell us your birthday (just the month and day) and your haircut is on us when it comes around.';
+export const BDAY_TITLE = 'Birthday treat: Signature Haircut for ₱249';
+export const BDAY_HINT = 'Tell us your birthday (just the month and day). During your birthday week, our Signature Haircut with shampoo and rinse is ₱249 instead of ₱299.';
 export const cleanCode = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20);
 // Messenger link from the Facebook page address (facebook.com/R3ALBarbers -> m.me/R3ALBarbers)
 export function messengerLink(shop) {
@@ -395,9 +403,9 @@ export function defaultFaq(info) {
     { q: 'Can I walk in without a booking?', a: 'Yes, walk-ins are welcome when a chair is free. At the shop, scan the QR code at the front desk to join the queue. Clients with a booking go first at their time.' },
     { q: 'How do I pay the down payment?', a: `Online with GCash, Maya, card or QR Ph${sh.gcashNumber ? `, or send it to our GCash (${sh.gcashNumber}) and upload the screenshot` : ''}. It’s deducted from your bill at the shop.` },
     { q: 'What’s the difference between Deluxe and Regular?', a: `Deluxe haircuts are with our senior barbers${deluxe.length ? ` (${deluxe.join(', ')})` : ''} and include shampoo, hot towel and massage. Regular haircuts are with our junior barbers.` },
-    { q: 'What if I’m running late?', a: `Please come on time. If you’re ${p.lateMinutes} minutes late or more, we may give your slot to a walk-in, and the down payment isn’t refunded. Running late? Tap “Running late” on your booking page so we know, and we’ll fit you in at the next free time if we can.` },
-    { q: 'Can I reschedule or cancel?', a: `You can reschedule online up to ${p.rescheduleHours} hours before your appointment, using the link in your confirmation. If you cancel, the down payment isn’t refunded.` },
-    { q: 'Can I book for someone else too?', a: 'Yes. In “Your details”, add a second person. They can have the same or different services, at the same time with another barber, right after you, or any time you pick. Each person needs the down payment.' },
+    { q: 'What if I’m running late?', a: `Please come on time. With a junior barber you have ${p.lateMinutes} minutes; after that your slot may go to a walk-in and we’ll fit you in at the next free time. With a senior barber you have ${p.lateMinutesDeposit ?? 20} minutes; after that the down payment is kept and the full price of your service is still due, for the barber’s time. Running late? Tap “Running late” on your booking page so we know.` },
+    { q: 'Can I reschedule or cancel?', a: `You can reschedule online up to ${p.rescheduleHours} hours before your appointment, using the link in your confirmation. Cancel at least ${p.cancelHours ?? 48} hours before and we’ll send your down payment back. Later than that, it isn’t refunded. Only bookings with senior barbers have a down payment.` },
+    { q: 'Can I book for someone else too?', a: 'Yes. In “Your details”, add a second person. They can have the same or different services, at the same time with another barber, right after you, or any time you pick. Each person with a senior barber needs the down payment.' },
     { q: 'Do you have promo codes?', a: 'When we run a promo, we post the code on our Facebook and Instagram. Type it in “Have a promo code?” when you book. It comes off your bill at the shop.' }
   ];
 }
@@ -481,3 +489,20 @@ export function depositFor(info, barberId, services) {
   const can = bs.filter(b => b.active !== false && canServe(b, services || []));
   return can.length && can.every(b => b.noDeposit) ? 0 : pol.deposit;
 }
+
+// Service options (e.g. polish on a manicure): { serviceId: optionId } on a booking. Keeps only real options
+// of services in the booking; withOption folds the pick into the name and price.
+export function cleanOptions(info, ids, raw) {
+  const out = {}; if (!raw || typeof raw !== "object") return out;
+  for (const id of ids || []) { const s = (info.services || []).find(x => x.id === id), o = s && (s.options || []).find(x => x.id === raw[id]); if (o) out[id] = o.id; }
+  return out;
+}
+export const withOption = (s, opts) => { const o = s && (s.options || []).find(x => x.id === (opts || {})[s.id]); return o ? { ...s, name: `${s.name} + ${o.name}`, price: (Number(s.price) || 0) + (Number(o.add) || 0) } : s; };
+
+// Late and cancel rules depend on the barber level. Junior barbers (no down payment): 5 minutes, then the slot can
+// go to a walk-in and the client is fitted in at the next free time. Senior barbers (down payment): 20 minutes;
+// over that the down payment is kept and the full price is owed. Cancelling 48+ hours before gets the down
+// payment back; later, it's kept and split between the barber and the shop.
+export const hasDeposit = a => !!(a && a.deposit && a.deposit.status !== 'none' && (a.deposit.amount || 0) > 0);
+export const lateLimit = (a, pol) => hasDeposit(a) ? (pol.lateMinutesDeposit ?? 20) : (pol.lateMinutes ?? 5);
+export const refundOnCancel = (a, pol, now = Date.now()) => hasDeposit(a) && a.deposit.status === 'paid' && (a.startAt || 0) - now >= (pol.cancelHours ?? 48) * 3600e3;
