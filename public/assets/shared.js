@@ -162,7 +162,15 @@ export const STARTER = {
     S60('f13', 'Hair Rebond', 1500, 'her', 'Color & treatments', '', { usesProduct: true, mins: 240, priceFrom: true }),
     S60('f14', 'Moroccan Hot Oil Treatment', 450, 'her', 'Color & treatments', '', { usesProduct: true, mins: 45 }),
     S60('f15', 'Semi Di Lino Hot Oil Treatment', 550, 'her', 'Color & treatments', '', { usesProduct: true, mins: 45 }),
-    S60('f16', 'Eyebrow Shaping', 120, 'her', 'For her', '', { mins: 15 })
+    S60('f16', 'Eyebrow Shaping', 120, 'her', 'For her', '', { mins: 15 }),
+    // Nails (sample menu: replace with the shop's real nail services and prices)
+    S60('n1', 'Manicure', 150, 'nails', 'Nails', 'Clean, shape and polish', { mins: 30 }),
+    S60('n2', 'Pedicure', 200, 'nails', 'Nails', 'Clean, shape and polish', { mins: 45 }),
+    S60('n3', 'Manicure and Pedicure', 320, 'nails', 'Nails', 'Both, one sitting', { mins: 75 }),
+    S60('n4', 'Gel Manicure', 450, 'nails', 'Gel', 'Long-lasting gel polish', { mins: 60, usesProduct: true }),
+    S60('n5', 'Gel Pedicure', 500, 'nails', 'Gel', 'Long-lasting gel polish', { mins: 60, usesProduct: true }),
+    S60('n6', 'Foot Spa', 350, 'nails', 'Spa', 'Soak, scrub and massage', { mins: 45 }),
+    S60('n7', 'Nail Art', 100, 'nails', 'Add-ons', 'Per set, design of your choice', { mins: 15, priceFrom: true })
   ],
   barbers: []
 };
