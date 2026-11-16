@@ -1,7 +1,7 @@
 // "Your booking" page, opened from the confirmation email or after paying on PayMongo.
 // Shows the booking status and lets the customer reschedule or cancel within the policy.
 import { db, call, demoBar, resetDemo } from './fb.js';
-import { $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, MONTHS, dowOf, sum, policyOf, availableTimes, bookableDates, timeChips, STARTER, icsFor, brand, LOGO_LG, resizeImage, phNow } from './shared.js';
+import { $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, MONTHS, dowOf, sum, policyOf, availableTimes, bookableDates, timeChips, STARTER, icsFor, brand, LOGO_LG, resizeImage, phNow, monthGrid, shiftMonth } from './shared.js';
 import { L, lang, setLang } from './i18n.js';
 
 const q = new URLSearchParams(location.search);
@@ -157,7 +157,7 @@ function rescheduleView(b) {
   <section class="step"><div class="step-h"><span class="n">1</span><h3>${group === 'her' ? 'Stylist' : 'Barber'}</h3></div>
     <div class="pick"><button type="button" class="pickcard" data-act="rsBarber" data-id="" aria-pressed="${!r.barber}"><b>Any available</b></button>${bars.map(x => `<button type="button" class="pickcard" data-act="rsBarber" data-id="${esc(x.id)}" aria-pressed="${r.barber === x.id}"><b>${esc(x.name)}</b><small>${esc(x.title || '')}</small></button>`).join('')}</div></section>
   <section class="step"><div class="step-h"><span class="n">2</span><h3>Date and time</h3>${r.date && r.time ? `<span class="done">${fmtDate(r.date)}, ${fmtTime(r.time)}</span>` : ''}</div>
-    <div class="dates">${bookableDates(I).map(d => { const x = new Date(`${d.date}T00:00:00Z`); const off = r.barber && !((bars.find(y => y.id === r.barber) || {}).days || []).includes(dowOf(d.date)); return `<button type="button" class="dchip" data-act="rsDate" data-v="${d.date}" aria-pressed="${d.date === r.date}" ${d.closed || off ? 'disabled' : ''}><small>${DAYS[x.getUTCDay()]}</small><b>${x.getUTCDate()}</b><span>${d.closed ? 'Closed' : MONTHS[x.getUTCMonth()]}</span></button>`; }).join('')}</div>
+    ${monthGrid({ dates: bookableDates(I).map(d => ({ ...d, off: !!(r.barber && !((bars.find(y => y.id === r.barber) || {}).days || []).includes(dowOf(d.date))) })), selected: r.date, act: 'rsDate', month: r.calM, navAct: 'rsCal' })}
     ${r.date ? (S.slotsLoaded ? timeChips(times, r.time, 'rsTime') : '<p class="muted small"><span class="spinner"></span> Checking free times…</p>') : '<p class="muted small">Pick a date.</p>'}</section>
   ${S.err ? `<p class="err" role="alert">${esc(S.err)}</p>` : ''}
   <div class="row"><button class="btn btn-primary btn-lg" data-act="doReschedule" ${r.date && r.time && !S.busy ? '' : 'disabled'}>${S.busy ? '<span class="spinner"></span> Moving…' : 'Move my booking'}</button><button class="btn btn-ghost" data-act="mode" data-v="view">Back</button></div>`;
@@ -188,6 +188,7 @@ const fileToData = blob => new Promise((res, rej) => { const r = new FileReader(
 const ACT = {
   resetDemo,
   lang(el) { setLang(el.dataset.v); render(); },
+  rsCal(el) { S.rs.calM = shiftMonth(el.dataset.m, +el.dataset.v); render(); },
   async copy(el) { try { await navigator.clipboard.writeText(el.dataset.text); toast('Copied'); } catch (_) { toast(el.dataset.text); } },
   async sendProof() {
     const P = S.proof; P.ref = $('#proof-ref')?.value || P.ref; P.busy = true; P.err = ''; render();

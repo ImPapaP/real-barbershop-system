@@ -9,7 +9,7 @@ export const DEFAULT_POLICY = {
   rescheduleHours: 48,   // customers can reschedule up to this many hours before
   lateMinutes: 5,        // this late = the slot can go to a walk-in, deposit kept
   leadMinutes: 60,       // earliest booking is this far from now
-  bookAheadDays: 30,     // how far ahead customers can book
+  bookAheadDays: 120,    // how far ahead customers can book
   step: 60,              // bookings start on the hour; also the slot grid in minutes
   maxReschedules: 2,
   onlineBooking: true,   // the shop can switch online booking off in Shop setup

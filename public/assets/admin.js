@@ -768,7 +768,7 @@ function vSetup() {
         ${field('Reschedule up to (hours before)', `<input id="po-res" name="rescheduleHours" type="number" min="0" max="168" value="${esc(p.rescheduleHours)}">`, 'po-res')}
         ${field('Late: slot can go to a walk-in after (min)', `<input id="po-late" name="lateMinutes" type="number" min="0" max="120" value="${esc(p.lateMinutes)}">`, 'po-late')}
         ${field('Earliest booking from now (min)', `<input id="po-lead" name="leadMinutes" type="number" min="0" max="1440" value="${esc(p.leadMinutes)}">`, 'po-lead')}
-        ${field('Book up to (days ahead)', `<input id="po-ahead" name="bookAheadDays" type="number" min="1" max="90" value="${esc(p.bookAheadDays)}">`, 'po-ahead')}
+        ${field('Book up to (days ahead)', `<input id="po-ahead" name="bookAheadDays" type="number" min="1" max="365" value="${esc(p.bookAheadDays)}">`, 'po-ahead')}
         ${field('Last booking starts at', `<input id="po-last" name="lastBooking" type="time" step="3600" value="${esc(p.lastBooking ?? '19:00')}">`, 'po-last', 'Online bookings can’t start later than this. Leave empty to allow any time that finishes by closing.')}
         ${field('“Time for a trim” text after (days, 0 = off)', `<input id="po-rebook" name="rebookDays" type="number" min="0" max="120" value="${esc(p.rebookDays ?? 28)}">`, 'po-rebook')}
       </div>
@@ -957,6 +957,13 @@ function autoBadge() {
 }
 async function handleUpload(input) {
   const kind = input.dataset.upload, files = [...input.files]; if (!files.length) return;
+  if (kind === 'item') {
+    const w = document.getElementById('it-img'); if (w) w.innerHTML = '<span class="spinner"></span> Uploading…';
+    try { const up = await uploadImage(await resizeImage(files[0], 900, 0.8), 'products'); S.itemImg = up.url; }
+    catch (e) { toast(/^storage\//.test(e.code || '') ? 'Photo uploads need Firebase Storage (Blaze plan, checklist part 2).' : 'Couldn’t upload the photo.', 'bad'); }
+    if (w) w.innerHTML = `${S.itemImg ? `<img class="cut-thumb" src="${esc(siteUrl(S.itemImg))}" alt="">` : ''}<label class="btn btn-sm upload">${S.itemImg ? 'Replace' : 'Add photo'}<input type="file" accept="image/*" data-upload="item" hidden></label>`;
+    return;
+  }
   if (kind === 'happen') {
     const w = document.getElementById('hp-img'); if (w) w.innerHTML = '<span class="spinner"></span> Uploading…';
     try { const up = await uploadImage(await resizeImage(files[0], 1200, demo ? 0.7 : 0.8), 'gallery'); S.happenImg = up.url; }
@@ -1056,10 +1063,17 @@ function staffModal(b) {
 }
 function itemModal(i) {
   const c = i || { cat: 'Retail', stock: 0, reorder: 3, unit: 'pcs' };
+  S.itemImg = c.photo || '';
   openModal(i ? 'Edit item' : 'Add item', `<form class="stack" data-form="item" data-id="${esc(c.id || '')}">
     ${field('Item name', `<input id="m-iname" name="name" value="${esc(c.name || '')}" required>`, 'm-iname')}
     <div class="fgrid three">${field('Type', `<select id="m-icat" name="cat">${opt('Retail', 'Retail (sold to clients)', c.cat === 'Retail')}${opt('Supply', 'Shop supply', c.cat === 'Supply')}</select>`, 'm-icat')}${field('Unit', `<input id="m-iunit" name="unit" value="${esc(c.unit || '')}" placeholder="pcs, box, bottle">`, 'm-iunit')}${field('Reorder at', `<input id="m-ireo" name="reorder" type="number" min="0" value="${esc(c.reorder)}">`, 'm-ireo')}</div>
     <div class="fgrid three">${field('In stock', `<input id="m-istock" name="stock" type="number" value="${esc(c.stock)}">`, 'm-istock')}${field('Cost each (' + cur() + ')', `<input id="m-icost" name="cost" inputmode="decimal" value="${esc(c.cost || '')}">`, 'm-icost')}${field('Selling price (' + cur() + ')', `<input id="m-iprice" name="price" inputmode="decimal" value="${esc(c.price || '')}">`, 'm-iprice')}</div>
+    <div class="web-only stack">
+      <label class="row small"><input type="checkbox" name="web" ${c.web ? 'checked' : ''}> <b>Show on the website</b> under “Our products” (name, price, photo, in stock or not)</label>
+      ${field('Short description for the website', `<textarea id="m-idesc" name="webDesc" rows="2" maxlength="160" placeholder="e.g. Matte finish, strong hold. Washes out easily.">${esc(c.webDesc || '')}</textarea>`, 'm-idesc')}
+      <div class="fgrid">${field('Tag (optional)', `<input id="m-itag" name="webTag" value="${esc(c.webTag || '')}" maxlength="18" placeholder="e.g. Best seller, New">`, 'm-itag')}
+      <div class="field"><label>Photo</label><div class="row" id="it-img">${S.itemImg ? `<img class="cut-thumb" src="${esc(siteUrl(S.itemImg))}" alt="">` : ''}<label class="btn btn-sm upload">${S.itemImg ? 'Replace' : 'Add photo'}<input type="file" accept="image/*" data-upload="item" hidden></label></div></div></div>
+    </div>
     <p class="err" id="m-err" hidden></p>${mFoot(i ? 'Save changes' : 'Add item', i ? `<button type="button" class="btn btn-danger" data-act="delItem" data-id="${esc(c.id)}" style="margin-right:auto">Delete</button>` : '')}</form>`);
 }
 function adjustModal(i, dir) {
@@ -1466,7 +1480,8 @@ const FORM = {
   async item(f) {
     const fd = new FormData(f), name = String(fd.get('name') || '').trim();
     if (!name) return modalErr(f, 'Enter the item name.');
-    const data = { name, cat: String(fd.get('cat')), unit: String(fd.get('unit') || '').trim(), reorder: Math.max(0, parseInt(fd.get('reorder'), 10) || 0), stock: parseInt(fd.get('stock'), 10) || 0, cost: round2(num(fd.get('cost'))), price: round2(num(fd.get('price'))) };
+    const data = { name, cat: String(fd.get('cat')), unit: String(fd.get('unit') || '').trim(), reorder: Math.max(0, parseInt(fd.get('reorder'), 10) || 0), stock: parseInt(fd.get('stock'), 10) || 0, cost: round2(num(fd.get('cost'))), price: round2(num(fd.get('price'))),
+      web: String(fd.get('cat')) === 'Retail' && fd.has('web'), webDesc: String(fd.get('webDesc') || '').trim().slice(0, 160), webTag: String(fd.get('webTag') || '').trim().slice(0, 18), photo: S.itemImg || '' };
     const ok = f.dataset.id ? await patch('inventory', f.dataset.id, data) : await put('inventory', newId(), { ...data, log: [] });
     if (ok) { closeModal(); toast(f.dataset.id ? 'Item updated' : `${name} added`); }
   },
@@ -1521,7 +1536,7 @@ const FORM = {
   },
   async policy(f) {
     const fd = new FormData(f), n = (k, min, max) => Math.min(max, Math.max(min, parseInt(fd.get(k), 10) || 0));
-    const policy = { ...pol(), deposit: n('deposit', 100, 100000), holdMinutes: n('holdMinutes', 5, 60), rescheduleHours: n('rescheduleHours', 0, 168), lateMinutes: n('lateMinutes', 0, 120), leadMinutes: n('leadMinutes', 0, 1440), bookAheadDays: n('bookAheadDays', 1, 90), rebookDays: n('rebookDays', 0, 120), manualGcash: fd.has('manualGcash'), lastBooking: /^\d{2}:\d{2}$/.test(String(fd.get('lastBooking') || '')) ? String(fd.get('lastBooking')) : '', onlineBooking: fd.has('onlineBooking') };
+    const policy = { ...pol(), deposit: n('deposit', 100, 100000), holdMinutes: n('holdMinutes', 5, 60), rescheduleHours: n('rescheduleHours', 0, 168), lateMinutes: n('lateMinutes', 0, 120), leadMinutes: n('leadMinutes', 0, 1440), bookAheadDays: n('bookAheadDays', 1, 365), rebookDays: n('rebookDays', 0, 120), manualGcash: fd.has('manualGcash'), lastBooking: /^\d{2}:\d{2}$/.test(String(fd.get('lastBooking') || '')) ? String(fd.get('lastBooking')) : '', onlineBooking: fd.has('onlineBooking') };
     if (await saveInfo({ policy })) toast('Booking rules saved');
   }
 };
@@ -1552,8 +1567,19 @@ document.addEventListener('pointermove', e => { if (tipEl.hidden) return; const 
 window.addEventListener('hashchange', () => { closeModal(); render(); window.scrollTo(0, 0); });
 
 // ================= DATA =================
+// Products on the website: retail items marked "Show on website". Only name, price, description, photo and
+// whether it's in stock go public (never cost or stock counts). Kept in step whenever inventory changes.
+let productsSig = '';
+function syncProducts() {
+  if (!S.info || !S.loaded.inventory) return;
+  const list = S.inventory.filter(i => i.cat === 'Retail' && i.web).sort((a, b) => (a.webOrder || 0) - (b.webOrder || 0) || a.name.localeCompare(b.name))
+    .map(i => ({ id: i.id, name: i.name, price: i.price || 0, desc: i.webDesc || '', photo: i.photo || '', tag: i.webTag || '', inStock: (i.stock || 0) > 0 }));
+  const sig = JSON.stringify(list);
+  if (sig === productsSig || sig === JSON.stringify(info().products || [])) { productsSig = sig; return; }
+  productsSig = sig; saveInfo({ products: list });
+}
 function watchCol(key, q) {
-  unsubs.push(q.onSnapshot(snap => { S[key] = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.loaded[key] = true; schedule(); },
+  unsubs.push(q.onSnapshot(snap => { S[key] = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.loaded[key] = true; if (key === 'inventory') syncProducts(); schedule(); },
     err => { console.error(key, err); S.loaded[key] = true; S.slow = true; schedule(); }));
 }
 function stopWatches() { while (unsubs.length) { try { unsubs.pop()(); } catch (_) {} } S.loaded = {}; }

@@ -7,7 +7,7 @@ import {
 
 // The saved demo is keyed by a fingerprint of the starter data, so changing the menu or team
 // (or a browser briefly mixing old and new files) never leaves stale sample data behind.
-const SEED_REV = 15; // bump when seed() itself changes
+const SEED_REV = 16; // bump when seed() itself changes
 const fingerprint = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const KEY = `rb-demo-${SEED_REV}-${fingerprint(JSON.stringify([STARTER, STARTER_STAFF]))}`, USER_KEY = 'rb-demo-user';
 try { Object.keys(localStorage).filter(k => k.startsWith('rb-demo-') && k !== KEY && k !== USER_KEY).forEach(k => localStorage.removeItem(k)); } catch (_) {}
@@ -31,6 +31,8 @@ function seed() {
   let r = 11; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
   const pick = a => a[Math.floor(rnd() * a.length)];
   m.set('public/info', { ...clone(STARTER), policy: { ...STARTER.policy, onlineBooking: true }, barbers: STARTER_STAFF.filter(isServiceStaff).map(publicBarber),
+    products: [['i1', 'Clay pomade', 450, 'Strong hold, matte finish for textured crops. Washes out easily.', 'Best seller'], ['i2', 'Hair tonic', 180, 'Daily scalp tonic. Light, cooling, no grease.', ''], ['i3', 'Beard oil', 280, 'Softens and tames the beard. Light woody scent.', 'New']]
+      .map(([id, name, price, desc, tag]) => ({ id, name, price, desc, photo: '', tag, inStock: true })),
     happenings: [ // samples so the demo shows the Promos & events section
       { id: 'h_s1', kind: 'promo', title: 'First visit? ₱50 off your cut', text: 'New to REAL Barbers? Use the code when you book online and get ₱50 off your first haircut.', start: '', end: day(30), code: 'WELCOME50', badge: '₱50 OFF', sample: true },
       { id: 'h_s2', kind: 'event', title: 'December: open every day', text: 'We’re open daily from 9 AM to 8 PM all December. Book early for the holidays, slots fill up fast.', start: '', end: day(45), sample: true }
@@ -77,6 +79,9 @@ function seed() {
   [['i1', 'Clay pomade', 'Retail', 3, 5, 250, 450, 'jars'], ['i2', 'Hair tonic', 'Retail', 12, 4, 90, 180, 'bottles'], ['i3', 'Beard oil', 'Retail', 7, 3, 150, 280, 'bottles'],
    ['i4', 'Razor blades (100 pcs)', 'Supply', 1, 2, 450, 0, 'boxes'], ['i5', 'Neck strips', 'Supply', 14, 5, 60, 0, 'rolls'], ['i6', 'Aloe vera gel', 'Supply', 4, 2, 180, 0, 'tubs']]
     .forEach(([id, name, cat, stock, reorder, cost, price, unit]) => m.set('inventory/' + id, { name, cat, stock, reorder, cost, price, unit, log: [] }));
+  // sample retail items shown on the website (the shop replaces these with its real products)
+  const web = { i1: ['Strong hold, matte finish for textured crops. Washes out easily.', 'Best seller'], i2: ['Daily scalp tonic. Light, cooling, no grease.', ''], i3: ['Softens and tames the beard. Light woody scent.', 'New'] };
+  for (const [id, [webDesc, webTag]] of Object.entries(web)) m.set('inventory/' + id, { ...m.get('inventory/' + id), web: true, webDesc, webTag });
   const appts = [
     [day(0), '10:00', 'reymart', ['h1'], 'online', 'booked', 0], [day(0), '11:00', 'lyndon', ['p1'], 'online', 'booked', 1],
     [day(0), '13:00', 'dave', ['f2', 'f3'], 'online', 'booked', 7], [day(0), '15:00', 'rod', ['h1', 'h5'], 'phone', 'booked', 5],

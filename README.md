@@ -231,6 +231,9 @@ Each barber earns a **guaranteed daily pay** for every day they work, plus a **c
 - **Fresh from the chair:** add photos yourself in Website → **Fresh from the chair** (newest first), and/or connect the Facebook page in Website → **Facebook photos**: paste a Page access token once and the page's newest photos lead the gallery, refreshed every 3 hours. Steps to get the token are in the Go-Live Checklist.
 - **Services menu:** haircut tiers side by side, bundles as cards (a swipe row on phones), add-ons and other groups as two- or three-column lists on computers.
 
+- **Book months ahead:** the date step is a month calendar; customers can book up to 120 days ahead by default (Shop setup → Online booking rules → Book up to, max 365).
+- **Our products:** in Inventory, edit a Retail item → tick **Show on the website**, add a short description, a tag (e.g. Best seller) and a photo. The website shows name, price and In stock / Out of stock (never cost or stock counts), kept in step automatically. Customers can tap **Add to my booking**; it shows in their price breakdown and lands in the booking notes as "Set aside for me: …".
+
 ## Payments, the day of the visit, and after
 
 - **Pay by GCash screenshot:** besides paying online (PayMongo), customers can send the down payment to the shop's GCash number and upload the screenshot on their booking page. The slot stays held while you check it. **Schedule** (and Overview) shows **GCash screenshots to check**: open one, match it with your GCash history, then **Approve** (the booking is confirmed and the client gets the usual confirmation text and email) or **Reject** (the slot opens again and the client is told to call). Screenshots are stored as small images in Firestore, so this works on the free plan. Turn it off in Shop setup → Online booking rules.
