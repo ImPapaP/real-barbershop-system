@@ -29,7 +29,7 @@ function details(b) {
   return `<section class="ticket-card"><div class="tc-top"><b>${fmtDate(b.date)} · ${fmtTime(b.time)}</b><span class="code" aria-label="Booking code">${esc(b.code)}</span></div>
     <div class="tc-body totals" style="font-family:var(--f-body);font-size:15px;gap:10px">
       <div><span class="muted">When</span><b>${fmtDate(b.date, true)}, ${fmtTime(b.time)}</b></div>
-      <div><span class="muted">${b.services.some(s => /hair and makeup|balayage|rebond/i.test(s.name)) ? 'Stylist' : 'Barber'}</span><b>${esc(b.barberName || 'To be assigned')}</b></div>
+      <div><span class="muted">${b.services.some(s => /hair and makeup|balayage|rebond/i.test(s.name)) ? 'Stylist' : 'Barber'}</span><b>${esc(b.barberName || 'Any available · the shop will assign')}</b></div>
       <div><span class="muted">Services</span><b style="text-align:right">${b.services.map(s => `${esc(s.name)} · ${esc(priceLabel(s, info().shop.currency || '₱'))}`).join('<br>')}</b></div>
       <div><span class="muted">Deposit</span><b>${b.deposit.status === 'paid' ? `${m(b.deposit.amount)} paid${b.deposit.method ? ' via ' + esc(methodName(b.deposit.method)) : ''}` : b.deposit.status === 'kept' ? `${m(b.deposit.amount)} kept` : b.deposit.status === 'refunded' ? 'Refunded' : b.proof && b.proof.status === 'review' ? 'GCash screenshot sent · checking' : 'Not paid'}</b></div>
     </div>
@@ -79,7 +79,7 @@ function todayCards(b) {
   if (b.date !== phNow().date) return '';
   const Q = b.queue, pol = b.policy, mins = Math.round((b.startAt - Date.now()) / 60000);
   const queue = Q ? `<section class="panel live"><div class="panel-h"><h2>${Q.ahead ? `${Q.ahead} ahead of you` : 'You’re next'}</h2><span class="live-dot">Live</span></div>
-    <p class="muted small">${Q.ahead ? `${esc(b.barberName)} has ${Q.ahead} client${Q.ahead === 1 ? '' : 's'} before you today${Q.inChair ? ', one in the chair now' : ''}.` : `${esc(b.barberName)} has no one else booked before you.`} Updated ${new Date(Q.at).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })}.</p></section>` : '';
+    <p class="muted small">${Q.ahead ? `${esc(b.barberName || 'Your barber')} has ${Q.ahead} client${Q.ahead === 1 ? '' : 's'} before you today${Q.inChair ? ', one in the chair now' : ''}.` : `${esc(b.barberName || 'Your barber')} has no one else booked before you.`} Updated ${new Date(Q.at).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })}.</p></section>` : '';
   const canLate = mins <= 180 && mins > -30;
   const late = !canLate ? '' : b.late ? `<section class="panel"><div class="panel-h"><h2>We know you’re running late</h2></div><p class="muted small">You told us about ${b.late.mins} minutes. If you’re ${pol.lateMinutes} minutes late or more, your slot may go to a walk-in. We’ll fit you in at the next free time if we can.</p></section>`
     : `<section class="panel"><div class="panel-h"><h2>Running late?</h2></div><p class="muted small" style="margin-bottom:10px">Let us know so we can plan. If you’re ${pol.lateMinutes} minutes late or more, your slot may go to a walk-in.</p>
@@ -154,7 +154,7 @@ function rescheduleView(b) {
   const group = (services[0] && services[0].group) || 'him';
   const bars = (I.barbers || []).filter(x => (x.groups || ['him']).includes(group));
   const times = r.date ? availableTimes(I, { services, date: r.date, barberId: r.barber, ignoreBookingId: b.id }, S.slots) : [];
-  return `<div class="status-hero"><h1>Pick a new time</h1><p class="muted">Currently ${fmtDate(b.date)}, ${fmtTime(b.time)} with ${esc(b.barberName)}. Your deposit carries over.</p></div>
+  return `<div class="status-hero"><h1>Pick a new time</h1><p class="muted">Currently ${fmtDate(b.date)}, ${fmtTime(b.time)}${b.barberName ? ` with ${esc(b.barberName)}` : ''}. Your deposit carries over.</p></div>
   <section class="step"><div class="step-h"><span class="n">1</span><h3>${group === 'her' ? 'Stylist' : 'Barber'}</h3></div>
     <div class="pick"><button type="button" class="pickcard" data-act="rsBarber" data-id="" aria-pressed="${!r.barber}"><b>Any available</b></button>${bars.map(x => `<button type="button" class="pickcard" data-act="rsBarber" data-id="${esc(x.id)}" aria-pressed="${r.barber === x.id}"><b>${esc(x.name)}</b><small>${esc(x.title || '')}</small></button>`).join('')}</div></section>
   <section class="step"><div class="step-h"><span class="n">2</span><h3>Date and time</h3>${r.date && r.time ? `<span class="done">${fmtDate(r.date)}, ${fmtTime(r.time)}</span>` : ''}</div>
@@ -216,7 +216,7 @@ const ACT = {
   },
   ics() {
     const b = S.b, shop = info().shop;
-    const data = icsFor({ title: `${shop.name}: ${b.services.map(s => s.name).join(', ')}`, date: b.date, time: b.time, mins: b.mins, location: shop.address, description: `With ${b.barberName}. Booking code ${b.code}. Arrive on time: ${b.policy.lateMinutes}+ minutes late and your slot may go to a walk-in.` });
+    const data = icsFor({ title: `${shop.name}: ${b.services.map(s => s.name).join(', ')}`, date: b.date, time: b.time, mins: b.mins, location: shop.address, description: `${b.barberName ? `With ${b.barberName}. ` : ''}Booking code ${b.code}. Arrive on time: ${b.policy.lateMinutes}+ minutes late and your slot may go to a walk-in.` });
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type: 'text/calendar' })); a.download = `booking-${b.code}.ics`;
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   },

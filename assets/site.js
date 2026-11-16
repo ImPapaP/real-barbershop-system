@@ -579,7 +579,7 @@ function booker() {
     </section>
     <section class="step" id="st-2" ${st.picked ? '' : 'aria-disabled="true"'}><div class="step-h"><span class="n ${st.picked ? 'ok' : ''}">${st.picked ? ic('check') : 2}</span><h3>Choose your ${staffWord(b.group)}</h3></div>
       <div class="pick barbers-pick">
-        <button type="button" class="pickcard" data-act="bkBarber" data-id="" aria-pressed="${!b.barber}" ${st.picked ? '' : 'disabled'}><span class="av any">${ic('scissors')}</span><b>Any available</b><small>Earliest free chair</small></button>
+        <button type="button" class="pickcard" data-act="bkBarber" data-id="" aria-pressed="${!b.barber}" ${st.picked ? '' : 'disabled'}><span class="av any">${ic('scissors')}</span><b>Any available</b><small>The shop picks your barber</small></button>
         ${bars.map(x => `<button type="button" class="pickcard" data-act="bkBarber" data-id="${esc(x.id)}" aria-pressed="${b.barber === x.id}" ${st.picked ? '' : 'disabled'}><span class="av">${x.photo ? `<img src="${esc(x.photo)}" alt="">` : esc(initials(x.name))}</span><b>${esc(x.name)}</b><small>${esc(x.title || '')}</small></button>`).join('')}
       </div>
     </section>
@@ -605,7 +605,7 @@ function booker() {
   <aside class="summary" id="summary" aria-label="Booking summary">
     <div class="summary-top"><h3>Your booking</h3>${picked.length ? `<span class="chip">${ic('clock')}${dur(mins)}</span>` : ''}</div>
     <div class="summary-b">
-      <div class="sumrow"><span>${staffWord(b.group, true)}</span><b>${b.barber ? esc(barber(b.barber)?.name || '') : 'Any available'}</b></div>
+      <div class="sumrow"><span>${staffWord(b.group, true)}</span><b>${b.barber ? esc(barber(b.barber)?.name || '') : 'Any available (the shop picks)'}</b></div>
       <div class="sumrow"><span>When</span><b>${st.when ? `${fmtDate(b.date)}<br>${fmtTime(b.time)}` : '—'}</b></div>
       ${gpk ? `<div class="sumrow"><span>${b.guest.self ? 'Also' : 'Second person'}</span><b>${b.guest.self ? guestSvcs().map(x => esc(x.name)).join('<br>') : esc(b.guest.name.trim() || 'Guest') + (b.guest.own ? `<br>${guestSvcs().map(x => esc(x.name)).join('<br>')}` : '')}<br>${gpk.date && gpk.date !== b.date ? `${fmtDate(gpk.date)}, ` : ''}${fmtTime(gpk.time)}${guestWho(gpk)}</b></div>` : ''}
       ${bill(picked, gpk, people)}
