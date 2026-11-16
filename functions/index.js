@@ -24,13 +24,14 @@ import { onDocumentWritten, onDocumentCreated } from 'firebase-functions/v2/fire
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { defineSecret, defineString } from 'firebase-functions/params';
 import * as logger from 'firebase-functions/logger';
+import crypto from 'node:crypto';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import {
   validateRequest, policyOf, slotId, isActiveSlot, desiredSlots, slotStateFor, apptMins, startMs,
   verifyPaymongoSignature, rebookLink, newToken, tokenMatches, bookingCode, smsText, emailContent, eligibleBarbers,
   servicesById, blockTimes, phNow, addDays, normalizePhone, validEmail, parseSlotId, waitlistMatches,
-  promoCheck, cleanCode, validProofImage, cleanBday, receiptView, receiptSms, receiptEmail
+  promoCheck, cleanCode, validProofImage, cleanBday, receiptView, receiptSms, receiptEmail, queueItems, accountView
 } from './src/core.js';
 import { createCheckout, expireCheckout, sendSms, sendEmail } from './src/providers.js';
 
@@ -304,7 +305,7 @@ function publicView(id, a, info) {
     policy: { deposit: pol.deposit, rescheduleHours: pol.rescheduleHours, lateMinutes: pol.lateMinutes, holdMinutes: pol.holdMinutes },
     payMethod: a.payMethod || 'online', proof: a.proof ? { status: a.proof.status, at: a.proof.at, note: a.proof.note || '' } : null,
     gcash: a.payMethod === 'gcash' ? { number: (info.shop && info.shop.gcashNumber) || '', name: (info.shop && info.shop.gcashName) || '' } : null,
-    promo: a.promo || null, late: a.late || null, rating: a.rating || null, receipt: a.receipt && a.receipt.id ? { id: a.receipt.id, t: a.receipt.t } : null, groupOf: a.groupOf || '', source: a.source || 'online', gaveToWalkin: !!a.gaveToWalkin
+    promo: a.promo || null, late: a.late || null, rating: a.rating || null, receipt: a.receipt && a.receipt.id ? { id: a.receipt.id, t: a.receipt.t } : null, refPhoto: a.refPhoto ? { at: a.refPhoto.at, note: a.refPhoto.note || '' } : null, groupOf: a.groupOf || '', source: a.source || 'online', gaveToWalkin: !!a.gaveToWalkin
   };
 }
 // Live queue on the day: clients still ahead of you with the same barber (or, for walk-ins, in the queue).
@@ -361,6 +362,81 @@ export const submitProof = onCall({ secrets: NOTIFY_SECRETS }, async req => {
   for (const gid of a.guests || []) await apptRef(gid).update({ holdUntil: keep }).catch(() => {});
   await notify('shop_proof', id, a, info, { sms: false, email: false, shop: 'shop_proof' }).catch(e => logger.error('Shop alert failed', e.message));
   return publicView(id, { ...a, proof: { status: 'review', at: now, ref }, holdUntil: keep }, info);
+});
+
+// =============== client accounts ===============
+// Log in with a mobile number and a 6-digit code sent by text. Only numbers that already have a booking,
+// a visit or a client record can get a code (texts cost money). Codes last 10 minutes, 5 tries;
+// a login lasts 30 days. otp/ and clientSessions/ are only read and written here.
+const sha = s => crypto.createHash('sha256').update(String(s)).digest('hex');
+async function knownNumber(phone) {
+  const [a, b, c] = await Promise.all([db.collection('appointments').where('phone', '==', phone).limit(1).get(), db.collection('appointments').where('phoneKey', '==', phone).limit(1).get(), db.collection('customers').where('phoneKey', '==', phone).limit(1).get()]);
+  return !a.empty || !b.empty || !c.empty;
+}
+export const requestCode = onCall({ secrets: NOTIFY_SECRETS }, async req => {
+  const phone = normalizePhone(req.data && req.data.phone);
+  if (!phone) throw new HttpsError('invalid-argument', 'Enter your 11-digit mobile number, like 0917 123 4567.');
+  const ref = db.doc(`otp/${phone}`), cur = await ref.get(), now = Date.now(), o = cur.exists ? cur.data() : {};
+  if (o.sentAt && now - o.sentAt < 60e3) throw new HttpsError('resource-exhausted', 'We just sent a code. Wait a minute before asking for another.');
+  const day = new Date(now + 8 * 3600e3).toISOString().slice(0, 10), sentToday = o.day === day ? o.count || 0 : 0;
+  if (sentToday >= 5) throw new HttpsError('resource-exhausted', 'Too many codes today. Try again tomorrow, or call the shop.');
+  if (!(await knownNumber(phone))) throw new HttpsError('not-found', 'We don’t have any visits for this number yet. Book first, then you can log in.');
+  const code = String(crypto.randomInt(0, 1e6)).padStart(6, '0'), info = await loadInfo();
+  await ref.set({ hash: sha(code + phone), exp: now + 10 * 60e3, tries: 0, sentAt: now, day, count: sentToday + 1 });
+  await sendSms({ apiKey: SEMAPHORE_API_KEY.value(), sender: SMS_SENDER_NAME.value() }, phone, `${(info.shop && info.shop.name) || 'REAL Barbers'}: Your login code is ${code}. It expires in 10 minutes. Don't share it with anyone.`);
+  return { ok: true };
+});
+export const verifyCode = onCall(async req => {
+  const phone = normalizePhone(req.data && req.data.phone), code = String(req.data && req.data.code || '').replace(/\D/g, '');
+  if (!phone || code.length !== 6) throw new HttpsError('invalid-argument', 'Enter the 6-digit code from the text.');
+  const ref = db.doc(`otp/${phone}`), snap = await ref.get(), o = snap.exists ? snap.data() : null, now = Date.now();
+  if (!o || !o.hash || o.exp < now) throw new HttpsError('deadline-exceeded', 'That code has expired. Ask for a new one.');
+  if ((o.tries || 0) >= 5) throw new HttpsError('resource-exhausted', 'Too many wrong tries. Ask for a new code.');
+  if (sha(code + phone) !== o.hash) { await ref.update({ tries: (o.tries || 0) + 1 }); throw new HttpsError('permission-denied', 'That code isn’t right. Check the text and try again.'); }
+  await ref.update({ hash: FieldValue.delete(), exp: 0 });
+  const session = newToken();
+  await db.doc(`clientSessions/${sha(session)}`).set({ phone, exp: now + 30 * 864e5, at: now });
+  return { session };
+});
+async function sessionPhone(data) {
+  const t = String(data && data.session || ''); if (!t) throw new HttpsError('unauthenticated', 'Please log in again.');
+  const s = await db.doc(`clientSessions/${sha(t)}`).get();
+  if (!s.exists || s.data().exp < Date.now()) throw new HttpsError('unauthenticated', 'Your login has expired. Please log in again.');
+  return s.data().phone;
+}
+export const myAccount = onCall(async req => {
+  const phone = await sessionPhone(req.data), info = await loadInfo();
+  const custs = (await db.collection('customers').where('phoneKey', '==', phone).get()).docs.map(d => ({ id: d.id, ...d.data() }));
+  // website bookings store the number cleaned up; ones typed in the dashboard keep a phoneKey
+  const appts = [...new Map([...(await db.collection('appointments').where('phone', '==', phone).get()).docs, ...(await db.collection('appointments').where('phoneKey', '==', phone).get()).docs].map(d => [d.id, { id: d.id, ...d.data() }])).values()];
+  const byCust = custs.length ? (await db.collection('sales').where('customerId', 'in', custs.slice(0, 10).map(c => c.id)).get()).docs : [];
+  const byPhone = [...(await db.collection('sales').where('phone', '==', phone).get()).docs, ...(await db.collection('sales').where('phoneKey', '==', phone).get()).docs];
+  const sales = [...new Map([...byCust, ...byPhone].map(d => [d.id, { id: d.id, ...d.data() }])).values()];
+  return accountView({ phone, customers: custs, appts, sales, info, today: phNow().date });
+});
+export const logoutClient = onCall(async req => {
+  const t = String(req.data && req.data.session || ''); if (t) await db.doc(`clientSessions/${sha(t)}`).delete().catch(() => {});
+  return { ok: true };
+});
+
+// =============== reference photo ===============
+// The client shows the cut they want: one photo per booking, seen only by the shop (refs/ is admin-only).
+export const addRefPhoto = onCall(async req => {
+  const { id, a } = await bookingFromToken(req.data);
+  if (!['pending_payment', 'booked', 'waiting'].includes(a.status)) throw new HttpsError('failed-precondition', 'You can only add a photo before your visit.');
+  const img = req.data && req.data.image, note = String(req.data && req.data.note || '').trim().slice(0, 200);
+  if (!validProofImage(img)) throw new HttpsError('invalid-argument', 'Upload a photo (JPG or PNG).');
+  const now = Date.now();
+  await db.doc(`refs/${id}`).set({ img, note, at: now, apptId: id });
+  await apptRef(id).update({ refPhoto: { at: now, note } });
+  return publicView(id, { ...a, refPhoto: { at: now, note } }, await loadInfo());
+});
+export const removeRefPhoto = onCall(async req => {
+  const { id, a } = await bookingFromToken(req.data);
+  await db.doc(`refs/${id}`).delete().catch(() => {});
+  await apptRef(id).update({ refPhoto: FieldValue.delete() });
+  const { refPhoto, ...rest } = a;
+  return publicView(id, rest, await loadInfo());
 });
 
 // =============== on the day ===============
@@ -603,6 +679,11 @@ export const sendReceipt = onDocumentCreated({ document: 'sales/{id}', secrets: 
   await event.data.ref.update({ receiptSent: { at: Date.now(), ...out } }).catch(() => {});
 });
 
+// Today's queue without names (public/queue), so the website can show the live walk-in wait
+async function writeQueue(info) {
+  const date = phNow().date, snap = await db.collection('appointments').where('date', '==', date).get();
+  await db.doc('public/queue').set(queueItems(snap.docs.map(d => d.data()), info, date));
+}
 export const syncSlots = onDocumentWritten({ document: 'appointments/{id}', secrets: NOTIFY_SECRETS }, async event => {
   const id = event.params.id;
   const before = event.data.before.exists ? event.data.before.data() : null;
@@ -610,6 +691,7 @@ export const syncSlots = onDocumentWritten({ document: 'appointments/{id}', secr
   const infoSnap = await db.doc('public/info').get();
   if (!infoSnap.exists) return;
   const info = infoSnap.data();
+  if ([before && before.date, after && after.date].includes(phNow().date)) await writeQueue(info).catch(e => logger.warn('queue', e));
   const want = desiredSlots(after, info);
   const have = (after ? after.blocks : before && before.blocks) || [];
   const startAt = after && after.date && after.time ? startMs(after.date, after.time) : null;

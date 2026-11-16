@@ -3,7 +3,7 @@
 import { db, call, demo, demoBar, resetDemo } from './fb.js';
 import {
   $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, DAYS_LONG, MONTHS, sum, phNow, dowOf, policyOf, openStatus,
-  availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph, brand, LOGO_LG, dur, isServiceStaff, toMin, fromMin, addDays, blockTimes, slotId, messengerLink, defaultFaq, monthGrid, shiftMonth, BACK_IC, bdaySelects, cleanBday, BDAY_TITLE, BDAY_HINT
+  availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph, brand, LOGO_LG, dur, isServiceStaff, toMin, fromMin, addDays, blockTimes, slotId, messengerLink, defaultFaq, monthGrid, shiftMonth, BACK_IC, bdaySelects, cleanBday, BDAY_TITLE, BDAY_HINT, queueEstimate, resizeImage
 } from './shared.js';
 import { L, lang, setLang } from './i18n.js';
 import { paintBanners } from './banner.js';
@@ -11,11 +11,11 @@ import { paintBanners } from './banner.js';
 const S = {
   info: null, loaded: false, slow: false, menuTab: 'him', painted: false,
   slots: {}, slotsDate: '', slotsLoaded: false, unsub: null,
-  bk: { group: 'him', tier: '', svc: {}, barber: '', date: '', time: '', name: '', phone: '', email: '', bm: '', bd: '', notes: '', consent: false, remember: true, guest: { on: false, mode: '', name: '', own: false, group: 'him', tier: '', svc: {}, date: '', time: '', barber: '' } },
+  bk: { group: 'him', tier: '', svc: {}, barber: '', date: '', time: '', name: '', phone: '', email: '', bm: '', bd: '', ref: '', refBusy: false, notes: '', consent: false, remember: true, guest: { on: false, mode: '', name: '', own: false, group: 'him', tier: '', svc: {}, date: '', time: '', barber: '' } },
   touched: {}, tried: false, pay: 'online',
   promo: { open: false, code: '', applied: null, err: '', busy: false },
   walkin: new URLSearchParams(location.search).get('walkin') === '1',
-  q: { name: '', phone: '', bm: '', bd: '', pick: '', barber: '', err: '', busy: false, done: null },
+  q: { name: '', phone: '', bm: '', bd: '', ref: '', refBusy: false, pick: '', barber: '', err: '', busy: false, done: null },
   galTag: 'all', profile: '',
   me: null, byBarber: false, range: { slots: {}, at: 0, loading: false }, urlApplied: false,
   err: '', busy: false, last: null, lb: -1,
@@ -116,6 +116,7 @@ function page() {
       ${galAll().length || demo ? '<button class="lnk" data-act="scroll" data-to="gallery">Gallery</button>' : ''}
       <button class="lnk" data-act="scroll" data-to="team">Team</button>
       <button class="lnk" data-act="scroll" data-to="visit">Visit</button>
+      <a class="lnk acct-lnk" href="account.html" aria-label="My visits">${ic('user') || ''}<span>My visits</span></a>
       <span class="head-open${st.open ? ' on' : ''}" title="${esc(st.text)}"><b aria-hidden="true">●</b>${st.open ? 'Open now' : 'Closed now'}</span>
       ${langToggle()}
       <button class="btn btn-accent btn-sm" data-act="scroll" data-to="book">Book now</button>
@@ -129,7 +130,7 @@ function page() {
     <img class="hero-mark" src="${LOGO_LG}" alt="" aria-hidden="true" width="640" height="640">
     <div class="wrap hero-grid${anim}">
       <div class="hero-copy">
-        <div class="row hero-chips"><span class="chip open-chip"><b aria-hidden="true" class="${st.open ? 'pulse' : ''}" style="color:${st.open ? 'var(--good)' : 'var(--hero-muted)'}">●</b>${esc(st.text)}</span>${ratingChip(shop, true)}</div>
+        <div class="row hero-chips"><span class="chip open-chip"><b aria-hidden="true" class="${st.open ? 'pulse' : ''}" style="color:${st.open ? 'var(--good)' : 'var(--hero-muted)'}">●</b>${esc(st.text)}</span>${waitChip()}${ratingChip(shop, true)}</div>
         <h1>${esc(shop.tagline)}</h1>
         <p class="lede">${esc(shop.about)}</p>
         <div class="hero-cta"><button class="btn btn-accent btn-lg" data-act="scroll" data-to="book">Book an appointment ${ic('arrow')}</button><button class="btn btn-ghost btn-lg" data-act="scroll" data-to="services">See prices</button></div>
@@ -220,7 +221,7 @@ function page() {
     <h3 class="sec-title reveal" style="font-size:30px;margin:48px 0 16px">Booking policy</h3>
     ${policyCards()}
   </div></section>
-  <footer class="site-foot"><div class="wrap"><span class="wordmark" style="font-size:18px">${brand(shop.wordmark || shop.name, 'sm')}</span><span>${esc(shop.address)} · ${esc(shop.phone)}</span><span>© ${today.date.slice(0, 4)} ${esc(shop.name)} · <a href="terms.html">Booking Terms</a> · <a href="privacy.html">Privacy Policy</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap"><span class="wordmark" style="font-size:18px">${brand(shop.wordmark || shop.name, 'sm')}</span><span>${esc(shop.address)} · ${esc(shop.phone)}</span><span>© ${today.date.slice(0, 4)} ${esc(shop.name)} · <a href="account.html">My visits</a> · <a href="terms.html">Booking Terms</a> · <a href="privacy.html">Privacy Policy</a></span></div></footer>
   <div class="mbar" id="mbar" hidden><div><b id="mbar-t">Book a chair</b><small id="mbar-s">${policyOf(I).onlineBooking ? m(policyOf(I).deposit) + ' deposit secures your slot' : 'Call or message us to book'}</small></div><button class="btn btn-accent" data-act="mbar">Book now</button></div>
   ${messengerLink(shop) ? `<a class="msgr" href="${esc(messengerLink(shop))}" target="_blank" rel="noopener" aria-label="Message us on Messenger">${ic('chat')}<span>Message us</span></a>` : ''}
   <div id="lightbox" hidden></div><div id="profile" hidden></div>`;
@@ -292,6 +293,22 @@ function profile() {
   el.querySelector('.pf-x').focus();
 }
 // ---------- walk-in queue (QR poster at the shop) ----------
+// Optional reference photo: the cut they want, so the barber sees it before they sit down
+function refBox(k) {
+  const o = S[k];
+  return `<div class="field refbox"><label for="${k}-ref">Photo of the cut you want <span class="opt">(optional)</span></label>
+    ${o.ref ? `<div class="ref-prev"><img src="${o.ref}" alt="Your reference photo"><div><b>Photo added</b><p class="muted small">Your barber sees it before your visit.</p><button type="button" class="link-btn" data-act="refRemove" data-k="${k}">Remove</button></div></div>`
+      : `<label class="ref-drop${o.refBusy ? ' busy' : ''}">${o.refBusy ? '<span class="spinner"></span> Adding…' : `${ic('camera') || ''}<span><b>Add a photo</b><small>A screenshot or picture of a cut you like</small></span>`}<input type="file" id="${k}-ref" accept="image/*" data-ref="${k}" hidden></label>`}</div>`;
+}
+document.addEventListener('change', async e => {
+  const k = e.target && e.target.dataset && e.target.dataset.ref; if (!k || !e.target.files[0]) return;
+  const o = S[k]; o.refBusy = true; renderBooker(); schedule();
+  try { const blob = await resizeImage(e.target.files[0], 900, 0.78); o.ref = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(blob); }); }
+  catch (err) { o.ref = ''; if (k === 'bk') S.err = err.message || 'Couldn’t read that photo.'; else o.err = err.message || 'Couldn’t read that photo.'; }
+  o.refBusy = false; renderBooker(); schedule();
+});
+// Sends the photo once the booking exists (the photo is optional, so a failure doesn't stop the booking)
+const sendRef = async (o, r) => { if (o.ref && r && r.id && r.token) { try { await call('addRefPhoto', { id: r.id, token: r.token, image: o.ref }); } catch (_) {} } };
 // Optional birthday (month and day) for the free birthday haircut. `k` is the state key: 'bk' or 'q'.
 const bdayOf = o => cleanBday(o.bm && o.bd ? `${o.bm}-${o.bd}` : '');
 function bdayBox(k) {
@@ -301,16 +318,23 @@ function bdayBox(k) {
     ${half ? `<p class="muted small">Pick the ${o.bm ? 'day' : 'month'} too.</p>` : ''}</div>`;
 }
 const bdayPick = (o, k) => bdaySelects(`${o.bm || 0}-${o.bd || 0}`, k + '-bday', part => `data-bind="${k}.b${part}" data-live`);
+// Live walk-in wait, from the shop's queue (no names). Updates as the shop checks people in.
+function waitText() {
+  const e = queueEstimate(S.queue, info()); if (!e) return '';
+  return e.mins === 0 ? 'A chair is free now' : `About ${e.mins} min wait${e.waiting ? ` · ${e.waiting} waiting` : ''}`;
+}
+const waitChip = () => { const t = waitText(); return t ? `<span class="chip wait-chip" title="Walk-in wait right now"><b aria-hidden="true">⏱</b>Walk-ins: ${esc(t.charAt(0).toLowerCase() + t.slice(1))}</span>` : ''; };
 function walkinBox() {
   const q = S.q, I = info(), t = phNow(), inToday = (I.barbers || []).filter(b => (b.days || []).includes(t.dow));
   if (q.done) return `<div class="walkin done-wl">${ic('check')}<div><p class="eyebrow">Walk-in queue</p><h3>You’re number ${esc(q.done.queueNo)}</h3><p class="muted">We’ll call your name in order. Keep this page open to see how many are ahead of you.</p>
     <a class="btn btn-accent" href="booking.html?id=${encodeURIComponent(q.done.id)}&t=${encodeURIComponent(q.done.token)}">See my place in line ${ic('arrow')}</a></div></div>`;
   const picks = [['deluxe', 'Deluxe haircut'], ['regular', 'Regular haircut'], ['her', 'For her'], ['nails', 'Nails'], ['other', 'Not sure yet']].filter(([k]) => k === 'other' || (k === 'her' || k === 'nails' ? svcs().some(x => x.group === k) : svcs().some(x => x.tier === k)));
-  return `<div class="walkin"><div class="walkin-h"><p class="eyebrow">At the shop now?</p><h2 class="sec-title" style="font-size:clamp(26px,4vw,36px)">Join the walk-in queue</h2><p class="muted">No down payment. We call names in order, and clients with a booking go first at their time.</p></div>
+  return `<div class="walkin"><div class="walkin-h"><p class="eyebrow">At the shop now?</p><h2 class="sec-title" style="font-size:clamp(26px,4vw,36px)">Join the walk-in queue</h2>${waitText() ? `<p class="wait-now"><b aria-hidden="true">⏱</b> Right now: <b>${esc(waitText())}</b></p>` : ''}<p class="muted">No down payment. We call names in order, and clients with a booking go first at their time.</p></div>
     <div class="walkin-f">
       <div class="fgrid"><div class="field"><label for="q-name">Your name <span class="req" aria-hidden="true">*</span></label><input id="q-name" data-bind="q.name" value="${esc(q.name)}" autocomplete="name" required></div>
       <div class="field"><label for="q-phone">Mobile number <span class="req" aria-hidden="true">*</span></label><input id="q-phone" type="tel" inputmode="tel" data-bind="q.phone" value="${esc(q.phone)}" autocomplete="tel" placeholder="0917 123 4567" required></div></div>
       ${bdayBox('q')}
+      ${refBox('q')}
       <p class="small" style="font-weight:700;margin:0">What are you getting?</p>
       <div class="seg" role="group" aria-label="What you’re getting">${picks.map(([k, l]) => `<button type="button" data-act="qPick" data-v="${k}" aria-pressed="${q.pick === k}">${l}</button>`).join('')}</div>
       ${inToday.length ? `<div class="field"><label for="q-barber">Barber</label><select id="q-barber" data-bind="q.barber"><option value="">Whoever’s free first</option>${inToday.map(b => `<option value="${esc(b.id)}" ${q.barber === b.id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select></div>` : ''}
@@ -596,6 +620,7 @@ function booker() {
       ${fieldIn('Email (for your confirmation and booking link)', 'bk-email', 'email', 'email', 'email', 'you@example.com', 'inputmode="email"')}
       ${bdayBox('bk')}
       ${st.when ? guestBox(times) : ''}
+      ${refBox('bk')}
       <div class="field"><label for="bk-notes">Notes (optional)</label><textarea id="bk-notes" data-bind="bk.notes" rows="2" placeholder="Style, reference photo on Facebook, anything we should know">${esc(b.notes)}</textarea></div>
       <label class="consent remember"><input type="checkbox" id="bk-remember" data-bind="bk.remember" ${b.remember ? 'checked' : ''}><span>Remember my details on this phone for next time</span></label>
       <label class="consent${showErr('consent') && !b.consent ? ' has-err' : ''}"><input type="checkbox" id="bk-consent" data-bind="bk.consent" data-touch="consent" data-live required aria-required="true" ${b.consent ? 'checked' : ''}><span>I have read and agree to the <a href="terms.html" target="_blank" rel="noopener">Booking Terms</a> and the <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>: the ${m(pol.deposit)} down payment isn’t refunded if I cancel or arrive ${pol.lateMinutes}+ minutes late, and ${esc(I.shop.name)} may use my name, number and email to manage this booking and send reminders. <span class="req" aria-hidden="true">*</span></span></label>
@@ -820,6 +845,7 @@ const ACT = {
     P.busy = false; renderBooker();
   },
   qPick(el) { S.q.pick = el.dataset.v; schedule(); },
+  refRemove(el) { S[el.dataset.k].ref = ''; renderBooker(); schedule(); },
   async joinQueue() {
     const q = S.q; q.err = '';
     if (q.name.trim().length < 2) q.err = 'Enter your name.'; else if (!validPhone(q.phone)) q.err = 'Enter an 11-digit mobile number, like 0917 123 4567.';
@@ -828,6 +854,7 @@ const ACT = {
     q.busy = true; schedule();
     try {
       q.done = await call('joinQueue', { name: q.name.trim(), phone: q.phone, birthday: bdayOf(q), serviceIds: base ? [base.id] : [], barberId: q.barber });
+      await sendRef(q, q.done);
       try { localStorage.setItem('lastQueue', JSON.stringify({ ...q.done, date: phNow().date })); } catch (_) {}
     } catch (e) { q.err = e.message || 'Couldn’t add you to the queue. Ask the front desk.'; }
     q.busy = false; schedule();
@@ -924,6 +951,7 @@ const ACT = {
         payMethod: payChoice() ? S.pay : 'online', promo: S.promo.applied ? S.promo.applied.code : '',
         ...(b.prods ? { notes: [b.notes, `Set aside for me: ${b.prods}`].filter(Boolean).join(' · ') } : {}),
         ...(gp ? { guest: { name: b.guest.self ? b.name.trim() : b.guest.name.trim(), ...(b.guest.self ? { sameClient: true } : {}), time: gp.time, barberId: gp.barberId, ...(gp.mode === 'pick' && gp.date !== b.date ? { date: gp.date } : {}), ...(b.guest.own ? { serviceIds: guestSvcs().map(x => x.id) } : {}) } } : {}) });
+      await sendRef(b, r);
       saveMe();
       try { localStorage.setItem('lastBooking', JSON.stringify({ id: r.id, token: r.token, ...when })); } catch (_) {}
       location.href = r.checkoutUrl;
@@ -954,6 +982,8 @@ addEventListener('resize', syncStickyBar, { passive: true });
 renderAll();
 {
   const slow = setTimeout(() => { S.slow = true; schedule(); }, 10000);
+  db.doc('public/queue').onSnapshot(s => { S.queue = s.exists ? s.data() : null; schedule(); }, () => {});
+  setInterval(() => { if (S.queue && !document.hidden) schedule(); }, 60000); // the estimate moves with the clock
   db.doc('public/info').onSnapshot(s => {
     clearTimeout(slow);
     S.info = s.exists ? s.data() : null; S.loaded = true;

@@ -214,3 +214,19 @@ test('receipts show the client only what they paid, never commission', async () 
   assert.match(t, /Deluxe Haircut P399/); assert.match(t, /paid P199 Cash \+ P200 deposit/); assert.doesNotMatch(t, /http/);
   assert.equal(receiptView('s2', { name: 'Walk-in', lines: [] }, info).name, '');
 });
+
+test('client account shows bookings, paid visits with receipts, loyalty and book-again', async () => {
+  const { accountView, queueItems } = await import('../src/core.js');
+  const info = { shop: { loyaltyEvery: 5 }, services: [{ id: 'h1', name: 'Deluxe Haircut', mins: 60 }], barbers: [{ id: 'rey', name: 'Reymart' }] };
+  const v = accountView({ phone: '09170000100', today: '2026-11-16', info,
+    customers: [{ id: 'c0', name: 'Marco Reyes', birthday: '11-16' }],
+    appts: [{ id: 'a1', token: 'tk', date: '2026-11-18', time: '10:00', status: 'booked', serviceIds: ['h1'], barberId: 'rey' }, { id: 'a0', date: '2026-11-01', time: '10:00', status: 'done', serviceIds: ['h1'] }],
+    sales: [{ id: 's1', customerId: 'c0', date: '2026-11-01', time: '10:30', lines: [{ kind: 'service', ref: 'h1', name: 'Deluxe Haircut', qty: 1 }], barberId: 'rey', total: 399, rtoken: 'rt', commission: 199 }] });
+  assert.equal(v.name, 'Marco Reyes');
+  assert.equal(v.upcoming.length, 1); assert.equal(v.upcoming[0].barberName, 'Reymart');
+  assert.deepEqual(v.visits[0].receipt, { id: 's1', t: 'rt' }); assert.equal(v.visits[0].commission, undefined);
+  assert.deepEqual(v.again, { svc: ['h1'], barber: 'rey' });
+  assert.equal(v.loyalty.visits, 1);
+  const q = queueItems([{ date: '2026-11-16', status: 'waiting', time: '09:40', serviceIds: ['h1'], name: 'Secret' }, { date: '2026-11-16', status: 'done', time: '09:00' }], info, '2026-11-16');
+  assert.equal(q.items.length, 1); assert.equal(q.items[0].m, 60); assert.equal(JSON.stringify(q).includes('Secret'), false);
+});

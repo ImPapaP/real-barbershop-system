@@ -304,3 +304,38 @@ ${link ? `<p><a href="${esc(link)}" style="display:inline-block;background:#111;
 <p style="color:#555;font-size:13px">${esc(info.shop && info.shop.address || '')}<br>${esc(info.shop && info.shop.phone || '')}</p></div>`;
   return { subject: `${shopName(info)}: Your receipt, ${fmtDate(r.date)}`, html, text: receiptSms(r, info) + (link ? `\n${link}` : '') };
 }
+
+// Live walk-in queue for the website, with no names: who is waiting, in the chair, or booked today.
+// t: "w" waiting walk-in, "c" in the chair, "b" booked; s = start (minutes after midnight), m = length in minutes.
+export function queueItems(appts, info, date) {
+  const svcMin = ids => (ids || []).reduce((t, id) => t + (((info.services || []).find(s => s.id === id) || {}).mins || 0), 0) || 40;
+  const items = (appts || []).filter(a => a.date === date && ["waiting", "inchair", "booked"].includes(a.status)).map(a => {
+    const [h, mm] = String(a.time || "0:0").split(":").map(Number);
+    return { t: a.status === "waiting" ? "w" : a.status === "inchair" ? "c" : "b", s: h * 60 + (mm || 0), m: a.mins || svcMin(a.serviceIds), ...(a.startedAt ? { st: a.startedAt } : {}) };
+  });
+  return { date, items, at: Date.now() };
+}
+
+// ---------- client accounts ----------
+// What a client sees when they log in with their number: their bookings, visits, receipts and loyalty.
+// Same code on the server (functions/src/core.js) and in the demo (public/assets/shared.js).
+export function accountView({ phone, customers = [], appts = [], sales = [], info, today }) {
+  const svcName = id => ((info.services || []).find(s => s.id === id) || {}).name || 'Service';
+  const bName = id => ((info.barbers || []).find(b => b.id === id) || {}).name || '';
+  const c = customers.find(x => x.name) || {}, every = Math.max(0, parseInt((info.shop || {}).loyaltyEvery, 10) || 0);
+  const cIds = new Set(customers.map(x => x.id));
+  const upcoming = appts.filter(a => ['booked', 'pending_payment', 'waiting', 'inchair'].includes(a.status) && a.date >= today)
+    .sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time)).slice(0, 10)
+    .map(a => ({ id: a.id, token: a.token || '', date: a.date, time: a.time, status: a.status, source: a.source || '', services: (a.serviceIds || []).map(svcName), barberName: a.anyBarber ? '' : bName(a.barberId), queueNo: a.queueNo || 0 }));
+  const paid = sales.filter(s => cIds.has(s.customerId) || (s.phone && s.phone.replace(/\D/g, '').replace(/^63/, '0') === phone))
+    .sort((x, y) => (y.date + (y.time || '')).localeCompare(x.date + (x.time || '')));
+  const visits = paid.slice(0, 30).map(s => ({ date: s.date, time: s.time || '', services: (s.lines || []).map(l => l.name + (l.qty > 1 ? ' ×' + l.qty : '')), barberName: bName(s.barberId), total: Number(s.total) || 0,
+    receipt: s.rtoken ? { id: s.id, t: s.rtoken } : null }));
+  const last = paid[0];
+  return {
+    name: c.name || (appts[0] && appts[0].name) || '', phone, birthday: c.birthday || '',
+    upcoming, visits, visitCount: paid.length,
+    loyalty: every ? { every, visits: paid.length, nextFree: (paid.length + 1) % every === 0 } : null,
+    again: last ? { svc: (last.lines || []).filter(l => l.kind === 'service').map(l => l.ref).filter(id => (info.services || []).some(s => s.id === id && s.active !== false)), barber: (info.barbers || []).some(b => b.id === last.barberId) ? last.barberId : '' } : null
+  };
+}
