@@ -201,3 +201,16 @@ test('cleanBday keeps a valid month-day and drops anything else', () => {
   assert.equal(cleanBday('0-5'), '');
   assert.equal(cleanBday(''), '');
 });
+
+test('receipts show the client only what they paid, never commission', async () => {
+  const { receiptView, receiptSms } = await import('../src/core.js');
+  const info = { shop: { name: 'REAL Barbers', loyaltyEvery: 10 } };
+  const r = receiptView('s1', { date: '2026-11-16', time: '14:00', name: 'Juan Dela Cruz', customerId: 'c1', lines: [{ name: 'Deluxe Haircut', qty: 1, price: 399, ref: 'h1' }],
+    total: 399, depositCredit: 200, method: 'Cash', commission: 199, rate: 50 }, info, 'Reymart', 4);
+  assert.equal(r.paidAtShop, 199);
+  assert.equal(r.commission, undefined);
+  assert.deepEqual(r.loyalty, { every: 10, visits: 4 });
+  const t = receiptSms(r, info);
+  assert.match(t, /Deluxe Haircut P399/); assert.match(t, /paid P199 Cash \+ P200 deposit/); assert.doesNotMatch(t, /http/);
+  assert.equal(receiptView('s2', { name: 'Walk-in', lines: [] }, info).name, '');
+});

@@ -14,6 +14,7 @@ export const DEFAULT_POLICY = {
   maxReschedules: 2,
   onlineBooking: true,   // the shop can switch online booking off in Shop setup
   rebookDays: 28,        // days after a visit to send a "time for a trim" text (0 = off)
+  receiptTexts: true,    // text the client a short receipt after checkout (the full one goes by email)
   lastBooking: '19:00'   // latest start time for online bookings ('' = until the service would end at closing)
 };
 
@@ -266,3 +267,40 @@ export function cleanBday(v) {
 export const cleanCode = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20);
 // Payment screenshots are stored as small JPEG data URLs (no Firebase Storage needed).
 export const validProofImage = s => typeof s === 'string' && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(s) && s.length < 900000;
+
+// ---------- receipts ----------
+// What the client may see of a sale: no commission, cost or staff pay. `barberName` is passed in.
+export function receiptView(id, s, info, barberName = '', visits = 0) {
+  const sh = info.shop || {}, every = Math.max(0, parseInt(sh.loyaltyEvery, 10) || 0);
+  const lines = (s.lines || []).map(l => ({ name: String(l.name || 'Item'), qty: Number(l.qty) || 1, price: Number(l.price) || 0 }));
+  const paidAtShop = Math.max(0, (Number(s.total) || 0) - (Number(s.depositCredit) || 0));
+  return {
+    id, date: s.date, time: s.time, name: s.name && s.name !== 'Walk-in' ? String(s.name) : '', barberName,
+    lines, discount: Number(s.discount) || 0, discountNote: s.discountNote || '', tip: Number(s.tip) || 0, total: Number(s.total) || 0,
+    depositCredit: Number(s.depositCredit) || 0, paidAtShop, method: s.method || '', cash: Number(s.cash) || 0,
+    shop: { name: sh.name || '', wordmark: sh.wordmark || '', address: sh.address || '', phone: sh.phone || '', tagline: sh.tagline || '' },
+    loyalty: every && s.customerId ? { every, visits } : null
+  };
+}
+const peso = n => `P${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString('en-PH')}`;
+// Text receipt: no link (PH networks may block texts with URLs), just the essentials
+export function receiptSms(r, info) {
+  const items = r.lines.map(l => `${l.name}${l.qty > 1 ? ' x' + l.qty : ''} ${peso(l.price * l.qty)}`).join(', ');
+  const paid = r.depositCredit ? `${peso(r.paidAtShop)} ${r.method} + ${peso(r.depositCredit)} deposit` : `${peso(r.total)} ${r.method}`;
+  return `${shopName(info)} receipt ${fmtDate(r.date)} ${fmtTime(r.time)}: ${items}${r.discount ? `, less ${peso(r.discount)}` : ''}${r.tip ? `, tip ${peso(r.tip)}` : ''}. Total ${peso(r.total)}, paid ${paid}. Thank you!`.slice(0, 450);
+}
+export function receiptEmail(r, info, link) {
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const row = (k, v, b) => `<tr><td style="padding:4px 16px 4px 0;color:#555">${esc(k)}</td><td style="padding:4px 0;text-align:right">${b ? '<b>' : ''}${esc(v)}${b ? '</b>' : ''}</td></tr>`;
+  const rows = [...r.lines.map(l => row(`${l.name}${l.qty > 1 ? ' ×' + l.qty : ''}`, peso(l.price * l.qty).replace('P', '₱'))),
+    r.discount ? row(`Discount${r.discountNote ? ` (${r.discountNote})` : ''}`, '−' + peso(r.discount).replace('P', '₱')) : '', r.tip ? row('Tip', peso(r.tip).replace('P', '₱')) : '',
+    row('Total', peso(r.total).replace('P', '₱'), true), r.depositCredit ? row('Deposit paid online', '−' + peso(r.depositCredit).replace('P', '₱')) : '',
+    row(`Paid at the shop (${r.method})`, peso(r.paidAtShop).replace('P', '₱'), true)].join('');
+  const html = `<div style="font-family:Arial,sans-serif;max-width:520px;color:#111"><h2 style="margin:0 0 4px">${esc(shopName(info))}</h2>
+<p style="margin:0 0 12px;color:#555">Receipt · ${esc(fmtDate(r.date))}, ${esc(fmtTime(r.time))}${r.barberName ? ` · with ${esc(r.barberName)}` : ''}</p>
+<p>Hi ${esc(firstName(r.name))}, thanks for coming in. Here's your receipt.</p>
+<table style="border-collapse:collapse;margin:12px 0;min-width:280px">${rows}</table>
+${link ? `<p><a href="${esc(link)}" style="display:inline-block;background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none">View receipt</a></p>` : ''}
+<p style="color:#555;font-size:13px">${esc(info.shop && info.shop.address || '')}<br>${esc(info.shop && info.shop.phone || '')}</p></div>`;
+  return { subject: `${shopName(info)}: Your receipt, ${fmtDate(r.date)}`, html, text: receiptSms(r, info) + (link ? `\n${link}` : '') };
+}

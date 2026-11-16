@@ -20,7 +20,7 @@
 //   syncFacebookNow    dashboard -> the same, right away
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { onDocumentWritten } from 'firebase-functions/v2/firestore';
+import { onDocumentWritten, onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { defineSecret, defineString } from 'firebase-functions/params';
 import * as logger from 'firebase-functions/logger';
@@ -30,7 +30,7 @@ import {
   validateRequest, policyOf, slotId, isActiveSlot, desiredSlots, slotStateFor, apptMins, startMs,
   verifyPaymongoSignature, rebookLink, newToken, tokenMatches, bookingCode, smsText, emailContent, eligibleBarbers,
   servicesById, blockTimes, phNow, addDays, normalizePhone, validEmail, parseSlotId, waitlistMatches,
-  promoCheck, cleanCode, validProofImage, cleanBday
+  promoCheck, cleanCode, validProofImage, cleanBday, receiptView, receiptSms, receiptEmail
 } from './src/core.js';
 import { createCheckout, expireCheckout, sendSms, sendEmail } from './src/providers.js';
 
@@ -304,7 +304,7 @@ function publicView(id, a, info) {
     policy: { deposit: pol.deposit, rescheduleHours: pol.rescheduleHours, lateMinutes: pol.lateMinutes, holdMinutes: pol.holdMinutes },
     payMethod: a.payMethod || 'online', proof: a.proof ? { status: a.proof.status, at: a.proof.at, note: a.proof.note || '' } : null,
     gcash: a.payMethod === 'gcash' ? { number: (info.shop && info.shop.gcashNumber) || '', name: (info.shop && info.shop.gcashName) || '' } : null,
-    promo: a.promo || null, late: a.late || null, rating: a.rating || null, groupOf: a.groupOf || '', source: a.source || 'online', gaveToWalkin: !!a.gaveToWalkin
+    promo: a.promo || null, late: a.late || null, rating: a.rating || null, receipt: a.receipt && a.receipt.id ? { id: a.receipt.id, t: a.receipt.t } : null, groupOf: a.groupOf || '', source: a.source || 'online', gaveToWalkin: !!a.gaveToWalkin
   };
 }
 // Live queue on the day: clients still ahead of you with the same barber (or, for walk-ins, in the queue).
@@ -571,6 +571,38 @@ export const sendReminders = onSchedule({ schedule: 'every 30 minutes', timeZone
 
 // Keeps slots/ in step with appointments, including bookings the shop adds by phone in the dashboard.
 // Online bookings already claim their slots inside a transaction, so for those this is usually a no-op.
+// =============== receipts ===============
+const receiptLink = (id, t) => `${site()}/receipt.html?id=${encodeURIComponent(id)}&t=${encodeURIComponent(t)}`;
+async function receiptFor(id, s, info) {
+  const visits = s.customerId ? (await db.collection('sales').where('customerId', '==', s.customerId).count().get()).data().count : 0;
+  return receiptView(id, s, info, barberName(info, s.barberId), visits);
+}
+// The receipt page and the "Your receipt" card on the booking page. The token is written by the dashboard at checkout.
+export const getReceipt = onCall(async req => {
+  const id = String(req.data && req.data.id || ''), t = String(req.data && req.data.t || '');
+  if (!id || !t || id.includes('/')) throw new HttpsError('not-found', 'Receipt not found.');
+  const s = await db.doc(`sales/${id}`).get();
+  if (!s.exists || !s.data().rtoken || !tokenMatches(t, s.data().rtoken)) throw new HttpsError('not-found', 'Receipt not found. Check the link.');
+  return receiptFor(id, s.data(), await loadInfo());
+});
+// After every checkout: text the client a short receipt and email the full one (when we have their email).
+export const sendReceipt = onDocumentCreated({ document: 'sales/{id}', secrets: NOTIFY_SECRETS }, async event => {
+  const s = event.data && event.data.data(); if (!s || !s.rtoken) return;
+  const info = await loadInfo(), pol = policyOf(info);
+  if (pol.receipts === false) return;
+  let email = '';
+  if (s.apptId) { const a = await apptRef(s.apptId).get(); email = a.exists ? a.data().email || '' : ''; }
+  if (!email && s.customerId) { const c = await db.doc(`customers/${s.customerId}`).get(); email = c.exists ? c.data().email || '' : ''; }
+  if (!s.phone && !email) return;
+  const r = await receiptFor(event.params.id, s, info), link = receiptLink(event.params.id, s.rtoken);
+  const smsCfg = { apiKey: SEMAPHORE_API_KEY.value(), sender: SMS_SENDER_NAME.value() };
+  const mailCfg = { user: SHOP_EMAIL.value(), pass: GMAIL_APP_PASSWORD.value(), fromName: (info.shop && info.shop.name) || 'Barbershop' };
+  const out = {};
+  if (s.phone && pol.receiptTexts !== false) out.sms = await sendSms(smsCfg, normalizePhone(s.phone) || s.phone, receiptSms(r, info));
+  if (email) out.email = await sendEmail(mailCfg, email, receiptEmail(r, info, link));
+  await event.data.ref.update({ receiptSent: { at: Date.now(), ...out } }).catch(() => {});
+});
+
 export const syncSlots = onDocumentWritten({ document: 'appointments/{id}', secrets: NOTIFY_SECRETS }, async event => {
   const id = event.params.id;
   const before = event.data.before.exists ? event.data.before.data() : null;

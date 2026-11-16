@@ -1235,3 +1235,17 @@ input[data-cust][aria-expanded="true"]{background-image:url("data:image/svg+xml,
 .assign{display:grid;gap:6px;justify-items:start}
 .assign-sel{width:auto;max-width:190px;padding-block:6px;font-size:13px}
 .needs-b{color:var(--warn);font-weight:700}
+
+/* client receipt (booking page, receipt page) */
+.rcpt{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px 18px;max-width:420px;width:100%;box-shadow:0 1px 0 var(--line)}
+.rcpt .rc-shop{justify-content:center;font:800 22px/1 var(--f-display);text-transform:uppercase;letter-spacing:.02em}
+.rcpt .rc-mid{justify-content:center;text-align:center;flex-direction:column;align-items:center}
+.rcpt .rc-tot{font-weight:800;font-size:16px}
+.rcpt .rc-loy{gap:6px}
+.rc-page{display:grid;justify-items:center;gap:16px;padding-block:28px 56px}
+.rc-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.rc-send{margin-top:14px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;display:grid;gap:8px}
+.rc-send .eyebrow{margin:0}
+.rc-sent{list-style:none;margin:0;padding:0;display:grid;gap:4px;font-size:13.5px}
+.rc-sent li{display:flex;gap:8px;align-items:center}.rc-sent b{color:var(--good)}
+.rc-card .rcpt{margin:10px auto 0;box-shadow:none}

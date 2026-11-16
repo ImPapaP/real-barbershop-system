@@ -2,7 +2,7 @@
 export const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 5, leadMinutes: 60, bookAheadDays: 120, step: 60, maxReschedules: 2, rebookDays: 28, onlineBooking: true, lastBooking: '19:00' };
+export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 5, leadMinutes: 60, bookAheadDays: 120, step: 60, maxReschedules: 2, rebookDays: 28, onlineBooking: true, receiptTexts: true, lastBooking: '19:00' };
 
 export const $ = (s, r = document) => r.querySelector(s);
 export const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -271,6 +271,21 @@ function morphEl(f, t) {
 
 // ---------- brand: the shop's badge logo + the wordmark with the mirrored E from the logo ----------
 export const LOGO = new URL('./logo-192.png', import.meta.url).href;
+// Client-facing receipt (booking page and receipt page). `r` comes from getReceipt.
+export function receiptHTML(r, cur = '₱') {
+  const m = n => money(n, cur, true), sh = r.shop || {}, row = (k, v, cls = '') => `<div class="${cls}"><span>${k}</span><span>${v}</span></div>`;
+  // loyalty: every Nth visit is free (same rule as the dashboard), so after visit k there are N-1-k paid visits to go
+  const L = r.loyalty, k = L ? L.visits % L.every : 0, onCard = L ? (k || (L.visits ? L.every : 0)) : 0, left = L ? L.every - 1 - k : 0;
+  return `<div class="receipt rcpt">
+    <div class="rc-shop">${esc(sh.wordmark || sh.name || 'Receipt')}</div>${sh.address ? `<div class="rc-mid muted">${esc(sh.address)}</div>` : ''}<hr>
+    ${row(esc(fmtDate(r.date, true)), esc(fmtTime(r.time)))}${r.name ? row('Client', esc(r.name)) : ''}${r.barberName ? row('Barber', esc(r.barberName)) : ''}<hr>
+    ${(r.lines || []).map(l => row(`${esc(l.name)}${l.qty > 1 ? ' ×' + l.qty : ''}`, m(l.price * l.qty))).join('')}<hr>
+    ${r.discount ? row(`Discount${r.discountNote ? ' (' + esc(r.discountNote) + ')' : ''}`, '−' + m(r.discount)) : ''}${r.tip ? row('Tip', m(r.tip)) : ''}
+    ${row('TOTAL', m(r.total), 'rc-tot')}
+    ${r.depositCredit ? row('Deposit paid online', '−' + m(r.depositCredit)) : ''}${row(`Paid at the shop${r.method ? ' (' + esc(r.method) + ')' : ''}`, m(r.paidAtShop))}
+    ${L ? `<hr><div class="rc-mid rc-loy"><span class="meter">${Array.from({ length: Math.min(L.every, 12) }, (_, i) => `<i class="${i < onCard ? 'on' : ''}"></i>`).join('')}</span><span>${k === 0 ? 'Free visit used. A new card starts next time' : left === 0 ? `Visit ${k} of ${L.every} · your next visit is free` : `Visit ${k} of ${L.every} · ${left} more to a free cut`}</span></div>` : ''}
+    <hr><div class="rc-mid muted">${esc(sh.tagline || 'Thank you!')}${sh.phone ? `<br>${esc(sh.phone)}` : ''}</div></div>`;
+}
 export const BACK_IC = '<svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5"/></svg>';
 export const LOGO_LG = new URL('./logo.png', import.meta.url).href;
 // "R3AL BARBERS" / "REAL BARBERS" -> R + mirrored E + AL BARBERS, like the badge
