@@ -1011,7 +1011,7 @@ function cpMatches(q) {
   if (t) list = list.filter(({ c }) => c.name.toLowerCase().includes(t) || (digits.length >= 3 && normPhone(c.phone).includes(digits)))
     .sort((a, b) => (b.c.name.toLowerCase().startsWith(t) - a.c.name.toLowerCase().startsWith(t)) || (b.st.last || '').localeCompare(a.st.last || ''));
   else list.sort((a, b) => (b.st.last || '').localeCompare(a.st.last || ''));
-  return list.slice(0, 6);
+  return list.slice(0, t ? 6 : 5);
 }
 const cpMark = (text, q) => { const t = q.trim(); const i = t ? text.toLowerCase().indexOf(t.toLowerCase()) : -1; return i < 0 ? esc(text) : `${esc(text.slice(0, i))}<mark>${esc(text.slice(i, i + t.length))}</mark>${esc(text.slice(i + t.length))}`; };
 function cpOpen(input) {
@@ -1026,8 +1026,10 @@ function cpOpen(input) {
 `;
   const r = input.getBoundingClientRect(), w = Math.max(r.width, Math.min(360, innerWidth - 24));
   pop.style.width = w + 'px'; pop.style.left = Math.max(12, Math.min(r.left, innerWidth - w - 12)) + 'px';
-  const below = innerHeight - r.bottom, h = Math.min(pop.scrollHeight, 380);
-  if (below < h + 12 && r.top > below) { pop.style.top = ''; pop.style.bottom = (innerHeight - r.top + 6) + 'px'; } else { pop.style.bottom = ''; pop.style.top = (r.bottom + 6) + 'px'; }
+  // right under the field; above it only when there's clearly more room there
+  pop.style.maxHeight = ''; const below = innerHeight - r.bottom - 12, above = r.top - 12, h = pop.scrollHeight;
+  if (h > below && above > below) { pop.style.top = ''; pop.style.bottom = (innerHeight - r.top + 4) + 'px'; pop.style.maxHeight = Math.min(above, 460) + 'px'; }
+  else { pop.style.bottom = ''; pop.style.top = (r.bottom + 4) + 'px'; pop.style.maxHeight = Math.max(160, Math.min(below, 460)) + 'px'; }
   pop.hidden = false; input.setAttribute('aria-expanded', String(!pop.hidden));
 }
 function cpAddNew() {
@@ -1052,9 +1054,11 @@ function cpPick(i) {
   }
   cpClose(); input.focus();
 }
-document.addEventListener('focusin', e => { if (e.target.matches && e.target.matches('[data-cust]') && !e.target.dataset.adding) { CP.i = -1; cpOpen(e.target); } });
+// Opens when staff tap the field or start typing, not when a pop-up puts the cursor there by itself
+document.addEventListener('click', e => { if (e.target.matches && e.target.matches('[data-cust]') && CP.input !== e.target) { const el = e.target; CP.i = -1; cpOpen(el); setTimeout(() => CP.input === el && cpOpen(el), 280); } }); // again once the pop-up has finished opening
 document.addEventListener('input', e => { if (e.target.matches && e.target.matches('[data-cust]')) { CP.i = -1; cpOpen(e.target); } });
 document.addEventListener('keydown', e => {
+  if (e.target.matches && e.target.matches('[data-cust]') && e.key === 'ArrowDown' && CP.input !== e.target) { e.preventDefault(); CP.i = 0; cpOpen(e.target); return; }
   if (!CP.input || e.target !== CP.input) return;
   const pop = document.getElementById('cust-pop'); if (!pop || pop.hidden) return;
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const n = CP.items.length; if (!n) return; CP.i = (CP.i + (e.key === 'ArrowDown' ? 1 : -1) + n) % n; cpOpen(CP.input); }
@@ -1064,7 +1068,7 @@ document.addEventListener('keydown', e => {
 document.addEventListener('mousedown', e => { if (e.target.closest && e.target.closest('[data-cpnew]')) { e.preventDefault(); cpAddNew(); return; } const b = e.target.closest && e.target.closest('[data-cp]'); if (b) { e.preventDefault(); cpPick(+b.dataset.cp); return; } if (CP.input && !e.target.closest('#cust-pop') && e.target !== CP.input) cpClose(); });
 document.addEventListener('focusout', e => { if (e.target === CP.input) setTimeout(() => { if (CP.input && document.activeElement !== CP.input) cpClose(); }, 120); });
 addEventListener('resize', () => CP.input && cpOpen(CP.input));
-document.addEventListener('scroll', () => CP.input && cpOpen(CP.input), true);
+document.addEventListener('scroll', e => { if (CP.input && !(e.target.closest && e.target.closest('#cust-pop'))) cpOpen(CP.input); }, true);
 document.addEventListener('input', e => { if (e.target.closest('form[data-form=happen]')) { if (e.target.id === 'hp-code') autoBadge(); happenPreview(); } });
 document.addEventListener('change', e => { if (e.target.closest('form[data-form=happen]')) { if (e.target.id === 'hp-code') autoBadge(); happenPreview(); } });
 // Picking a promo code fills the banner's big text with its discount
