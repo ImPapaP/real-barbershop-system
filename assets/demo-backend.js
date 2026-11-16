@@ -253,10 +253,10 @@ const FUNCS = {
       deposit: dep, reminders: {}, reschedules: 0, createdAt: Date.now(), guests: gid ? [gid] : []
     });
     if (guest) store.set('appointments/' + gid, {
-      code: code.slice(0, 5) + '2', token: Math.random().toString(36).slice(2, 14), source: 'online', ...st, notify: false, groupOf: id, bookedBy: d.name.trim(),
+      code: code.slice(0, 5) + '2', token: Math.random().toString(36).slice(2, 14), source: 'online', ...st, notify: false, groupOf: id, bookedBy: d.name.trim(), ...(d.guest.sameClient ? { addOnOf: id } : {}),
       name: guest.name, phone: d.phone.trim(), email: d.email.trim(), notes: d.notes || '', customerId: '',
       serviceIds: guest.services.map(s => s.id), mins: sum(guest.services, s => s.mins), date: guest.date, time: guest.time, startAt: startMs(guest.date, guest.time), barberId: guest.barberId,
-      deposit: manual ? dep : { ...dep, paidWith: id }, reminders: {}, reschedules: 0, createdAt: Date.now()
+      deposit: d.guest.sameClient ? { amount: 0, status: dep.status === 'paid' ? 'paid' : 'unpaid', paidWith: id } : manual ? dep : { ...dep, paidWith: id }, reminders: {}, reschedules: 0, createdAt: Date.now()
     });
     afterWrite('appointments/' + id); if (guest) afterWrite('appointments/' + gid);
     return { id, token, checkoutUrl: `booking.html?id=${id}&t=${token}${manual ? '' : '&paid=1'}` };

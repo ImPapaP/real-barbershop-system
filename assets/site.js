@@ -369,6 +369,12 @@ function applySelection({ group, svc = [], barber: bid = '' }) {
 // The second person gets the same services, or picks their own. They come at the same time with another
 // barber/stylist, or right after with the same barber (only when he does their services too).
 const guestSvcs = () => { const g = S.bk.guest; return g.own ? svcs().filter(x => g.svc[x.id]) : chosen(); };
+// "Add nails to this visit": the same client adds a service of another kind, done by someone else (one down payment)
+const addOnGroups = () => groupTabs().filter(([k]) => k !== S.bk.group && (k === 'nails' || S.bk.group === 'nails'));
+// Who does the extra service, for the summary: the chosen person, or the only one free, or "another <role>"
+const guestWho = o => { const id = o.barberId || ((availableTimes(info(), { services: guestSvcs(), date: o.date || S.bk.date, barberId: '' }, S.slots).find(x => x.time === o.time) || {}).barbers || []).filter(x => x !== S.bk.barber).concat([''])[0];
+  return id ? ` with ${esc(barber(id)?.name || '')}` : `, another ${staffWord(guestSvcs()[0] && guestSvcs()[0].group)}`; };
+const addOnLabel = g => g === 'nails' ? 'nails' : 'a hair service';
 const guestValid = () => { const l = guestSvcs(); return l.length > 0 && !comboError(info(), l); };
 function guestOptions(times) {
   const b = S.bk, pol = policyOf(info()), mins = sum(chosen(), x => x.mins), t = times.find(x => x.time === b.time);
@@ -377,9 +383,13 @@ function guestOptions(times) {
   const gt = availableTimes(info(), { services: gs, date: b.date, barberId: '' }, S.slots).find(x => x.time === b.time);
   const mainPick = b.barber || t.barbers[0];
   const others = gt ? gt.barbers.filter(id => id !== mainPick) : [];
-  if (others.length) out.push({ mode: 'same', time: b.time, barberId: '', label: `Same time, ${fmtTime(b.time)}, with another ${who}`, sub: others.length === 1 ? `${barber(others[0])?.name || ''} is free` : `${others.length} are free` });
+  if (others.length) out.push({ mode: 'same', time: b.time, barberId: '', label: b.guest.self ? `At the same time, ${fmtTime(b.time)}` : `Same time, ${fmtTime(b.time)}, with another ${who}`, sub: others.length === 1 ? `${barber(others[0])?.name || ''} is free` : `${others.length} are free` });
   const bb = barber(b.barber);
-  if (bb && canServe(bb, gs)) {
+  if (b.guest.self) {
+    const next = fromMin(toMin(b.time) + Math.ceil(mins / pol.step) * pol.step);
+    const n = availableTimes(info(), { services: gs, date: b.date, barberId: '' }, S.slots).find(x => x.time === next);
+    if (n && n.barbers.length) out.push({ mode: 'after', time: next, barberId: '', label: `Right after, ${fmtTime(next)}`, sub: n.barbers.length === 1 ? `With ${barber(n.barbers[0])?.name || ''}` : `${n.barbers.length} are free` });
+  } else if (bb && canServe(bb, gs)) {
     const next = fromMin(toMin(b.time) + Math.ceil(mins / pol.step) * pol.step);
     const n = availableTimes(info(), { services: gs, date: b.date, barberId: bb.id }, S.slots).find(x => x.time === next);
     if (n && n.barbers.includes(bb.id)) out.push({ mode: 'after', time: next, barberId: bb.id, label: `Right after, ${fmtTime(next)}, with ${bb.name}`, sub: 'One after the other' });
@@ -387,7 +397,7 @@ function guestOptions(times) {
   // Their own time: any day, any free time, any barber who does their services
   const g = b.guest, gt2 = g.time ? (guestTimes() || []).find(x => x.time === g.time) : null;
   const gb = gt2 && (g.barber && gt2.barbers.includes(g.barber) ? g.barber : gt2.barbers[0]);
-  out.push({ mode: 'pick', date: g.date || b.date, time: gb ? g.time : '', barberId: gb || '', label: 'Choose their own time', sub: gb ? `${dayWord(g.date || b.date)}, ${fmtTime(g.time)} with ${barber(gb)?.name || ''}` : 'Any day, any free time, any barber' });
+  out.push({ mode: 'pick', date: g.date || b.date, time: gb ? g.time : '', barberId: gb || '', label: g.self ? 'Another time' : 'Choose their own time', sub: gb ? `${dayWord(g.date || b.date)}, ${fmtTime(g.time)} with ${barber(gb)?.name || ''}` : g.self ? 'Any day and free time' : 'Any day, any free time, any barber' });
   return out;
 }
 // Free times for the second person on their chosen day, treating the main booking's chair as taken
@@ -425,12 +435,17 @@ function guestPicker() {
       ${g.tier ? `<div class="pick one-col">${all.filter(x => x.kind === 'base' && (x.tier || '') === g.tier).map(x => card(x, 'guestBase', true)).join('')}</div>
       ${base ? `<p class="small muted" style="margin:4px 0 0">Add extras (optional)</p><div class="pick">${all.filter(x => x.kind !== 'base' && !(base.includes || []).includes(x.id)).map(x => card(x, 'guestSvc')).join('')}</div>` : ''}` : '<p class="muted small">Pick Deluxe or Regular for them.</p>'}`;
   } else body = `<div class="pick">${all.map(x => card(x, 'guestSvc')).join('')}</div>`;
-  return `<div class="guest-svc"><div class="tabs sm" role="tablist">${groupTabs().map(([k, l]) => `<button role="tab" type="button" aria-selected="${g.group === k}" data-act="guestGroup" data-v="${k}">${l}</button>`).join('')}</div>${body}</div>`;
+  return `<div class="guest-svc"><div class="tabs sm" role="tablist">${(g.self ? addOnGroups() : groupTabs()).map(([k, l]) => `<button role="tab" type="button" aria-selected="${g.group === k}" data-act="guestGroup" data-v="${k}">${l}</button>`).join('')}</div>${body}</div>`;
 }
 function guestBox(times) {
   const g = S.bk.guest, pol = policyOf(info());
-  if (!g.on) return `<button type="button" class="link-btn add-guest" data-act="guestOn">${ic('user')} Booking for someone else too? Add a second person</button>`;
+  if (!g.on) return `${addOnGroups().length ? `<button type="button" class="link-btn add-guest" data-act="guestSelf">${ic('plus')} Add ${addOnLabel(addOnGroups()[0][0])} to this visit</button>` : ''}<button type="button" class="link-btn add-guest" data-act="guestOn">${ic('user')} Booking for someone else too? Add a second person</button>`;
   const opts = guestOptions(times), gs = guestSvcs();
+  if (g.self) return `<div class="guest-box"><div class="row" style="justify-content:space-between"><b>Add ${addOnLabel(g.group)} to your visit</b><button type="button" class="link-btn" data-act="guestOff">Remove</button></div>
+    <div>${guestPicker()}</div>
+    ${!guestValid() ? (gs.length ? `<p class="err">${esc(comboError(info(), gs))}</p>` : '<p class="muted small">Pick what you’d like.</p>') : `<div><p class="small" style="font-weight:700;margin:0 0 8px">When</p>${opts.length ? `<div class="guest-opts" role="radiogroup" aria-label="When">${opts.map(o => `<button type="button" class="pickcard radio" role="radio" data-act="guestMode" data-v="${o.mode}" aria-pressed="${g.mode === o.mode}" aria-checked="${g.mode === o.mode}"><span class="tick" aria-hidden="true">${ic('check')}</span><b>${esc(o.label)}</b><small>${esc(o.sub)}</small></button>`).join('')}</div>${g.mode === 'pick' ? guestWhen() : ''}` : '<p class="muted small">Nothing free around your time. Try another time.</p>'}</div>`}
+    ${S.tried && (detailErrors().gsvc || detailErrors().gmode) ? `<p class="field-err">${esc(detailErrors().gsvc || detailErrors().gmode)}</p>` : ''}
+    <p class="muted small">One ${m(pol.deposit)} down payment covers your whole visit.</p></div>`;
   return `<div class="guest-box"><div class="row" style="justify-content:space-between"><b>Second person</b><button type="button" class="link-btn" data-act="guestOff">Remove</button></div>
     <div class="field${showErr('gname') && detailErrors().gname ? ' has-err' : ''}"><label for="bk-gname">Their name <span class="req" aria-hidden="true">*</span></label><input id="bk-gname" data-bind="bk.guest.name" data-touch="gname" value="${esc(g.name)}" autocomplete="off" placeholder="e.g. Miguel" required aria-required="true" data-live>${showErr('gname') && detailErrors().gname ? `<p class="field-err">${esc(detailErrors().gname)}</p>` : ''}</div>
     <div><p class="small" style="font-weight:700;margin:0 0 8px">Their services</p>
@@ -482,7 +497,7 @@ function detailErrors() {
   if (!b.phone.trim()) e.phone = 'Enter your mobile number.'; else if (!validPhone(b.phone)) e.phone = 'Enter an 11-digit mobile number, like 0917 123 4567.';
   if (!b.email.trim()) e.email = 'Enter your email. Your confirmation and booking link go there.'; else if (!validEmail(b.email)) e.email = 'Check your email address, like juan@gmail.com.';
   if (b.guest.on) {
-    if (b.guest.name.trim().length < 2) e.gname = 'Enter the second person’s name.';
+    if (!b.guest.self && b.guest.name.trim().length < 2) e.gname = 'Enter the second person’s name.';
     if (!guestValid()) e.gsvc = 'Pick the second person’s services.'; else if (!b.guest.mode) e.gmode = 'Pick when the second person comes.'; else if (b.guest.mode === 'pick' && !guestPick(availableTimes(info(), { services: chosen(), date: b.date, barberId: b.barber }, S.slots))) e.gmode = 'Pick a day and time for the second person.';
   }
   if (!b.consent) e.consent = 'Please agree to the Booking Terms and Privacy Policy.';
@@ -511,7 +526,7 @@ function booker() {
   const dates = bookableDates(I).map(d => ({ ...d, off: !d.closed && b.barber && !(barber(b.barber)?.days || []).includes(dowOf(d.date)) }));
   const times = b.date && picked.length ? availableTimes(I, { services: picked, date: b.date, barberId: b.barber }, S.slots) : [];
   const total = sum(picked, s => s.price), from = picked.some(s => s.priceFrom), mins = sum(picked, s => s.mins);
-  const gpk = st.when ? guestPick(times) : null, people = gpk ? 2 : 1;
+  const gpk = st.when ? guestPick(times) : null, people = gpk && !b.guest.self ? 2 : 1;
   const labels = ['Services', staffWord(b.group, true), 'Date & time', 'Details'];
   const done = [st.picked, st.picked && b.date, st.when, st.details];
   return `<div class="progress" aria-label="Booking progress"><div class="bar-track"><i style="width:${st.n * 25}%"></i></div><ol>${labels.map((l, i) => `<li class="${done[i] ? 'done' : ''}"><span>${done[i] ? ic('check') : i + 1}</span>${l}</li>`).join('')}</ol></div>
@@ -551,7 +566,7 @@ function booker() {
     <div class="summary-b">
       <div class="sumrow"><span>${staffWord(b.group, true)}</span><b>${b.barber ? esc(barber(b.barber)?.name || '') : 'Any available'}</b></div>
       <div class="sumrow"><span>When</span><b>${st.when ? `${fmtDate(b.date)}<br>${fmtTime(b.time)}` : '—'}</b></div>
-      ${gpk ? `<div class="sumrow"><span>Second person</span><b>${esc(b.guest.name.trim() || 'Guest')}${b.guest.own ? `<br>${guestSvcs().map(x => esc(x.name)).join('<br>')}` : ''}<br>${gpk.date && gpk.date !== b.date ? `${fmtDate(gpk.date)}, ` : ''}${fmtTime(gpk.time)}${gpk.barberId ? ` with ${esc(barber(gpk.barberId)?.name || '')}` : ', another barber'}</b></div>` : ''}
+      ${gpk ? `<div class="sumrow"><span>${b.guest.self ? 'Also' : 'Second person'}</span><b>${b.guest.self ? guestSvcs().map(x => esc(x.name)).join('<br>') : esc(b.guest.name.trim() || 'Guest') + (b.guest.own ? `<br>${guestSvcs().map(x => esc(x.name)).join('<br>')}` : '')}<br>${gpk.date && gpk.date !== b.date ? `${fmtDate(gpk.date)}, ` : ''}${fmtTime(gpk.time)}${guestWho(gpk)}</b></div>` : ''}
       ${bill(picked, gpk, people)}
       ${payChoice()}
       <p class="muted small">${S.pay === 'gcash' ? 'Your slot is held for 30 minutes while you send the payment and upload the screenshot.' : `Your slot is held for ${pol.holdMinutes} minutes while you pay.`}</p>
@@ -577,7 +592,7 @@ function bill(picked, gpk, people) {
   return `<div class="bill" aria-label="Price breakdown"><p class="bill-h">Price breakdown</p>
     ${gpk ? `<p class="bill-sub">${esc(S.bk.name.trim().split(' ')[0] || 'You')}</p>` : ''}
     ${picked.map(x => line(esc(x.name), esc(priceLabel(x, cur())))).join('')}
-    ${gpk ? `<p class="bill-sub">${esc(S.bk.guest.name.trim() || 'Second person')}</p>${gs.map(x => line(esc(x.name), esc(priceLabel(x, cur())))).join('')}` : ''}
+    ${gpk ? `<p class="bill-sub">${S.bk.guest.self ? 'Also for you' : esc(S.bk.guest.name.trim() || 'Second person')}</p>${gs.map(x => line(esc(x.name), esc(priceLabel(x, cur())))).join('')}` : ''}
     ${off ? line(`Promo ${esc(S.promo.applied.code)} (${esc(S.promo.applied.label)})`, '−' + m(off), 'disc') : ''}
     ${prodList.length ? `<p class="bill-sub">Set aside for you (pay at the shop)</p>${prodList.map(p => line(esc(p.name), m(p.price))).join('')}` : ''}
     ${line('Estimated total', (from ? 'from ' : '') + m(total - off), 'tot')}</div>
@@ -797,6 +812,7 @@ const ACT = {
   forgetMe() { forgetMe(); renderBooker(); toast('Your details were removed from this phone'); },
   bkNext(el) { S.bk.date = el.dataset.date; S.bk.time = el.dataset.time; S.err = ''; watchSlots(); renderBooker(); goStep(4); },
   guestOn() { S.bk.guest.on = true; S.bk.guest.group = S.bk.group; const o = guestOptions(availableTimes(info(), { services: chosen(), date: S.bk.date, barberId: S.bk.barber }, S.slots)); if (o.length === 1) S.bk.guest.mode = o[0].mode; renderBooker(); },
+  guestSelf() { const grp = addOnGroups()[0]; if (!grp) return; S.bk.guest = { on: true, self: true, mode: '', name: '', own: true, group: grp[0], tier: '', svc: {}, date: '', time: '', barber: '' }; renderBooker(); },
   guestOff() { S.bk.guest = { on: false, mode: '', name: '', own: false, group: 'him', tier: '', svc: {}, date: '', time: '', barber: '' }; renderBooker(); },
   guestMode(el) { const g = S.bk.guest; g.mode = el.dataset.v; if (g.mode === 'pick') { g.date = g.date || S.bk.date; ensureRange(); } renderBooker(); },
   guestBarber(el) { const g = S.bk.guest; g.barber = el.dataset.id; g.time = ''; const bb = barber(g.barber); if (bb && !(bb.days || []).includes(dowOf(g.date || S.bk.date))) g.date = ''; renderBooker(); },
@@ -852,13 +868,13 @@ const ACT = {
       return;
     }
     const gp = guestPick(availableTimes(info(), { services: chosen(), date: b.date, barberId: b.barber }, S.slots));
-    if (b.guest.on && (!gp || !b.guest.name.trim())) { S.err = gp ? 'Enter the second person’s name.' : 'Pick when the second person comes, or remove them.'; renderBooker(); return; }
+    if (b.guest.on && (!gp || (!b.guest.self && !b.guest.name.trim()))) { S.err = gp ? 'Enter the second person’s name.' : b.guest.self ? `Pick when you’d like ${addOnLabel(b.guest.group)}, or remove it.` : 'Pick when the second person comes, or remove them.'; renderBooker(); return; }
     S.busy = true; S.err = ''; renderBooker();
     try {
       const r = await call('createBooking', { serviceIds: Object.keys(b.svc).filter(k => b.svc[k]), barberId: b.barber, date: b.date, time: b.time, name: b.name, phone: b.phone, email: b.email, notes: b.notes, consent: b.consent,
         payMethod: payChoice() ? S.pay : 'online', promo: S.promo.applied ? S.promo.applied.code : '',
         ...(b.prods ? { notes: [b.notes, `Set aside for me: ${b.prods}`].filter(Boolean).join(' · ') } : {}),
-        ...(gp ? { guest: { name: b.guest.name.trim(), time: gp.time, barberId: gp.barberId, ...(gp.mode === 'pick' && gp.date !== b.date ? { date: gp.date } : {}), ...(b.guest.own ? { serviceIds: guestSvcs().map(x => x.id) } : {}) } } : {}) });
+        ...(gp ? { guest: { name: b.guest.self ? b.name.trim() : b.guest.name.trim(), ...(b.guest.self ? { sameClient: true } : {}), time: gp.time, barberId: gp.barberId, ...(gp.mode === 'pick' && gp.date !== b.date ? { date: gp.date } : {}), ...(b.guest.own ? { serviceIds: guestSvcs().map(x => x.id) } : {}) } } : {}) });
       saveMe();
       try { localStorage.setItem('lastBooking', JSON.stringify({ id: r.id, token: r.token, ...when })); } catch (_) {}
       location.href = r.checkoutUrl;
