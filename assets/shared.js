@@ -341,6 +341,28 @@ export function promoCheck(promo, total, today) {
   if (!off) return { ok: false, error: 'That promo code isn’t valid.' };
   return { ok: true, off, label: promo.kind === 'amount' ? `₱${v} off` : `${v}% off` };
 }
+// Birthday as "MM-DD" (no year). Anything else becomes ''. Feb 29 is allowed.
+export function cleanBday(v) {
+  const m = /^(\d{1,2})-(\d{1,2})$/.exec(String(v || '').trim()); if (!m) return '';
+  const mo = +m[1], d = +m[2], max = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1];
+  return max && d >= 1 && d <= max ? `${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}` : '';
+}
+export const fmtBday = b => { const v = cleanBday(b); return v ? `${MONTHS_LONG[+v.slice(0, 2) - 1]} ${+v.slice(3)}` : ''; };
+// Days from `date` (YYYY-MM-DD) to the nearest birthday: 0 = today, 3 = in three days, -2 = two days ago
+export function bdayDays(b, date) {
+  const v = cleanBday(b); if (!v || !date) return null;
+  const y = +date.slice(0, 4), base = Date.parse(date + 'T00:00:00Z');
+  const at = yr => { const ok = v !== '02-29' || (yr % 4 === 0 && (yr % 100 !== 0 || yr % 400 === 0)); return Date.parse(`${yr}-${ok ? v : '02-28'}T00:00:00Z`); };
+  return [y - 1, y, y + 1].map(yr => Math.round((at(yr) - base) / 864e5)).sort((a, b) => Math.abs(a) - Math.abs(b))[0];
+}
+// Month + day pickers. `attr(part)` returns the attributes for each select (name=… or data-bind=…)
+export function bdaySelects(value, idBase, attr) {
+  const [mo, d] = String(value || '').split('-').map(x => parseInt(x, 10) || 0); // a half-picked value keeps its part
+  return `<div class="bday-in"><select id="${idBase}-m" ${attr('m')} aria-label="Birthday month"><option value="">Month</option>${MONTHS_LONG.map((n, i) => `<option value="${i + 1}" ${mo === i + 1 ? 'selected' : ''}>${n}</option>`).join('')}</select>
+    <select id="${idBase}-d" ${attr('d')} aria-label="Birthday day"><option value="">Day</option>${Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}" ${d === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select></div>`;
+}
+export const BDAY_TITLE = 'Get a free haircut on your birthday';
+export const BDAY_HINT = 'Tell us your birthday (just the month and day) and your haircut is on us when it comes around.';
 export const cleanCode = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20);
 // Messenger link from the Facebook page address (facebook.com/R3ALBarbers -> m.me/R3ALBarbers)
 export function messengerLink(shop) {

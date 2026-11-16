@@ -18,6 +18,9 @@ const TL = {
   'Find us': 'Paano pumunta', 'Get directions': 'Direksyon', 'Address': 'Address', 'Call or text': 'Tumawag o mag-text', 'How to find us': 'Paano kami hanapin',
   'Open in Google Maps': 'Buksan sa Google Maps', 'Booking policy': 'Patakaran sa booking', 'Copy': 'Kopyahin', 'Booking Terms': 'Booking Terms', 'Privacy Policy': 'Privacy Policy',
   'Book a chair': 'Mag-book ng upuan', 'Days in': 'Mga araw na pasok', 'Recent work': 'Mga gawa niya', 'Close': 'Isara',
+  // birthday
+  'Get a free haircut on your birthday': 'Libreng gupit sa birthday mo', '(optional)': '(opsyonal)', 'Month': 'Buwan', 'Day': 'Araw',
+  'Tell us your birthday (just the month and day) and your haircut is on us when it comes around.': 'Sabihin ang birthday mo (buwan at araw lang) at libre ang gupit mo pagdating nito.',
   // booking steps
   'Booking progress': 'Progress ng booking', 'Barber': 'Barber', 'Stylist': 'Stylist', 'Date & time': 'Araw at oras', 'Details': 'Detalye',
   'Choose services': 'Pumili ng serbisyo', 'Choose your barber': 'Pumili ng barber', 'Choose your stylist': 'Pumili ng stylist', 'Pick a date and time': 'Pumili ng araw at oras',

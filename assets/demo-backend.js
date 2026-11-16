@@ -2,12 +2,12 @@
 // Used for the live preview before Firebase is connected. Payments are skipped; bookings confirm instantly.
 import {
   windowOfTime, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, comboError, commissionFor, isServiceStaff, rebookLink, slotId, blockTimes, isActiveSlot, availableTimes, policyOf,
-  startMs, phNow, addDays, sum, promoCheck, cleanCode
+  startMs, phNow, addDays, sum, promoCheck, cleanCode, cleanBday
 } from './shared.js';
 
 // The saved demo is keyed by a fingerprint of the starter data, so changing the menu or team
 // (or a browser briefly mixing old and new files) never leaves stale sample data behind.
-const SEED_REV = 22; // bump when seed() itself changes
+const SEED_REV = 23; // bump when seed() itself changes
 const fingerprint = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const KEY = `rb-demo-${SEED_REV}-${fingerprint(JSON.stringify([STARTER, STARTER_STAFF]))}`, USER_KEY = 'rb-demo-user';
 try { Object.keys(localStorage).filter(k => k.startsWith('rb-demo-') && k !== KEY && k !== USER_KEY).forEach(k => localStorage.removeItem(k)); } catch (_) {}
@@ -40,7 +40,8 @@ function seed() {
   m.set('admins/demo', { role: 'owner' });
   const svc = STARTER.services, him = svc.filter(s => s.group === 'him'), her = svc.filter(s => s.group === 'her');
   const names = ['Marco Reyes', 'Jericho Santos', 'Carlo Mendoza', 'Rafael Cruz', 'Joshua Villanueva', 'Kevin Ramos', 'Miguel Torres', 'Andrea Cruz', 'Bea Lim', 'Dennis Aquino'];
-  names.forEach((n, i) => m.set(`customers/c${i}`, { name: n, phone: `09170000${String(100 + i)}`, phoneKey: `09170000${String(100 + i)}`, email: '', notes: i === 0 ? '#2 sides, scissor top' : '', createdAt: Date.now() - (90 - i * 7) * 864e5 }));
+  const bd = n => day(n).slice(5); // sample birthdays: today, in 4 days, in 10 days
+  names.forEach((n, i) => m.set(`customers/c${i}`, { name: n, phone: `09170000${String(100 + i)}`, phoneKey: `09170000${String(100 + i)}`, email: '', notes: i === 0 ? '#2 sides, scissor top' : '', createdAt: Date.now() - (90 - i * 7) * 864e5, ...({ 0: { birthday: bd(0) }, 3: { birthday: bd(4) }, 8: { birthday: bd(10) } }[i] || {}) }));
   const RATE = Object.fromEntries(STARTER_STAFF.map(b => [b.id, b.rate])), SB = Object.fromEntries(STARTER_STAFF.map(b => [b.id, b]));
   const COMM = (b, s) => commissionFor(SB[b], [{ kind: 'service', ref: s.id, price: s.price, qty: 1 }], 0, id => svc.find(x => x.id === id)).commission;
   let n = 0; const earned = {}; // barber -> day -> commission + tips, for the seeded weekly payouts
@@ -245,7 +246,7 @@ const FUNCS = {
     const dep = manual ? { amount: pol.deposit, status: 'unpaid' } : { amount: pol.deposit, status: 'paid', method: 'gcash' };
     const code = Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
     store.set('appointments/' + id, {
-      code, token, source: 'online', ...st, ...(promo ? { promo } : {}), notify: true, name: d.name.trim(), phone: d.phone.trim(), email: d.email.trim(), notes: d.notes || '', customerId: '',
+      code, token, source: 'online', ...st, ...(promo ? { promo } : {}), notify: true, name: d.name.trim(), phone: d.phone.trim(), email: d.email.trim(), notes: d.notes || '', customerId: '', ...(cleanBday(d.birthday) ? { birthday: cleanBday(d.birthday) } : {}),
       serviceIds: services.map(s => s.id), mins: sum(services, s => s.mins), date: d.date, time: d.time, startAt: startMs(d.date, d.time), barberId: t.barbers[0],
       deposit: dep, reminders: {}, reschedules: 0, createdAt: Date.now(), guests: gid ? [gid] : []
     });
@@ -299,7 +300,7 @@ const FUNCS = {
     if (mine) return { id: mine[0].split('/')[1], token: mine[1].token, queueNo: mine[1].queueNo, again: true };
     const queueNo = Math.max(0, ...today.map(([, v]) => v.queueNo || 0)) + 1, id = 'q' + Date.now().toString(36), token = Math.random().toString(36).slice(2, 14);
     store.set('appointments/' + id, { date: t.date, time: `${String(Math.floor(t.min / 60)).padStart(2, '0')}:${String(t.min % 60).padStart(2, '0')}`, source: 'walk-in', status: 'waiting', name, phone,
-      serviceIds: (d.serviceIds || []).filter(x => I.services.some(s => s.id === x)), barberId: I.barbers.some(b => b.id === d.barberId) ? d.barberId : '', queueNo, token, code: 'Q' + queueNo, notify: false, fromQr: true, createdAt: Date.now() });
+      serviceIds: (d.serviceIds || []).filter(x => I.services.some(s => s.id === x)), barberId: I.barbers.some(b => b.id === d.barberId) ? d.barberId : '', queueNo, token, code: 'Q' + queueNo, notify: false, fromQr: true, createdAt: Date.now(), ...(cleanBday(d.birthday) ? { birthday: cleanBday(d.birthday) } : {}) });
     afterWrite('appointments/' + id);
     return { id, token, queueNo };
   },
