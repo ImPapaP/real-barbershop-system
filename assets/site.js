@@ -189,7 +189,7 @@ function page() {
   </div></section>
 
   <section id="team" class="sec"><div class="wrap">
-    <div class="sec-head reveal"><div><p class="eyebrow">The team</p><h2 class="sec-title">Meet your barbers</h2></div></div>
+    <div class="sec-head reveal"><div><p class="eyebrow">Barbers, stylist and nail techs</p><h2 class="sec-title">Meet the team</h2></div></div>
     <div class="team">${(I.barbers || []).map((b, i) => `
       <article class="member reveal" style="--d:${(i % 4) * 80}ms">
         <button type="button" class="m-photo m-open" data-act="profile" data-id="${esc(b.id)}" aria-label="See ${esc(b.name)}’s profile">${b.photo ? `<img src="${esc(b.photo)}" alt="${esc(b.name)}" loading="lazy">` : `<span class="m-mono" aria-hidden="true">${esc(initials(b.name))}</span>`}${b.chair ? `<small>Chair ${esc(b.chair)}</small>` : ''}</button>

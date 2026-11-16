@@ -13,7 +13,7 @@ const TL = {
   'Book an appointment': 'Mag-book ng appointment', 'See prices': 'Tingnan ang presyo', 'Hours': 'Oras', 'Deposit to book': 'Down payment', 'Walk-ins': 'Walk-in', 'Welcome': 'Welcome',
   'Menu': 'Menu', 'Services & prices': 'Serbisyo at presyo', 'For him': 'Para sa lalaki', 'For her': 'Para sa babae', 'Nails': 'Nails',
   'Style gallery': 'Style gallery', 'Fresh from the chair': 'Bagong gupit', 'All': 'Lahat', 'Book online': 'Mag-book online', 'Bookings': 'Booking',
-  'The team': 'Ang team', 'Meet your barbers': 'Kilalanin ang mga barber', 'Profile': 'Profile', 'Reviews': 'Reviews', 'What clients say': 'Sabi ng mga customer',
+  'Barbers, stylist and nail techs': 'Mga barber, stylist at nail tech', 'Meet the team': 'Kilalanin ang team', 'Profile': 'Profile', 'Reviews': 'Reviews', 'What clients say': 'Sabi ng mga customer',
   'Questions': 'Mga tanong', 'Good to know': 'Dapat mong malaman', 'Ask us on Messenger': 'Magtanong sa Messenger', 'Message us': 'Mag-message',
   'Find us': 'Paano pumunta', 'Get directions': 'Direksyon', 'Address': 'Address', 'Call or text': 'Tumawag o mag-text', 'How to find us': 'Paano kami hanapin',
   'Open in Google Maps': 'Buksan sa Google Maps', 'Booking policy': 'Patakaran sa booking', 'Copy': 'Kopyahin', 'Booking Terms': 'Booking Terms', 'Privacy Policy': 'Privacy Policy',
