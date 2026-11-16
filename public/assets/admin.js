@@ -323,18 +323,28 @@ const bdayFrom = fd => cleanBday(`${fd.get('bm') || ''}-${fd.get('bd') || ''}`);
 // ---------- appointments ----------
 const apptsOn = d => S.appointments.filter(a => a.date === d).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 const visible = a => S.showExpired || a.status !== 'expired';
+// "Any barber" bookings from the website: the system only holds a chair; the shop picks who does the cut
+const ACTIVE_ST = ['booked', 'pending_payment', 'waiting', 'inchair'];
+const needsBarber = a => !!a.anyBarber && ACTIVE_ST.includes(a.status);
+function freeBarbersFor(a) {
+  const svcs = (a.serviceIds || []).map(svcById).filter(Boolean), start = toMin(a.time || '00:00'), end = start + (a.mins || svcMins(a.serviceIds || []) || 30);
+  const dow = new Date(a.date + 'T00:00:00').getDay();
+  return serviceStaff().filter(b => (b.days || [0, 1, 2, 3, 4, 5, 6]).includes(dow) && (!svcs.length || canServe(b, svcs)) && !S.appointments.some(o => o.id !== a.id && o.date === a.date && o.barberId === b.id && ACTIVE_ST.includes(o.status) && o.source !== 'walk-in'
+    && toMin(o.time) < end && toMin(o.time) + (o.mins || 30) > start));
+}
+const assignSelect = a => { const free = freeBarbersFor(a); return `<select class="assign-sel" data-change="assignBarber" data-id="${esc(a.id)}" aria-label="Assign a barber for ${esc(a.name || '')}"><option value="">Assign barber…</option>${free.map(b => opt(b.id, b.name + (b.id === a.barberId ? ' (chair held)' : ''), false)).join('')}${free.length ? '' : '<option value="" disabled>No one free at this time</option>'}</select>`; };
 function apptRow(a, compact) {
   const canCheckout = ['booked', 'waiting', 'inchair'].includes(a.status);
   const giveAway = isLateNow(a) && waitingWalkins().length ? `<button class="btn btn-sm btn-danger" data-act="giveSlot" data-id="${esc(a.id)}">Give slot to walk-in</button>` : '';
   const actions = `${giveAway}${canCheckout ? `<button class="btn btn-sm btn-primary" data-act="checkoutAppt" data-id="${esc(a.id)}">Checkout</button>` : ''}${a.status === 'done' && a.saleId ? `<button class="btn btn-sm" data-act="showSale" data-id="${esc(a.saleId)}">Receipt</button>` : ''}`;
   const flag = a.conflict && ['booked', 'pending_payment'].includes(a.status) ? ' ' + chip({ kind: 'bad', icon: '!', label: 'Overlaps another booking' }) : '';
-  if (compact) return `<li>${a.barberId ? av(staffById(a.barberId)) : ''}<span class="t">${a.source === 'walk-in' ? `#${esc(a.queueNo || '')}` : fmtTime(a.time)}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${lateChip(a)}${bdayChip(a)}<div class="sub">${esc(svcNames(a.serviceIds))} · ${esc(staffName(a.barberId))}</div></div>${chip(APPT[a.status] || APPT.booked)}</li>`;
+  if (compact) return `<li>${a.barberId ? av(staffById(a.barberId)) : ''}<span class="t">${a.source === 'walk-in' ? `#${esc(a.queueNo || '')}` : fmtTime(a.time)}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${lateChip(a)}${bdayChip(a)}<div class="sub">${esc(svcNames(a.serviceIds))} · ${needsBarber(a) ? '<b class="needs-b">Any barber, assign one</b>' : esc(staffName(a.barberId))}</div></div>${chip(APPT[a.status] || APPT.booked)}</li>`;
   const choices = STATUS_CHOICES.includes(a.status) ? STATUS_CHOICES : [a.status, ...STATUS_CHOICES];
   return `<tr>
     <td class="num nowrap"><b>${a.source === 'walk-in' ? `Walk-in #${esc(a.queueNo || '')}` : fmtTime(a.time)}</b>${a.source === 'walk-in' ? `<div class="muted small">arrived ${fmtTime(a.time)}</div>` : ''}</td>
     <td><b>${esc(a.name || 'Walk-in')}</b>${a.code ? ` <span class="muted small">${esc(a.code)}</span>` : ''}${lateChip(a)}${bdayChip(a)}${a.promo ? ' ' + chip({ kind: 'info', icon: '%', label: `${a.promo.code} −${money(a.promo.off)}` }) : ''}${a.phone ? `<div class="muted small">${esc(a.phone)}</div>` : ''}</td>
     <td>${esc(svcNames(a.serviceIds))}${a.notes ? `<div class="muted small">${esc(a.notes)}</div>` : ''}${flag}</td>
-    <td>${esc(staffName(a.barberId))}</td>
+    <td>${needsBarber(a) ? `<div class="assign"><span class="chip chip-warn"><b aria-hidden="true">?</b>Any barber</span>${assignSelect(a)}</div>` : esc(staffName(a.barberId))}</td>
     <td><span class="muted small">${a.source === 'online' ? 'Online' : a.source === 'walk-in' ? 'Walk-in' : 'Phone / in person'}</span><div>${depositChip(a)}</div></td>
     <td><select data-change="apptStatus" data-id="${esc(a.id)}" aria-label="Status for ${esc(a.name || 'walk-in')}">${choices.map(k => opt(k, (APPT[k] || APPT.booked).label, k === a.status)).join('')}</select></td>
     <td><div class="acts">${actions}<button class="btn btn-sm btn-ghost" data-act="editAppt" data-id="${esc(a.id)}">Edit</button></div></td>
@@ -382,9 +392,10 @@ function vOverview() {
     <section class="panel"><div class="panel-h"><h2>Needs attention</h2></div>
       <ul class="list">
         ${issues.map(a => `<li><span class="grow"><b>${esc(a.name)}</b><span class="sub" style="display:block">${a.status === 'needs_attention' ? 'Paid deposit but the slot was taken. Call to rebook or refund.' : 'Booking overlaps another one'} · ${fmtDate(a.date)} ${fmtTime(a.time)}</span></span><button class="btn btn-sm" data-act="editAppt" data-id="${esc(a.id)}">Open</button></li>`).join('')}
+        ${S.appointments.filter(a => needsBarber(a) && a.date >= today()).sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time)).slice(0, 5).map(a => `<li><span class="grow"><b>${esc(a.name)}</b><span class="sub" style="display:block">Booked “any barber” · ${fmtDate(a.date)} ${fmtTime(a.time)} · ${esc(svcNames(a.serviceIds))}</span></span>${assignSelect(a)}</li>`).join('')}
         ${lates.map(a => `<li><span class="grow"><b>${esc(a.name)}</b><span class="sub" style="display:block">Running ${a.late.mins} min late for ${fmtTime(a.time)} with ${esc(staffName(a.barberId))} · told us ${ago(a.late.at)}</span></span>${chip({ kind: 'warn', icon: '⏱', label: 'Late' })}</li>`).join('')}
         ${low.slice(0, 4).map(i => `<li><span class="grow"><b>${esc(i.name)}</b><span class="sub" style="display:block">${i.stock} ${esc(i.unit || 'left')} · reorder at ${i.reorder}</span></span>${chip(i.stock <= 0 ? { kind: 'bad', icon: '✕', label: 'Out' } : { kind: 'warn', icon: '!', label: 'Low' })}</li>`).join('')}
-        ${!issues.length && !low.length && !lates.length ? '<li class="muted">All clear. No booking problems and nothing to restock.</li>' : ''}
+        ${!issues.length && !low.length && !lates.length && !S.appointments.some(a => needsBarber(a) && a.date >= today()) ? '<li class="muted">All clear. No booking problems and nothing to restock.</li>' : ''}
       </ul></section>
   </div>`;
 }
@@ -413,7 +424,7 @@ function vSchedule() {
   const byBarber = a => !S.schedBarber || a.barberId === S.schedBarber || (!a.barberId && S.schedBarber === '__any');
   const bySrc = a => !S.schedSrc || srcOf(a) === S.schedSrc;
   const byQ = a => !q || (a.name || '').toLowerCase().includes(q) || (a.code || '').toLowerCase().includes(q) || (qd.length >= 3 && normPhone(a.phone).includes(qd)) || svcNames(a.serviceIds).toLowerCase().includes(q);
-  const STATUS_F = [['', 'All', () => true], ['booked', 'Booked', a => a.status === 'booked' || a.status === 'pending_payment'], ['late', 'Running late', a => isLateNow(a)], ['waiting', 'Waiting', a => a.status === 'waiting'], ['inchair', 'In chair', a => a.status === 'inchair'],
+  const STATUS_F = [['', 'All', () => true], ['booked', 'Booked', a => a.status === 'booked' || a.status === 'pending_payment'], ['assign', 'Needs a barber', a => needsBarber(a)], ['late', 'Running late', a => isLateNow(a)], ['waiting', 'Waiting', a => a.status === 'waiting'], ['inchair', 'In chair', a => a.status === 'inchair'],
     ['done', 'Done', a => a.status === 'done'], ['unpaid', 'Done, no payment', a => a.status === 'done' && !a.saleId], ['noshow', 'No-show', a => a.status === 'noshow'], ['cancelled', 'Cancelled', a => a.status === 'cancelled']];
   const pre = base.filter(a => byBarber(a) && bySrc(a) && byQ(a)), sf = STATUS_F.find(x => x[0] === S.schedStatus) || STATUS_F[0];
   const appts = pre.filter(sf[2]);
@@ -449,7 +460,7 @@ function vSchedule() {
       <select id="sch-barber" data-bind="schedBarber" data-live aria-label="Filter by barber">${opt('', `All barbers (${base.length})`, !S.schedBarber)}${serviceStaff().map(b => { const n = base.filter(a => a.barberId === b.id).length; return opt(b.id, `${b.name}${n ? ` (${n})` : ''}`, b.id === S.schedBarber); }).join('')}${opt('__any', `Unassigned (${base.filter(a => !a.barberId).length})`, S.schedBarber === '__any')}</select>
       <select id="sch-src" data-bind="schedSrc" data-live aria-label="Filter by how they booked">${[['', 'All bookings'], ['online', 'Online'], ['walkin', 'Walk-ins'], ['phone', 'Phone / in person']].map(([k, l]) => opt(k, l, k === S.schedSrc)).join('')}</select>
     </div>
-    <div class="seg-chips" role="group" aria-label="Filter by status">${statusChips.map(([k, l, n]) => `<button type="button" class="fchip${k === 'late' || k === 'unpaid' ? ' warn' : ''}" data-act="schedStatus" data-v="${k}" aria-pressed="${k === S.schedStatus}">${esc(l)}<b>${n}</b></button>`).join('')}
+    <div class="seg-chips" role="group" aria-label="Filter by status">${statusChips.map(([k, l, n]) => `<button type="button" class="fchip${k === 'late' || k === 'unpaid' || k === 'assign' ? ' warn' : ''}" data-act="schedStatus" data-v="${k}" aria-pressed="${k === S.schedStatus}">${esc(l)}<b>${n}</b></button>`).join('')}
       ${expiredN ? `<label class="row small exp-toggle"><input type="checkbox" id="sch-exp" data-bind="showExpired" data-live ${S.showExpired ? 'checked' : ''}> Show ${expiredN} unpaid hold${expiredN > 1 ? 's' : ''}</label>` : ''}</div>
     ${anyFilter ? `<p class="filter-note">Showing <b>${appts.length}</b> of ${base.length} · <button type="button" class="link-btn" data-act="schedClear">Clear filters</button></p>` : ''}
     ${appts.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Time</th><th>Client</th><th>Services</th><th>Barber</th><th>Source</th><th>Status</th><th></th></tr></thead><tbody>${appts.map(a => apptRow(a)).join('')}</tbody></table></div>`
@@ -1538,7 +1549,8 @@ const CHG = {
     if (a && a.deposit && ['booked', 'waiting', 'inchair'].includes(st) && a.deposit.status === 'kept') upd['deposit.status'] = 'paid';
     await patch('appointments', el.dataset.id, upd);
   },
-  async apptBarber(el) { await patch('appointments', el.dataset.id, { barberId: el.value }); }
+  async apptBarber(el) { await patch('appointments', el.dataset.id, { barberId: el.value }); },
+  async assignBarber(el) { if (!el.value) return; const a = S.appointments.find(x => x.id === el.dataset.id); if (await patch('appointments', el.dataset.id, { barberId: el.value, anyBarber: false })) toast(`${staffName(el.value)} is doing ${(a && a.name) || 'this'}’s ${a && a.source === 'walk-in' ? 'visit' : 'booking'}`); }
 };
 
 // ================= FORMS =================
@@ -1620,6 +1632,7 @@ const FORM = {
       const upd = { ...base, notify: fd.has('notify') };
       if (fd.has('date')) { upd.date = String(fd.get('date')); upd.time = String(fd.get('time')); upd.startAt = startMs(upd.date, upd.time); if (a.date !== upd.date || a.time !== upd.time) upd.reminders = {}; }
       if (fd.has('status')) upd.status = String(fd.get('status'));
+      if (a.anyBarber) upd.anyBarber = upd.barberId === a.barberId; // picking someone else in Edit counts as assigning
       if (fd.has('deposit')) upd['deposit.status'] = String(fd.get('deposit'));
       ok = await patch('appointments', id, upd); if (ok) toast('Visit updated');
     } else {

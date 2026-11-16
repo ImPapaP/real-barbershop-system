@@ -1230,3 +1230,8 @@ input[data-cust][aria-expanded="true"]{background-image:url("data:image/svg+xml,
 .filter-note{margin:0 0 10px;font-size:13px;color:var(--muted)}
 @media (max-width:720px){.filters{grid-template-columns:1fr 1fr}.filters input[type=search]{grid-column:1/-1}.filters select{width:100%}.date-pick{max-width:none}}
 @media (max-width:720px){.datenav{width:100%}.datenav [data-act=dayShift]{display:none}.daystrip{flex:1 1 100%}.datenav .date-pick{flex:1 1 auto}.daychip{min-width:64px}}
+
+/* any-barber bookings waiting for the shop to pick a barber */
+.assign{display:grid;gap:6px;justify-items:start}
+.assign-sel{width:auto;max-width:190px;padding-block:6px;font-size:13px}
+.needs-b{color:var(--warn);font-weight:700}

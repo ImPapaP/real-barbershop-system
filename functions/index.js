@@ -60,12 +60,14 @@ async function loadInfo() {
   return s.data();
 }
 const barberName = (info, id) => ((info.barbers || []).find(b => b.id === id) || {}).name || '';
+// "Any barber" bookings show no name to the client until the shop assigns someone
+const apptBarber = (info, a) => a.anyBarber ? '' : barberName(info, a.barberId);
 
 // Details used in emails and texts.
 function view(id, a, info) {
   return {
     id, code: a.code, name: a.name, phone: a.phone, email: a.email, date: a.date, time: a.time,
-    barberName: barberName(info, a.barberId),
+    barberName: apptBarber(info, a),
     serviceNames: servicesById(info, a.serviceIds).map(s => (s ? s.name : 'Service')),
     depositMethod: a.deposit && a.deposit.method
   };
@@ -150,6 +152,16 @@ export const createBooking = onCall({ secrets: [PAYMONGO_SECRET_KEY] }, async re
     throw new HttpsError('resource-exhausted', `You already have a booking waiting for payment. Finish paying, or try again in ${pol.holdMinutes} minutes.`);
   }
 
+  // "Any barber": try the barbers with the fewest visits that day first, so it isn't always the first chair.
+  // The booking is flagged anyBarber and the shop assigns the barber from the dashboard.
+  const anyMain = !req.data.barberId, anyGuest = !!(vg && !(g && g.barberId));
+  if (anyMain || anyGuest) {
+    const day = await db.collection('appointments').where('date', 'in', [...new Set([v.date, vg ? vg.date : v.date])]).get();
+    const load = {}; day.docs.forEach(x => { const a = x.data(); if (!['cancelled', 'expired', 'noshow'].includes(a.status)) load[`${a.date}|${a.barberId}`] = (load[`${a.date}|${a.barberId}`] || 0) + 1; });
+    const byLoad = (date, list) => [...list].sort((p, q) => (load[`${date}|${p}`] || 0) - (load[`${date}|${q}`] || 0));
+    if (anyMain) v.barbers = byLoad(v.date, v.barbers);
+    if (anyGuest) vg.barbers = byLoad(vg.date, vg.barbers);
+  }
   const id = db.collection('appointments').doc().id, gid = vg ? db.collection('appointments').doc().id : '';
   const token = newToken(), bcode = bookingCode();
   const holdUntil = now + (manual ? Math.max(pol.holdMinutes, 30) : pol.holdMinutes) * 60e3; // GCash transfers get 30 minutes
@@ -169,7 +181,7 @@ export const createBooking = onCall({ secrets: [PAYMONGO_SECRET_KEY] }, async re
     tx.set(apptRef(id), {
       code: bcode, token, source: 'online', status: 'pending_payment', notify: true, payMethod: manual ? 'gcash' : 'online', ...(promo ? { promo } : {}),
       name: v.name, phone: v.phone, email: v.email, notes: v.notes, customerId: '', ...(cleanBday(req.data.birthday) ? { birthday: cleanBday(req.data.birthday) } : {}),
-      serviceIds: v.serviceIds, mins: v.mins, date: v.date, time: v.time, startAt: v.at, barberId: b,
+      serviceIds: v.serviceIds, mins: v.mins, date: v.date, time: v.time, startAt: v.at, barberId: b, ...(anyMain ? { anyBarber: true } : {}),
       blocks: refs[pick].map(r => r.id), holdUntil, guests: gid ? [gid] : [],
       deposit: { amount: pol.deposit, status: 'unpaid' }, reminders: {}, reschedules: 0, createdAt: now
     });
@@ -179,7 +191,7 @@ export const createBooking = onCall({ secrets: [PAYMONGO_SECRET_KEY] }, async re
       tx.set(apptRef(gid), {
         code: bookingCode(), token: newToken(), source: 'online', status: 'pending_payment', notify: false, groupOf: id, bookedBy: v.name, payMethod: manual ? 'gcash' : 'online', ...(sameClient ? { addOnOf: id } : {}),
         name: vg.name, phone: v.phone, email: v.email, notes: v.notes, customerId: '',
-        serviceIds: vg.serviceIds, mins: vg.mins, date: vg.date, time: vg.time, startAt: vg.at, barberId: gb,
+        serviceIds: vg.serviceIds, mins: vg.mins, date: vg.date, time: vg.time, startAt: vg.at, barberId: gb, ...(anyGuest ? { anyBarber: true } : {}),
         blocks: grefs[gpick].map(r => r.id), holdUntil,
         deposit: { amount: sameClient ? 0 : pol.deposit, status: 'unpaid' }, reminders: {}, reschedules: 0, createdAt: now
       });
@@ -198,7 +210,7 @@ export const createBooking = onCall({ secrets: [PAYMONGO_SECRET_KEY] }, async re
     const cs = await createCheckout(PAYMONGO_SECRET_KEY.value(), {
       amount: pol.deposit * people,
       itemName: people > 1 ? `Booking deposits for 2 people · ${bcode}` : `Booking deposit · ${bcode}`,
-      description: `${shop}: ${servicesById(info, v.serviceIds).map(s => s.name).join(', ')} with ${barberName(info, barberId)}, ${v.date} ${v.time}`,
+      description: `${shop}: ${servicesById(info, v.serviceIds).map(s => s.name).join(', ')} with ${anyMain ? 'any available barber' : barberName(info, barberId)}, ${v.date} ${v.time}`,
       reference: id,
       methods: PAYMENT_METHODS.value().split(',').map(s => s.trim()).filter(Boolean),
       successUrl: `${link}&paid=1`,
@@ -282,7 +294,7 @@ function publicView(id, a, info) {
   const services = servicesById(info, a.serviceIds);
   return {
     id, code: a.code, status: a.status, date: a.date, time: a.time, startAt, mins: a.mins,
-    barberId: a.barberId, barberName: barberName(info, a.barberId),
+    barberId: a.barberId, barberName: apptBarber(info, a), anyBarber: !!a.anyBarber,
     serviceIds: a.serviceIds, services: services.map(s => s ? { name: s.name, price: s.price, priceFrom: !!s.priceFrom } : { name: 'Service', price: 0 }),
     name: a.name, deposit: { amount: a.deposit && a.deposit.amount, status: a.deposit && a.deposit.status, method: a.deposit && a.deposit.method },
     holdUntil: a.holdUntil || 0,
@@ -316,7 +328,7 @@ export const getBooking = onCall(async req => {
   for (const gid of a.guests || []) {
     const gs = await apptRef(gid).get(); if (!gs.exists) continue;
     const ga = gs.data();
-    guests.push({ id: gid, token: ga.token, name: ga.name, status: ga.status, date: ga.date, time: ga.time, barberName: barberName(info, ga.barberId), services: servicesById(info, ga.serviceIds).filter(Boolean).map(x => x.name) });
+    guests.push({ id: gid, token: ga.token, name: ga.name, status: ga.status, date: ga.date, time: ga.time, barberName: apptBarber(info, ga), services: servicesById(info, ga.serviceIds).filter(Boolean).map(x => x.name) });
   }
   const cut = a.status === 'done' ? await db.doc(`cuts/${id}`).get() : null;
   return { ...publicView(id, a, info), loyalty: await loyaltyFor(a, info), guests, rebook: rebookLink('.', a, info), queue: await queueFor(a), cutPhoto: cut && cut.exists ? cut.data().img || '' : '' };
