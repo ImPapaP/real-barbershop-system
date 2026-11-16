@@ -70,7 +70,7 @@ const serviceStaff = () => activeStaff().filter(isServiceStaff); // takes bookin
 const roleName = b => ROLES[b.role || 'barber'] || 'Staff';
 const staffById = id => staffAll().find(b => b.id === id);
 const staffName = id => id ? (staffById(id)?.name || 'Former barber') : 'Any barber';
-const av = b => b && b.photo ? `<img class="avatar" src="${esc(b.photo)}" alt="">` : `<span class="avatar" aria-hidden="true">${esc(initials(b ? b.name : '?'))}</span>`;
+const av = b => b && b.photo ? `<img class="avatar" src="${esc(siteUrl(b.photo))}" alt="">` : `<span class="avatar" aria-hidden="true">${esc(initials(b ? b.name : '?'))}</span>`;
 const custById = id => S.customers.find(c => c.id === id);
 const methodName = k => METHOD_NAMES[k] || k || 'Online';
 const depositPaid = a => a && a.deposit && a.deposit.status === 'paid' ? (a.deposit.amount || 0) : 0;
@@ -910,7 +910,7 @@ function vWebsite() {
       </form></section>
   </div>
   <section class="panel"><div class="panel-h"><h2>Team photos</h2><a class="btn btn-sm btn-ghost" href="#team">Edit team</a></div>
-    <div class="team-admin">${serviceStaff().map(b => `<div class="tm">${b.photo ? `<img src="${esc(b.photo)}" alt="${esc(b.name)}">` : `<span class="mono">${esc(initials(b.name))}</span>`}<b>${esc(b.name)}</b><label class="btn btn-sm upload">${S.uploading === 'staff-' + b.id ? '<span class="spinner"></span>' : b.photo ? 'Replace' : 'Upload'}<input type="file" accept="image/*" data-upload="staff-${esc(b.id)}" hidden></label></div>`).join('') || '<p class="empty">Add your team first in Barbers.</p>'}</div></section>`;
+    <div class="team-admin">${serviceStaff().map(b => `<div class="tm">${b.photo ? `<img src="${esc(siteUrl(b.photo))}" alt="${esc(b.name)}">` : `<span class="mono">${esc(initials(b.name))}</span>`}<b>${esc(b.name)}</b><label class="btn btn-sm upload">${S.uploading === 'staff-' + b.id ? '<span class="spinner"></span>' : b.photo ? 'Replace' : 'Upload'}<input type="file" accept="image/*" data-upload="staff-${esc(b.id)}" hidden></label></div>`).join('') || '<p class="empty">Add your team first in Barbers.</p>'}</div></section>`;
 }
 // Ratings customers left on their booking page after a visit
 function ratingsPanel() {
