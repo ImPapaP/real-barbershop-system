@@ -230,7 +230,7 @@ function productCard(p) {
   const added = new RegExp(`(^|; )${p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|;)`).test(S.bk.prods || '');
   return `<article class="prod reveal"><div class="prod-ph">${p.photo ? `<img src="${esc(p.photo)}" alt="${esc(p.name)}" loading="lazy">` : `<span class="prod-mono" aria-hidden="true">${esc(initials(p.name))}</span>`}${p.tag ? `<span class="prod-tag">${esc(p.tag)}</span>` : ''}</div>
     <div class="prod-b"><h3>${esc(p.name)}</h3>${p.desc ? `<p>${esc(p.desc)}</p>` : ''}
-      <div class="prod-foot"><b class="prod-price">${m(p.price)}</b>${p.inStock ? '<span class="prod-in">In stock</span>' : '<span class="prod-out">Out of stock</span>'}</div>
+      <div class="prod-foot">${p.price ? `<b class="prod-price">${m(p.price)}</b>` : '<b class="prod-price ask">Ask for price</b>'}${p.inStock ? '<span class="prod-in">In stock</span>' : '<span class="prod-out">Out of stock</span>'}</div>
       ${p.inStock ? `<button type="button" class="btn btn-sm ${added ? 'btn-accent' : ''}" data-act="addProd" data-name="${esc(p.name)}" aria-pressed="${added}">${added ? ic('check') + ' Added to your booking' : 'Add to my booking'}</button>` : ''}</div></article>`;
 }
 function happenCard(h) {
@@ -611,7 +611,7 @@ function bill(picked, gpk, people) {
     ${picked.map(x => line(esc(x.name), esc(priceLabel(x, cur())))).join('')}
     ${gpk ? `<p class="bill-sub">${S.bk.guest.self ? 'Also for you' : esc(S.bk.guest.name.trim() || 'Second person')}</p>${gs.map(x => line(esc(x.name), esc(priceLabel(x, cur())))).join('')}` : ''}
     ${off ? line(`Promo ${esc(S.promo.applied.code)} (${esc(S.promo.applied.label)})`, '−' + m(off), 'disc') : ''}
-    ${prodList.length ? `<p class="bill-sub">Set aside for you (pay at the shop)</p>${prodList.map(p => line(esc(p.name), m(p.price))).join('')}` : ''}
+    ${prodList.length ? `<p class="bill-sub">Set aside for you (pay at the shop)</p>${prodList.map(p => line(esc(p.name), p.price ? m(p.price) : 'price at the shop')).join('')}` : ''}
     ${line('Estimated total', (from ? 'from ' : '') + m(total - off), 'tot')}</div>
     ${promoBox()}
     <div class="due"><span>Down payment now${people > 1 ? ' (2 people)' : ''}</span><b>${m(dep)}</b></div>

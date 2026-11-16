@@ -1,13 +1,13 @@
 // Demo backend: same interface as firebase-backend.js, but everything lives in this browser's localStorage.
 // Used for the live preview before Firebase is connected. Payments are skipped; bookings confirm instantly.
 import {
-  windowOfTime, STARTER, STARTER_STAFF, publicBarber, comboError, commissionFor, isServiceStaff, rebookLink, slotId, blockTimes, isActiveSlot, availableTimes, policyOf,
+  windowOfTime, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, comboError, commissionFor, isServiceStaff, rebookLink, slotId, blockTimes, isActiveSlot, availableTimes, policyOf,
   startMs, phNow, addDays, sum, promoCheck, cleanCode
 } from './shared.js';
 
 // The saved demo is keyed by a fingerprint of the starter data, so changing the menu or team
 // (or a browser briefly mixing old and new files) never leaves stale sample data behind.
-const SEED_REV = 21; // bump when seed() itself changes
+const SEED_REV = 22; // bump when seed() itself changes
 const fingerprint = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const KEY = `rb-demo-${SEED_REV}-${fingerprint(JSON.stringify([STARTER, STARTER_STAFF]))}`, USER_KEY = 'rb-demo-user';
 try { Object.keys(localStorage).filter(k => k.startsWith('rb-demo-') && k !== KEY && k !== USER_KEY).forEach(k => localStorage.removeItem(k)); } catch (_) {}
@@ -31,8 +31,7 @@ function seed() {
   let r = 11; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
   const pick = a => a[Math.floor(rnd() * a.length)];
   m.set('public/info', { ...clone(STARTER), policy: { ...STARTER.policy, onlineBooking: true }, barbers: STARTER_STAFF.filter(isServiceStaff).map(publicBarber),
-    products: [['i1', 'Clay pomade', 450, 'Strong hold, matte finish for textured crops. Washes out easily.', 'Best seller'], ['i2', 'Hair tonic', 180, 'Daily scalp tonic. Light, cooling, no grease.', ''], ['i3', 'Beard oil', 280, 'Softens and tames the beard. Light woody scent.', 'New']]
-      .map(([id, name, price, desc, tag]) => ({ id, name, price, desc, photo: '', tag, inStock: true })),
+    products: STARTER_PRODUCTS.map((p, i) => ({ id: 'i' + (i + 1), name: p.name, price: 0, desc: `${p.size} · ${p.desc}`, photo: p.photo, tag: p.tag, inStock: true })),
     happenings: [ // samples so the demo shows the Promos & events section
       { id: 'h_s1', kind: 'promo', title: 'First visit? ₱50 off your cut', text: 'New to REAL Barbers? Use the code when you book online and get ₱50 off your first haircut.', start: '', end: day(30), code: 'WELCOME50', badge: '₱50 OFF', sample: true },
       { id: 'h_s2', kind: 'event', title: 'December: open every day', text: 'We’re open daily from 9 AM to 8 PM all December. Book early for the holidays, slots fill up fast.', start: '', end: day(45), sample: true }
@@ -52,7 +51,7 @@ function seed() {
       const b = forHer ? 'dave' : s.tier === 'regular' ? pick(['ed', 'renz', 'jay', 'vince', 'mac']) : pick(['reymart', 'lyndon', 'rod', 'angelo']);
       const ci = rnd() < 0.35 && i > -26 ? Math.floor(rnd() * 6) : -1; // clients 6-9 last came 4-5 weeks ago (see below)
       const tip = rnd() < 0.2 ? pick([20, 50, 100]) : 0, dep = rnd() < 0.45 ? 200 : 0;
-      const prod = rnd() < 0.08 ? { kind: 'product', ref: 'i1', name: 'Clay pomade', price: 450, qty: 1 } : null;
+      const prod = null; // product prices aren't set yet
       const lines = [{ kind: 'service', ref: s.id, name: s.name, price: s.price, qty: 1 }, ...(prod ? [prod] : [])];
       const pt = prod ? prod.price : 0;
       m.set(`sales/x${n++}`, { date: d, time: `${String(9 + Math.floor(rnd() * 10)).padStart(2, '0')}:${rnd() < 0.5 ? '00' : '30'}`, at: Date.now() + i * 864e5,
@@ -74,14 +73,12 @@ function seed() {
   [[6, -29], [7, -31], [8, -33], [9, -36], [6, -60], [8, -64]].forEach(([ci, d], k) => m.set(`sales/r${k}`, { date: day(d), time: '15:00', at: Date.now() + d * 864e5, customerId: `c${ci}`, name: names[ci], barberId: 'lyndon',
     lines: [{ kind: 'service', ref: 'h1', name: 'Deluxe Haircut', price: 399, qty: 1 }], svcTotal: 399, prodTotal: 0, discount: 0, tip: 0, total: 399, depositCredit: 0, method: 'Cash', rate: 50, commission: 199 }));
   [['e1', day(-18), 'Rent', 'Shop rent', 25000, 'Bank transfer'], ['e2', day(-12), 'Electricity', 'Meralco bill', 6200, 'GCash'], ['e3', day(-9), 'Water', 'Water bill', 780, 'GCash'],
-   ['e4', day(-6), 'Supplies', 'Blades, neck strips, alcohol', 1450, 'Cash'], ['e5', day(-3), 'Stock purchase', 'Clay pomade ×12', 3000, 'Cash'], ['e6', day(-1), 'Payment fees', 'PayMongo fees', 380, 'Bank transfer']]
+   ['e4', day(-6), 'Supplies', 'Blades, neck strips, alcohol', 1450, 'Cash'], ['e5', day(-3), 'Stock purchase', 'Liquid Pomade ×12', 3000, 'Cash'], ['e6', day(-1), 'Payment fees', 'PayMongo fees', 380, 'Bank transfer']]
     .forEach(([id, date, cat, desc, amount, method]) => m.set('expenses/' + id, { date, cat, desc, amount, method }));
-  [['i1', 'Clay pomade', 'Retail', 3, 5, 250, 450, 'jars'], ['i2', 'Hair tonic', 'Retail', 12, 4, 90, 180, 'bottles'], ['i3', 'Beard oil', 'Retail', 7, 3, 150, 280, 'bottles'],
-   ['i4', 'Razor blades (100 pcs)', 'Supply', 1, 2, 450, 0, 'boxes'], ['i5', 'Neck strips', 'Supply', 14, 5, 60, 0, 'rolls'], ['i6', 'Aloe vera gel', 'Supply', 4, 2, 180, 0, 'tubs']]
+  STARTER_PRODUCTS.forEach((p, i) => m.set('inventory/i' + (i + 1), { name: p.name, cat: 'Retail', stock: [3, 12, 7][i], reorder: 4, cost: 0, price: 0, unit: p.unit, log: [],
+    web: true, webDesc: `${p.size} · ${p.desc}`, webTag: p.tag, photo: p.photo }));
+  [['i4', 'Razor blades (100 pcs)', 'Supply', 1, 2, 450, 0, 'boxes'], ['i5', 'Neck strips', 'Supply', 14, 5, 60, 0, 'rolls'], ['i6', 'Aloe vera gel', 'Supply', 4, 2, 180, 0, 'tubs']]
     .forEach(([id, name, cat, stock, reorder, cost, price, unit]) => m.set('inventory/' + id, { name, cat, stock, reorder, cost, price, unit, log: [] }));
-  // sample retail items shown on the website (the shop replaces these with its real products)
-  const web = { i1: ['Strong hold, matte finish for textured crops. Washes out easily.', 'Best seller'], i2: ['Daily scalp tonic. Light, cooling, no grease.', ''], i3: ['Softens and tames the beard. Light woody scent.', 'New'] };
-  for (const [id, [webDesc, webTag]] of Object.entries(web)) m.set('inventory/' + id, { ...m.get('inventory/' + id), web: true, webDesc, webTag });
   const appts = [
     [day(0), '10:00', 'reymart', ['h1'], 'online', 'booked', 0], [day(0), '11:00', 'lyndon', ['p1'], 'online', 'booked', 1],
     [day(0), '13:00', 'dave', ['f2', 'f3'], 'online', 'booked', 7], [day(0), '15:00', 'rod', ['h1', 'h5'], 'phone', 'booked', 5],
