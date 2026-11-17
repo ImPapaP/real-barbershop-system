@@ -4,12 +4,12 @@ import { db, demo, demoBar, resetDemo, login, logout, resetPassword, onAuth, upl
 import { buildXlsx, xlDate, xlTime, colName } from './xlsx.js';
 import { qrSvg } from './qr.js';
 import { drawBanner, bannerBlob } from './banner.js';
-import { withOption, lateLimit, hasDeposit, bdaySelects, cleanBday, fmtBday, bdayDays, BDAY_TITLE, esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, DEFAULT_POLICY, startMs, canServe, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE, defaultFaq, cleanCode } from './shared.js';
+import { withOption, lateLimit, hasDeposit, bdaySelects, cleanBday, fmtBday, bdayDays, BDAY_TITLE, esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, DEFAULT_POLICY, lateFine, lateRateOf, shiftStartOf, roleOf, ACCESS, CLOCK_START, startMs, canServe, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE, defaultFaq, cleanCode } from './shared.js';
 
 // ---------- constants ----------
 const METHODS = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer'];
 const EXP_CATS = ['Rent', 'Electricity', 'Water', 'Internet', 'Supplies', 'Stock purchase', 'Wages', 'Maintenance', 'Marketing', 'Permits & taxes', 'Payment fees', 'Other'];
-const TABS = [['overview', 'Overview'], ['schedule', 'Schedule'], ['checkout', 'Checkout'], ['money', 'Income & expenses'], ['team', 'Staff'], ['clients', 'Clients'], ['stock', 'Inventory'], ['website', 'Website'], ['setup', 'Shop setup']];
+const TABS = [['overview', 'Overview'], ['schedule', 'Schedule'], ['checkout', 'Checkout'], ['money', 'Income & expenses'], ['team', 'Staff'], ['clients', 'Clients'], ['stock', 'Inventory'], ['website', 'Website'], ['setup', 'Shop setup'], ['activity', 'Activity log'], ['me', 'My day'], ['mypay', 'My pay']];
 const APPT = {
   pending_payment: { label: 'Awaiting deposit', kind: 'warn', icon: '◷' },
   booked: { label: 'Booked', kind: 'info', icon: '◷' },
@@ -23,7 +23,7 @@ const APPT = {
 };
 const STATUS_CHOICES = ['booked', 'waiting', 'inchair', 'done', 'noshow', 'cancelled'];
 const PERIODS = [['today', 'Today'], ['week', 'This week'], ['month', 'This month'], ['lastmonth', 'Last month'], ['30d', 'Last 30 days'], ['year', 'This year'], ['custom', 'Custom']];
-const COLS = ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts', 'waitlist', 'attendance', 'promos', 'closings'];
+const COLS = ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts', 'waitlist', 'attendance', 'promos', 'closings', 'timeclock'];
 const STYLES = ['Fade', 'Taper', 'Crop', 'Mullet', 'Buzz cut', 'Pompadour', 'Perm', 'Color', 'Women’s cut', 'Beard', 'Shop'];
 const METHOD_NAMES = { gcash: 'GCash', paymaya: 'Maya', card: 'Card', qrph: 'QR Ph', grab_pay: 'GrabPay' };
 
@@ -31,12 +31,18 @@ const METHOD_NAMES = { gcash: 'GCash', paymaya: 'Maya', card: 'Card', qrph: 'QR 
 const S = {
   ready: false, user: null, canAdmin: false, loginErr: '', loginBusy: false, loginMsg: '',
   info: null, infoMissing: false, slow: false,
-  staff: [], appointments: [], sales: [], expenses: [], customers: [], inventory: [], payouts: [], waitlist: [], attendance: [], promos: [], closings: [], leaves: [], loaded: {}, reminding: '',
+  staff: [], appointments: [], sales: [], expenses: [], customers: [], inventory: [], payouts: [], waitlist: [], attendance: [], promos: [], closings: [], leaves: [], timeclock: [], activity: [], loaded: {}, me: null, elevUntil: 0, lockOn: false, reminding: '',
   proofImgs: {}, cutImgs: {}, refImgs: {},
   schedDate: '', schedBarber: '', schedQ: '', schedStatus: '', schedSrc: '', showExpired: false, period: 'month', from: '', to: '',
   clientQ: '', clientSort: 'recent', stockFilter: 'all', showArchived: false, pos: null, busy: false, uploading: ''
 };
 const unsubs = [];
+// Who sees what: the owner everything; the front desk Schedule, Checkout and Clients; staff only their own day and pay.
+// Owner pages show a lock screen on other sign-ins (and on the owner's own shared device when locked): the owner PIN opens them for 5 minutes.
+const OWNER_TABS = ['overview', 'money', 'team', 'stock', 'website', 'setup', 'activity'];
+const DESK_TABS = ['schedule', 'checkout', 'clients'], STAFF_TABS = ['me', 'mypay'];
+const OWNER_ACTS = { voidSale: 'void a sale', markRefunded: 'mark a down payment as refunded', delClient: 'delete a client', delAppt: 'delete a visit' };
+const bossUnsubs = [];
 
 // ---------- helpers ----------
 const $ = (s, r = document) => r.querySelector(s);
@@ -124,7 +130,11 @@ const ICONS = {
   setup: '<path d="M4 5h12M4 10h12M4 15h12"/><circle cx="8" cy="5" r="1.8"/><circle cx="13" cy="10" r="1.8"/><circle cx="7" cy="15" r="1.8"/>',
   site: '<path d="M3 9l7-6 7 6v8H3z"/><path d="M8 17v-5h4v5"/>',
   website: '<rect x="2.5" y="3.5" width="15" height="13" rx="2"/><circle cx="7" cy="8" r="1.6"/><path d="M3 15l4.5-4.5 3 3L13 11l4.5 4.5"/>',
-  out: '<path d="M8 4H4v12h4M12 6l4 4-4 4M16 10H8"/>'
+  out: '<path d="M8 4H4v12h4M12 6l4 4-4 4M16 10H8"/>',
+  lock: '<rect x="4" y="9" width="12" height="8" rx="2"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/>',
+  activity: '<path d="M3 10h3l2-5 4 10 2-5h3"/>',
+  me: '<circle cx="10" cy="10" r="7.5"/><path d="M10 5.5V10l3 2"/>',
+  mypay: '<rect x="2.5" y="5" width="15" height="10" rx="2"/><circle cx="10" cy="10" r="2.2"/><path d="M5.5 8v4M14.5 8v4"/>'
 };
 const icon = n => `<svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n]}</svg>`;
 const mark = () => `<span class="wordmark" style="font-size:20px">${brand(info().shop.wordmark || info().shop.name, 'sm')}</span>`
@@ -144,7 +154,12 @@ async function del(col, id) { try { await db.collection(col).doc(id).delete(); r
 function armed(el) { if (el.dataset.armed) return true; const t = el.textContent; el.dataset.armed = '1'; el.textContent = 'Tap again to confirm'; setTimeout(() => { if (el.isConnected) { delete el.dataset.armed; el.textContent = t; } }, 3500); return false; }
 
 // ---------- routing & render ----------
-function route() { const h = location.hash.replace('#', ''); return TABS.some(t => t[0] === h) ? h : 'overview'; }
+function route() {
+  const h = location.hash.replace('#', ''), ok = allowedTabs();
+  if (ok.includes(h)) return h;
+  if (myRole() !== 'staff' && OWNER_TABS.includes(h)) return h; // shows the owner-PIN lock screen
+  return ok[0];
+}
 let raf = 0;
 function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
 function render() {
@@ -160,18 +175,18 @@ function view() { return demoBar() + inner(); }
 function inner() {
   if (!S.ready) return `<div class="center"><div><span class="spinner"></span><p class="muted">Opening the dashboard…</p></div></div>`;
   if (!S.user) return loginView();
-  if (!S.canAdmin) return gate('No dashboard access', `You’re signed in as ${S.user.email}, but this account isn’t an admin yet. Add its user ID to the admins collection (README, step 4).`, true);
+  if (!S.canAdmin) return gate('No dashboard access', `You’re signed in as ${S.user.email}, but this account has no dashboard access yet. Ask the owner to give you a sign-in in Staff → Edit → Sign-in.`, true);
   const tab = route();
   const attention = S.appointments.filter(a => a.status === 'needs_attention' || (a.conflict && ['booked', 'pending_payment'].includes(a.status))).length;
   const low = S.inventory.filter(i => i.stock <= i.reorder).length;
   const badges = { schedule: attention, stock: low };
   return `<div class="admin">
     <aside class="side">
-      <a href="#overview" style="text-decoration:none;color:inherit" aria-label="Dashboard home">${mark()}</a>
-      <nav class="side-nav" aria-label="Dashboard">${TABS.map(([id, l]) => `<a href="#${id}" ${id === tab ? 'aria-current="page"' : ''}>${icon(id)}<span class="lbl">${l}</span>${badges[id] ? `<span class="badge" aria-label="${badges[id]} need attention">${badges[id]}</span>` : ''}</a>`).join('')}</nav>
-      <div class="side-foot"><a class="btn btn-sm btn-ghost" href="../" target="_blank" rel="noopener">${icon('site')}<span class="lbl">Website</span></a><button class="btn btn-sm btn-ghost" data-act="logout">${icon('out')}<span class="lbl">Sign out</span></button></div>
+      <a href="#${allowedTabs()[0]}" style="text-decoration:none;color:inherit" aria-label="Dashboard home">${mark()}</a>
+      <nav class="side-nav" aria-label="Dashboard">${navTabs().map(([id, l, locked]) => `<a href="#${id}" ${id === tab ? 'aria-current="page"' : ''}${locked ? ' class="locked"' : ''}>${icon(id)}<span class="lbl">${l}</span>${locked ? `<span class="lock-ic" aria-label="Needs the owner PIN">${icon('lock')}</span>` : badges[id] ? `<span class="badge" aria-label="${badges[id]} need attention">${badges[id]}</span>` : ''}</a>`).join('')}</nav>
+      <div class="side-foot">${whoChip()}<a class="btn btn-sm btn-ghost" href="../" target="_blank" rel="noopener">${icon('site')}<span class="lbl">Website</span></a><button class="btn btn-sm btn-ghost" data-act="logout">${icon('out')}<span class="lbl">Sign out</span></button></div>
     </aside>
-    <main class="main"><div class="main-in${S.enter ? ' enter' : ''}">${loadingNote()}${S.infoMissing ? setupBanner() : ''}${TAB_VIEWS[tab]()}</div></main>
+    <main class="main"><div class="main-in${S.enter ? ' enter' : ''}">${loadingNote()}${S.infoMissing && isBoss() ? setupBanner() : ''}${elevBanner()}${OWNER_TABS.includes(tab) && !isBoss() ? vLocked(tab) : TAB_VIEWS[tab]()}</div></main>
   </div>`;
 }
 function gate(title, msg, signOut) { return `<div class="center"><div><img class="logo-hero" src="${LOGO_LG}" alt="" width="180" height="180"><h1 style="font:400 30px/1.1 var(--f-slab)">${esc(title)}</h1><p class="muted">${esc(msg)}</p>${signOut ? '<button class="btn" data-act="logout">Sign out</button>' : ''}</div></div>`; }
@@ -180,7 +195,7 @@ function loginView() {
     <img class="logo-hero" src="${LOGO_LG}" alt="${esc(info().shop.name)}" width="180" height="180"><h1 style="font:400 28px/1.1 var(--f-slab);text-align:center">Staff sign in</h1>
     ${field('Email', `<input id="l-email" name="email" type="email" autocomplete="username" required>`, 'l-email')}
     ${field('Password', `<input id="l-pass" name="pass" type="password" autocomplete="current-password" required>`, 'l-pass')}
-    ${demo ? '<p class="hint">Demo: any email and password signs you in.</p>' : ''}${S.loginErr ? `<p class="err" role="alert">${esc(S.loginErr)}</p>` : ''}${S.loginMsg ? `<p class="hint">${esc(S.loginMsg)}</p>` : ''}
+    ${demo ? `<div class="hint stack" style="gap:8px"><span>Demo: any password works. Sign in as</span><div class="row">${[['owner@demo.realbarbers', 'Owner'], ['alex@demo.realbarbers', 'Front desk (Alex)'], ['lyndon@demo.realbarbers', 'Barber (Lyndon)']].map(([e, l]) => `<button type="button" class="btn btn-sm" data-act="demoAs" data-email="${e}">${l}</button>`).join('')}</div></div>` : ''}${S.loginErr ? `<p class="err" role="alert">${esc(S.loginErr)}</p>` : ''}${S.loginMsg ? `<p class="hint">${esc(S.loginMsg)}</p>` : ''}
     <button class="btn btn-primary btn-lg" type="submit" ${S.loginBusy ? 'disabled' : ''}>${S.loginBusy ? 'Signing in…' : 'Sign in'}</button>
     <button type="button" class="btn btn-ghost btn-sm" data-act="forgot">Forgot password?</button>
   </form></div>`;
@@ -194,8 +209,8 @@ function setupBanner() { return `<div class="banner"><span><b>Set up your shop.<
 const NAV = [];
 function trackNav() { const t = route(); if (NAV.length > 1 && NAV[NAV.length - 2] === t) NAV.pop(); else if (NAV[NAV.length - 1] !== t) NAV.push(t); }
 trackNav();
-const backTo = () => { const t = NAV.length > 1 ? NAV[NAV.length - 2] : 'overview'; return (TABS.find(x => x[0] === t) || [, 'Overview'])[1]; };
-function pageHead(eyebrow, title, actions) { const showBack = route() !== 'overview' || NAV.length > 1; return `<header class="page-head"><div>${showBack ? `<button type="button" class="back-btn page-back" data-act="pageBack">${icon('back')}<span>Back to ${esc(backTo())}</span></button>` : ''}<p class="eyebrow">${esc(eyebrow)}</p><h1>${esc(title)}</h1></div><div class="actions">${actions || ''}</div></header>`; }
+const backTo = () => { const t = NAV.length > 1 ? NAV[NAV.length - 2] : allowedTabs()[0]; return (TABS.find(x => x[0] === t) || [, 'Overview'])[1]; };
+function pageHead(eyebrow, title, actions) { const showBack = route() !== allowedTabs()[0] || NAV.length > 1; return `<header class="page-head"><div>${showBack ? `<button type="button" class="back-btn page-back" data-act="pageBack">${icon('back')}<span>Back to ${esc(backTo())}</span></button>` : ''}<p class="eyebrow">${esc(eyebrow)}</p><h1>${esc(title)}</h1></div><div class="actions">${actions || ''}</div></header>`; }
 
 // ---------- metrics ----------
 function periodRange(p) {
@@ -222,12 +237,13 @@ const netOf = s => (s.total || 0) - (s.tip || 0);
 // used this system (its first sale) or the barber's start date, whichever is later, and never in the future.
 let payCache = { ref: null };
 function payIndex() {
-  if (payCache.ref === S.sales && payCache.att === S.attendance && payCache.lv === S.leaves) return payCache;
+  if (payCache.ref === S.sales && payCache.att === S.attendance && payCache.lv === S.leaves && payCache.tc === S.timeclock) return payCache;
   const saleDays = new Set(S.sales.map(x => `${x.date}_${x.barberId}`));
   const commDay = new Map(); S.sales.forEach(x => { const k = `${x.date}_${x.barberId}`; commDay.set(k, (commDay.get(k) || 0) + (Number(x.commission) || 0)); });
   const first = S.sales.reduce((m, x) => (!m || x.date < m ? x.date : m), '') || today();
   const marks = new Map(S.attendance.map(a => [a.id, a.present]));
-  return (payCache = { ref: S.sales, att: S.attendance, lv: S.leaves, saleDays, first, marks, commDay });
+  const clock = new Map(S.timeclock.map(t => [`${t.date}_${t.staffId}`, t]));
+  return (payCache = { ref: S.sales, att: S.attendance, lv: S.leaves, tc: S.timeclock, saleDays, first, marks, commDay, clock });
 }
 const payStart = b => { const f = payIndex().first; return b.since && b.since > f ? b.since : f; };
 const scheduledIn = (b, d) => (b.days || []).includes(parseYmd(d).getDay()) && b.active !== false && d >= payStart(b);
@@ -236,7 +252,7 @@ const leaveOn = (b, d) => (S.leaves || []).find(l => l.staffId === b.id && l.fro
 function workedOn(b, d) {
   const P = payIndex();
   if (d > today() || d < payStart(b)) return false;
-  if (P.saleDays.has(`${d}_${b.id}`)) return true;
+  if (P.saleDays.has(`${d}_${b.id}`) || P.clock.has(`${d}_${b.id}`)) return true; // rang up a sale, or timed in
   const lv = leaveOn(b, d); if (lv) return !!lv.paid;
   const m = P.marks.get(`${d}_${b.id}`);
   return m === undefined ? scheduledIn(b, d) : m;
@@ -282,13 +298,14 @@ function payFor(b, r) {
   const daily = t === 'monthly' ? (days ? round2(base / days) : 0) : Number(b.dailyPay) || 0;
   const topUps = t === 'quota' ? worked.filter(d => basePayFor(b, d) > 0).length : 0;
   const dep = round2(sum(keptFor(b, r), a => (a.deposit.amount || 0) * DEPOSIT_SHARE));
+  const lateRecs = S.timeclock.filter(t => t.staffId === b.id && inR(t.date, r) && !t.waived && (t.fine || 0) > 0), fines = round2(sum(lateRecs, t => t.fine)); // late deductions
   const svcOf = v => Math.max(0, (v.svcTotal || 0) - (v.discount || 0)), svc = sum(x, svcOf);
   // Does he earn his keep? The shop's share of his services (100% − his rate) has to cover his daily pay.
   const keepRate = Math.max(0, 1 - (Number(b.rate) || 0) / 100), share = round2(svc - comm);
   const need = keepRate ? daily / keepRate : 0; // services needed per day to cover the daily pay
   const covered = worked.filter(d => sum(x.filter(v => v.date === d), svcOf) * keepRate >= daily - 0.005).length;
   return { x, t, days, daily, base, comm, dep, topUps, tips, svc, share, need, covered, net: round2(share - base), fills: round2(Math.max(0, base - share)),
-    perDay: days ? svc / days : 0, pay: round2(base + comm + dep), total: round2(base + comm + dep + tips) };
+    perDay: days ? svc / days : 0, fines, lates: lateRecs.length, pay: round2(base + comm + dep - fines), total: round2(base + comm + dep + tips - fines) };
 }
 const basePayOn = d => sum(staffAll(), b => basePayFor(b, d));
 function summary(r) {
@@ -297,7 +314,7 @@ function summary(r) {
   const keptAmt = sum(kept, a => a.deposit.amount);
   const net = sum(sales, netOf), comm = sum(sales, s => s.commission), exp = sum(exps, e => e.amount);
   const depShare = round2(sum(kept.filter(a => a.barberId), a => (a.deposit.amount || 0) * DEPOSIT_SHARE));
-  const base = sum(daysIn(r), basePayOn), staffPay = round2(comm + base + depShare);
+  const base = sum(daysIn(r), basePayOn), staffPay = round2(comm + base + depShare - finesIn(r));
   return {
     sales, exps, kept, keptAmt, net, comm, base, staffPay, exp, tips: sum(sales, s => s.tip), disc: sum(sales, s => s.discount),
     svc: sum(sales, s => s.svcTotal), prod: sum(sales, s => s.prodTotal), deposits: sum(sales, s => s.depositCredit),
@@ -414,7 +431,7 @@ function vOverview() {
   const issues = S.appointments.filter(a => a.status === 'needs_attention' || (a.conflict && ['booked', 'pending_payment'].includes(a.status)));
   const lates = appts.filter(a => a.late && ['booked', 'waiting'].includes(a.status));
   const onlineToday = appts.filter(a => a.source === 'online' && a.status !== 'expired').length;
-  return `${pageHead(fmtDate(t, true), 'Overview', `<button class="btn" data-act="newWalkin">+ Walk-in</button><button class="btn" data-act="newBooking">+ Booking</button><a class="btn btn-primary" href="#checkout">${icon('checkout')}Checkout</a>`)}
+  return `${pageHead(fmtDate(t, true), 'Overview', `<button class="btn" data-act="closeDay">Close the day</button><button class="btn" data-act="newWalkin">+ Walk-in</button><button class="btn" data-act="newBooking">+ Booking</button><a class="btn btn-primary" href="#checkout">${icon('checkout')}Checkout</a>`)}
   ${proofsPanel(true)}
   <section class="kpis" aria-label="Today">
     ${kpi('Sales today', money(s.net), delta(s.net, lw.net, 'this time last ' + DAYS[parseYmd(t).getDay()]))}
@@ -458,8 +475,9 @@ function whosIn(d) {
   return `<section class="panel"><div class="panel-h"><h2>Who’s in</h2><span class="muted small">${future ? 'Mark day-offs ahead of time.' : 'Tap to mark someone absent or in on their day off.'} Each day in earns the barber’s daily pay.</span></div>
     <div class="whos">${staff.map(b => {
       const lv = leaveOn(b, d), sold = P.saleDays.has(`${d}_${b.id}`), mark = P.marks.get(`${d}_${b.id}`), on = sold || (!lv && (mark === undefined ? (b.days || []).includes(parseYmd(d).getDay()) : mark));
-      const note = sold ? 'Has sales' : lv ? (lv.paid ? 'Paid leave' : 'Unpaid leave') : mark === undefined ? (on ? 'Scheduled' : 'Day off') : (on ? 'Came in' : 'Absent');
-      return `<button type="button" class="who${on ? ' on' : ''}" data-act="toggleIn" data-id="${esc(b.id)}" aria-pressed="${on}" ${sold ? 'disabled' : ''} title="${esc(note)}">${av(b)}<span><b>${esc(b.name)}</b><small>${note}${on && b.dailyPay ? ' · ' + money(b.dailyPay) : ''}</small></span></button>`;
+      const tc = P.clock.get(`${d}_${b.id}`), isOn = on || !!tc;
+      const note = tc ? clockLine(tc) : sold ? 'Has sales' : lv ? (lv.paid ? 'Paid leave' : 'Unpaid leave') : mark === undefined ? (on ? (d === today() ? 'Scheduled · not timed in' : 'Scheduled') : 'Day off') : (on ? 'Came in' : 'Absent');
+      return `<button type="button" class="who${isOn ? ' on' : ''}${tc && tc.lateMin && !tc.waived ? ' late' : ''}" data-act="toggleIn" data-id="${esc(b.id)}" aria-pressed="${isOn}" ${sold || tc ? 'disabled' : ''} title="${esc(note)}">${av(b)}<span><b>${esc(b.name)}</b><small>${esc(note)}${isOn && b.dailyPay && isBoss() && !tc ? ' · ' + money(b.dailyPay) : ''}</small></span></button>`;
     }).join('')}</div></section>`;
 }
 function vSchedule() {
@@ -485,7 +503,7 @@ function vSchedule() {
   const counts = Object.keys(APPT).map(k => [k, all.filter(a => a.status === k).length]).filter(x => x[1]);
   const expiredN = all.filter(a => a.status === 'expired').length;
   const issues = S.appointments.filter(a => a.status === 'needs_attention');
-  return `${pageHead(isToday ? 'Today' : fmtDate(d, true), 'Schedule', `<button class="btn" data-act="walkinQr">Walk-in QR</button><button class="btn" data-act="newWalkin">+ Walk-in</button><button class="btn btn-primary" data-act="newBooking">+ Booking</button>`)}
+  return `${pageHead(isToday ? 'Today' : fmtDate(d, true), 'Schedule', `${d <= today() ? `<button class="btn" data-act="closeDay" data-d="${d}">Close the day</button>` : ''}<button class="btn" data-act="walkinQr">Walk-in QR</button><button class="btn" data-act="newWalkin">+ Walk-in</button><button class="btn btn-primary" data-act="newBooking">+ Booking</button>`)}
   ${proofsPanel()}
   ${issues.length ? `<section class="panel"><div class="panel-h"><h2>Paid, but the slot was taken</h2><span class="muted small">Call these clients to rebook, or refund them in PayMongo</span></div><div class="tbl-wrap"><table class="tbl"><tbody>
     ${issues.map(a => `<tr><td class="num nowrap"><b>${fmtDate(a.date)}</b><div class="muted small">${fmtTime(a.time)}</div></td><td><b>${esc(a.name)}</b><div class="muted small">${esc(a.phone)} · ${esc(a.email || '')}</div></td><td>${esc(svcNames(a.serviceIds, a.options))}</td><td>${depositChip(a)}</td><td><div class="acts"><button class="btn btn-sm btn-primary" data-act="editAppt" data-id="${esc(a.id)}">Rebook</button></div></td></tr>`).join('')}
@@ -847,10 +865,11 @@ function vTeam() {
     ${list.length ? `<div class="tbl-wrap"><table class="tbl pay-tbl"><thead><tr><th>Name</th><th class="r">Days</th><th class="r">Base pay</th><th class="r">Sales</th><th class="r">Commission</th><th class="r">Earned</th><th class="r">Owed now</th><th></th></tr></thead><tbody>
     ${list.map(b => { const P = payFor(b, r), owed = owedFor(b.id);
       return `<tr><td><div class="row" style="flex-wrap:nowrap">${av(b)}<div><b>${esc(b.name)}</b>${b.active === false ? ' <span class="muted small">(former)</span>' : ''}<div class="muted small nowrap">${esc(b.title || roleName(b))}${b.chair ? ' · Chair ' + esc(b.chair) : ''}</div><div class="pay-rule">${esc(payRule(b))}${b.productFee ? ' · product fee' : ''}</div></div></div></td>
-      <td class="r">${P.days}</td><td class="r">${money(P.base)}${P.t === 'quota' && P.topUps ? `<div class="muted small nowrap">top-up on ${P.topUps} day${P.topUps === 1 ? '' : 's'}</div>` : P.t === 'monthly' ? '<div class="muted small">salary</div>' : ''}${P.dep ? `<div class="muted small nowrap">+ ${money(P.dep)} deposits</div>` : ''}</td><td class="r">${money(P.svc)}<div class="muted small">${P.x.length} client${P.x.length === 1 ? '' : 's'}</div></td><td class="r">${money(P.comm, P.comm % 1 !== 0)}${P.tips ? `<div class="muted small">+ ${money(P.tips)} tips</div>` : ''}</td><td class="r"><b>${money(P.total, P.total % 1 !== 0)}</b></td><td class="r"><b class="${owed > 0 ? '' : 'muted'}">${money(owed, owed % 1 !== 0)}</b></td>
+      <td class="r">${P.days}</td><td class="r">${money(P.base)}${P.t === 'quota' && P.topUps ? `<div class="muted small nowrap">top-up on ${P.topUps} day${P.topUps === 1 ? '' : 's'}</div>` : P.t === 'monthly' ? '<div class="muted small">salary</div>' : ''}${P.dep ? `<div class="muted small nowrap">+ ${money(P.dep)} deposits</div>` : ''}</td><td class="r">${money(P.svc)}<div class="muted small">${P.x.length} client${P.x.length === 1 ? '' : 's'}</div></td><td class="r">${money(P.comm, P.comm % 1 !== 0)}${P.tips ? `<div class="muted small">+ ${money(P.tips)} tips</div>` : ''}</td><td class="r"><b>${money(P.total, P.total % 1 !== 0)}</b>${P.fines ? `<div class="muted small nowrap">−${money(P.fines)} late (${P.lates})</div>` : ''}</td><td class="r"><b class="${owed > 0 ? '' : 'muted'}">${money(owed, owed % 1 !== 0)}</b></td>
       <td><div class="acts acts-col"><button class="btn btn-sm btn-primary" data-act="payStaff" data-id="${esc(b.id)}" ${owed <= 0 ? 'disabled' : ''}>Pay</button><button class="btn btn-sm btn-ghost" data-act="editStaff" data-id="${esc(b.id)}">Edit</button></div></td></tr>`; }).join('')}
     </tbody></table></div>` : '<p class="empty">No staff yet. Use “+ Staff member”, or load the starter team in Shop setup.</p>'}
     <p class="muted small" style="margin-top:12px">Earned = base pay + commission (their rate × service sales after discounts) + their half of forfeited down payments + tips. Base pay depends on how each person is paid (see below). A day counts as worked when they had a sale, or it’s one of their days in and they weren’t marked absent in Schedule → Who’s in. “Owed now” is everything earned minus payouts.</p></section>
+  ${timePanel(list.filter(b => b.active !== false), r)}
   ${leavePanel(list.filter(b => b.active !== false))}
   ${payRulesPanel(list.filter(b => b.active !== false), r)}
   ${keepPanel(list.filter(b => b.active !== false && isServiceStaff(b)), r)}
@@ -923,7 +942,7 @@ function vStock() {
 // ---------- backups ----------
 // Download everything now (a JSON file that holds every record, and an Excel file of clients, sales and bookings).
 // The server also saves a copy every Sunday at 3 AM (see weeklyBackup); the last one shows here.
-const BACKUP_COLS = ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts', 'waitlist', 'attendance', 'promos', 'closings', 'leaves'];
+const BACKUP_COLS = ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts', 'waitlist', 'attendance', 'promos', 'closings', 'leaves', 'timeclock', 'activity'];
 function backupPanel() {
   if (S.backupInfo === undefined) { S.backupInfo = null; db.doc('private/backup').get().then(d => { S.backupInfo = d.exists ? d.data() : false; schedule(); }).catch(() => { S.backupInfo = false; }); }
   const b = S.backupInfo;
@@ -946,6 +965,7 @@ function vSetup() {
         ${field('Headline on the website', `<input id="sh-tag" name="tagline" value="${esc(sh.tagline)}">`, 'sh-tag')}
         ${field('Short description', `<textarea id="sh-about" name="about" rows="2">${esc(sh.about)}</textarea>`, 'sh-about')}
         ${field('Address', `<input id="sh-addr" name="address" value="${esc(sh.address)}">`, 'sh-addr')}
+        ${field('Owner’s mobile (gets the end-of-day summary by text; not shown on the website)', `<input id="sh-owner" name="ownerPhone" type="tel" inputmode="tel" value="${esc(sh.ownerPhone || '')}" placeholder="0917 123 4567">`, 'sh-owner')}
         <div class="fgrid">${field('Phone', `<input id="sh-phone" name="phone" value="${esc(sh.phone)}">`, 'sh-phone')}${field('Facebook page', `<input id="sh-fb" name="facebook" value="${esc(sh.facebook || '')}">`, 'sh-fb')}</div>
         <div class="fgrid">${field('Instagram', `<input id="sh-ig" name="instagram" value="${esc(sh.instagram || '')}" placeholder="https://www.instagram.com/...">`, 'sh-ig')}${field('Messenger link (optional)', `<input id="sh-msg" name="messenger" value="${esc(sh.messenger || '')}" placeholder="Made from your Facebook page if empty">`, 'sh-msg')}</div>
         ${field('How to find us (shown under the map)', `<textarea id="sh-dir" name="directions" rows="2" maxlength="240" placeholder="e.g. Ground floor, beside the escalator. Jeepneys to Antipolo Cathedral stop in front.">${esc(sh.directions || '')}</textarea>`, 'sh-dir')}
@@ -987,8 +1007,8 @@ function vSetup() {
       ${services().map(s => `<tr><td><b>${esc(s.name)}</b><div class="muted small">${esc(s.desc || '')}</div></td><td>${s.group === 'her' ? 'Her' : 'Him'}${s.tier ? ` · ${s.tier === 'deluxe' ? 'Deluxe' : 'Regular'}` : ''}${s.kind === 'extra' ? ' · Add-on' : ''}</td><td>${esc(s.cat || '')}</td><td class="r">${esc(s.mins)}</td><td class="r"><b>${esc(priceLabel(s, cur()))}</b></td><td>${s.active !== false ? chip({ kind: 'good', icon: '✓', label: 'Shown' }) : chip({ kind: 'mute', icon: '–', label: 'Hidden' })}</td><td><div class="acts"><button class="btn btn-sm btn-ghost" data-act="editService" data-id="${esc(s.id)}">Edit</button><button class="btn btn-sm btn-danger" data-act="delService" data-id="${esc(s.id)}">Remove</button></div></td></tr>`).join('')}
     </tbody></table></div></section>
   ${promosPanel()}
-  <section class="panel"><div class="panel-h"><h2>Who can use this dashboard</h2></div>
-    <p class="muted" style="max-width:72ch">Anyone with a sign-in whose user ID is in the <b>admins</b> collection in Firebase. To add a staff account: create the user in Firebase console → Authentication, copy their User UID, then add a document with that ID in Firestore → admins. README step 3 has the details.</p></section>
+  ${signinsPanel()}
+  <div class="grid2e">${pinPanel()}${clockSetupPanel()}</div>
   ${backupPanel()}`;
 }
 
@@ -1369,9 +1389,11 @@ function staffModal(b) {
       <p class="muted small">Example with ₱50 / ₱100 at ₱1,500 and 55%: a ₱1,200 color → shop ₱50 first, then 55% of ₱1,150 = ₱632 for the stylist. Services without products are a straight split. Mark which services use products in Shop setup → Services.</p></fieldset>
     <fieldset class="field svc-only"><legend>Takes bookings for</legend><div class="row">${[['him', 'Men’s services'], ['her', 'Women’s services'], ['nails', 'Nails'], ['braids', 'Braids']].map(([k, l]) => `<label class="check"><input type="checkbox" name="groups" value="${k}" ${(c.groups || ['him']).includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</div></fieldset>
     <fieldset class="field svc-only barber-only"><legend>Men’s haircuts they do</legend><div class="row">${[['deluxe', 'Deluxe (senior barber)'], ['regular', 'Regular']].map(([k, l]) => `<label class="check"><input type="checkbox" name="tiers" value="${k}" ${(c.tiers || []).includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</div><p class="muted small">Online, clients can only book this barber for these haircuts. Add-ons work with either.</p></fieldset>
+    <div class="fgrid">${field('Late deduction per 15 minutes (₱)', `<input id="m-slate" name="lateFine" type="number" min="0" step="1" value="${esc(c.lateFine ?? '')}" placeholder="${lateRateOf({ ...c, lateFine: null })}">`, 'm-slate')}${field('Time in by (empty = shop’s time)', `<input id="m-sshift" name="shiftStart" type="time" value="${esc(c.shiftStart || '')}">`, 'm-sshift')}</div>
     <fieldset class="field"><legend>Days in</legend><div class="row">${[1, 2, 3, 4, 5, 6, 0].map(d => `<label class="check"><input type="checkbox" name="days" value="${d}" ${(c.days || []).includes(d) ? 'checked' : ''}>${DAYS[d]}</label>`).join('')}</div></fieldset>
     <p class="muted small support-only">Receptionists and maintenance staff don’t take bookings or earn commission. They get their daily pay for each day in (Schedule → Who’s in).</p>
     ${b ? `<label class="row small"><input type="checkbox" name="active" ${c.active !== false ? 'checked' : ''}> Currently working here (unticked: hidden from the website and booking)</label>` : ''}
+    ${loginFields(b)}
     <p class="err" id="m-err" hidden></p>${mFoot(b ? 'Save changes' : 'Add')}</form>`);
 }
 function itemModal(i) {
@@ -1491,8 +1513,8 @@ const ACT = {
   scrim(el, e) { if (e.target === el) closeModal(); },
   closeModal,
   modalBack,
-  pageBack() { if (NAV.length > 1) history.back(); else location.hash = '#overview'; },
-  async logout() { stopWatches(); await logout(); },
+  pageBack() { if (NAV.length > 1) history.back(); else location.hash = '#' + allowedTabs()[0]; },
+  async logout() { stopWatches(); try { sessionStorage.removeItem('rb-in-' + (S.user && S.user.uid)); } catch (_) {} await logout(); },
   async forgot() { const email = $('#l-email')?.value.trim(); if (!email) { S.loginErr = 'Type your email first, then tap “Forgot password?”.'; render(); return; } try { await resetPassword(email); S.loginErr = ''; S.loginMsg = 'Password reset email sent. Check your inbox.'; } catch (e) { S.loginErr = 'Couldn’t send the reset email. Check the address.'; } render(); },
   newBooking() { apptModal(null, 'booking'); },
   newWalkin() { apptModal(null, 'walkin'); },
@@ -1573,7 +1595,7 @@ const ACT = {
     catch (e) { toast(/^storage\//.test(e.code || '') ? 'Gallery uploads need Firebase Storage (Blaze plan, checklist part 2).' : 'Couldn’t add it. Try again.', 'bad'); }
   },
   editAppt(el) { const a = S.appointments.find(x => x.id === el.dataset.id); if (a) apptModal(a, 'edit'); },
-  async delAppt(el) { if (!armed(el)) return; if (await del('appointments', el.dataset.id)) { closeModal(); toast('Visit deleted'); } },
+  async delAppt(el) { if (!armed(el)) return; const a = S.appointments.find(x => x.id === el.dataset.id); if (await del('appointments', el.dataset.id)) { logAct('visit', `Deleted the visit of ${a ? a.name || 'a walk-in' : ''}${a ? ` (${fmtDate(a.date)}${a.time ? ' ' + fmtTime(a.time) : ''})` : ''}`); closeModal(); toast('Visit deleted'); } },
   dayShift(el) { S.schedDate = addDays(S.schedDate || today(), +el.dataset.n); render(); },
   dayToday() { S.schedDate = today(); render(); },
   dayPick(el) { S.schedDate = el.dataset.d; render(); },
@@ -1613,8 +1635,8 @@ const ACT = {
   },
   newLeave() { leaveModal(); },
   editLeave(el) { const l = (S.leaves || []).find(x => x.id === el.dataset.id); if (l) leaveModal(l); },
-  async delLeave(el) { const l = (S.leaves || []).find(x => x.id === el.dataset.id); if (!l) return; if (await del('leaves', l.id)) { toast('Leave removed'); setTimeout(syncPublicBarbers, 400); } },
-  async markRefunded(el) { const a = S.appointments.find(x => x.id === el.dataset.id); if (a && await patch('appointments', a.id, { deposit: { ...a.deposit, status: 'refunded', refundedAt: Date.now() } })) toast('Marked as refunded'); },
+  async delLeave(el) { const l = (S.leaves || []).find(x => x.id === el.dataset.id); if (!l) return; if (await del('leaves', l.id)) { logAct('staff', `Removed ${l.paid ? 'paid' : 'unpaid'} leave for ${staffName(l.staffId)} (${fmtDate(l.from)})`); toast('Leave removed'); setTimeout(syncPublicBarbers, 400); } },
+  async markRefunded(el) { const a = S.appointments.find(x => x.id === el.dataset.id); if (a && await patch('appointments', a.id, { deposit: { ...a.deposit, status: 'refunded', refundedAt: Date.now() } })) { logAct('void', `Marked ${money(a.deposit.amount)} down payment refunded to ${a.name}`); toast('Marked as refunded'); } },
   checkoutAppt(el) {
     const a = S.appointments.find(x => x.id === el.dataset.id); if (!a) return;
     const p = blankPos(); p.apptId = a.id; p.name = a.name || ''; p.phone = a.phone || ''; p.barberId = a.barberId || '';
@@ -1681,6 +1703,7 @@ const ACT = {
       }
       if (p.apptId && p.lateFee) { const la = S.appointments.find(x => x.id === p.apptId) || {}; await patch('appointments', p.apptId, { status: 'noshow', lateFeeSale: id, saleId: id, customerId: customerId || '', receipt: { id, t: rtoken }, ...(la.deposit && la.deposit.status === 'paid' ? { deposit: { ...la.deposit, status: 'kept' } } : {}) }); }
       else if (p.apptId) { const sa = S.appointments.find(x => x.id === p.apptId) || {}; await patch('appointments', p.apptId, { status: 'done', saleId: id, customerId: customerId || '', receipt: { id, t: rtoken }, ...(p.servedLate ? { servedLate: true, ...(sa.deposit && sa.deposit.status === 'paid' ? { deposit: { ...sa.deposit, status: 'kept' } } : {}) } : {}) }); }
+      logAct('sale', `Rang up ${money(sale.total, 1)} for ${sale.name} · ${staffName(sale.barberId)} · ${sale.method}${sale.discount ? ` · ${money(sale.discount)} discount${sale.discountNote ? ' (' + sale.discountNote + ')' : ''}` : ''}${sale.orNo ? ' · ' + sale.orNo : ''}${sale.servedLate ? ' · served late' : ''}${sale.lateFee ? ' · late fee' : ''}`, { amount: sale.total, ref: id });
       S.pos = blankPos();
       toast(`Sale saved · ${money(sale.total, 1)}`); receiptModal({ id, ...sale }, true);
     } finally { S.busy = false; render(); }
@@ -1696,11 +1719,11 @@ const ACT = {
   showSale(el) { const s = S.sales.find(x => x.id === el.dataset.id); if (s) receiptModal(s); },
   async rcMakeLink(el) { const s = S.sales.find(x => x.id === el.dataset.id); if (!s) return; const rtoken = newToken(); if (await patch('sales', s.id, { rtoken })) { if (s.apptId) await patch('appointments', s.apptId, { receipt: { id: s.id, t: rtoken } }); receiptModal({ ...s, rtoken }); } },
   async rcCopy(el) { try { await navigator.clipboard.writeText(el.dataset.url); toast('Receipt link copied'); } catch (_) { prompt('Copy this link', el.dataset.url); } },
-  async voidSale(el) { if (!armed(el)) return; const s = S.sales.find(x => x.id === el.dataset.id); if (await del('sales', el.dataset.id)) { if (s && s.apptId) await patch('appointments', s.apptId, { status: 'inchair', saleId: '' }); toast('Sale voided. Product stock wasn’t changed back.'); } },
+  async voidSale(el) { if (!armed(el)) return; const s = S.sales.find(x => x.id === el.dataset.id); if (await del('sales', el.dataset.id)) { logAct('void', `Voided a ${money(s ? s.total : 0, 1)} sale for ${s ? s.name || 'Walk-in' : ''}${s ? ` (${fmtDate(s.date)} ${s.time ? fmtTime(s.time) : ''}, ${staffName(s.barberId)}, ${s.method || 'Cash'})` : ''}`); if (s && s.apptId) await patch('appointments', s.apptId, { status: 'inchair', saleId: '' }); toast('Sale voided. Product stock wasn’t changed back.'); } },
   period(el) { S.period = el.dataset.v; render(); },
   newExpense() { expenseModal(null); },
   editExpense(el) { const e = S.expenses.find(x => x.id === el.dataset.id); if (e) expenseModal(e); },
-  async delExpense(el) { if (!armed(el)) return; if (await del('expenses', el.dataset.id)) toast('Expense deleted'); },
+  async delExpense(el) { if (!armed(el)) return; const x = S.expenses.find(e => e.id === el.dataset.id); if (await del('expenses', el.dataset.id)) { logAct('money', `Deleted expense: ${x ? `${x.cat} ${money(x.amount, 1)} on ${fmtDate(x.date)}` : ''}`); toast('Expense deleted'); } },
   exportXlsx() { try { exportXlsx(); } catch (e) { console.error(e); toast('Couldn’t create the Excel file. Try CSV instead.'); } },
   exportCsv() {
     // Dates are written as text like "Thu 12 Nov 2026" so spreadsheet apps don't reformat them or show ####.
@@ -1719,9 +1742,9 @@ const ACT = {
     const b = staffById(el.dataset.id), d = S.schedDate || today(); if (!b) return;
     const id = `${d}_${b.id}`, on = el.getAttribute('aria-pressed') === 'true', def = (b.days || []).includes(parseYmd(d).getDay());
     const ok = !on === def ? await del('attendance', id) : await put('attendance', id, { date: d, barberId: b.id, present: !on, at: Date.now() });
-    if (ok) toast(`${b.name}: ${!on ? 'in' : 'absent'} on ${fmtDate(d)}`);
+    if (ok) { logAct('staff', `Marked ${b.name} ${!on ? 'in' : 'absent'} on ${fmtDate(d)}`); toast(`${b.name}: ${!on ? 'in' : 'absent'} on ${fmtDate(d)}`); }
   },
-  async delPayout(el) { if (!armed(el)) return; if (await del('payouts', el.dataset.id)) toast('Payout deleted'); },
+  async delPayout(el) { if (!armed(el)) return; const p = S.payouts.find(x => x.id === el.dataset.id); if (await del('payouts', el.dataset.id)) { logAct('money', `Deleted a ${money(p ? p.amount : 0, 1)} payout to ${staffName(p && p.barberId)} (${p ? fmtDate(p.date) : ''})`); toast('Payout deleted'); } },
   newClient() { clientModal(null); },
   async remind(el) {
     S.reminding = el.dataset.id; render();
@@ -1732,7 +1755,7 @@ const ACT = {
   async delWait(el) { if (!armed(el)) return; if (await del('waitlist', el.dataset.id)) toast('Removed from the waitlist'); },
   openClient(el) { const c = custById(el.dataset.id); if (c) clientDrawer(c); },
   editClient(el) { const c = custById(el.dataset.id); if (c) clientModal(c); },
-  async delClient(el) { if (!armed(el)) return; if (await del('customers', el.dataset.id)) { closeModal(); toast('Client deleted. Their past sales stay in reports.'); } },
+  async delClient(el) { if (!armed(el)) return; const c = S.customers.find(x => x.id === el.dataset.id); if (await del('customers', el.dataset.id)) { logAct('client', `Deleted client ${c ? c.name : ''}`); closeModal(); toast('Client deleted. Their past sales stay in reports.'); } },
   stockFilter(el) { S.stockFilter = el.dataset.v; render(); },
   newItem() { itemModal(null); },
   editItem(el) { const i = S.inventory.find(x => x.id === el.dataset.id); if (i) itemModal(i); },
@@ -1746,7 +1769,7 @@ const ACT = {
   async delReview(el) { if (!armed(el)) return; if (await saveInfo({ reviews: (info().reviews || []).filter(x => x.id !== el.dataset.id) })) { closeModal(); toast('Review deleted'); } },
   newService() { serviceModal(null); },
   editService(el) { const s = svcById(el.dataset.id); if (s) serviceModal(s); },
-  async delService(el) { if (!armed(el)) return; if (await saveInfo({ services: services().filter(s => s.id !== el.dataset.id) })) toast('Service removed. Past sales keep its name.'); },
+  async delService(el) { if (!armed(el)) return; const sv = services().find(s => s.id === el.dataset.id); logAct('price', `Removed the service ${sv ? sv.name : ''}`); if (await saveInfo({ services: services().filter(s => s.id !== el.dataset.id) })) toast('Service removed. Past sales keep its name.'); },
   async initInfo(el) {
     el.disabled = true;
     const staff = S.staff.length ? S.staff : STARTER_STAFF;
@@ -1763,7 +1786,7 @@ const CHG = {
     if (a && st === 'done' && !a.saleId) { el.value = a.status; toast('Ring up the payment to finish this visit.'); ACT.checkoutAppt({ dataset: { id: a.id } }); return; }
     if (a && a.deposit && ['noshow', 'cancelled'].includes(st) && a.deposit.status === 'paid') { upd['deposit.status'] = 'kept'; toast(`Deposit of ${money(a.deposit.amount)} marked as kept.`); }
     if (a && a.deposit && ['booked', 'waiting', 'inchair'].includes(st) && a.deposit.status === 'kept') upd['deposit.status'] = 'paid';
-    await patch('appointments', el.dataset.id, upd);
+    if (await patch('appointments', el.dataset.id, upd) && a && ['noshow', 'cancelled'].includes(st)) logAct('visit', `Marked ${a.name || 'a walk-in'} ${st === 'noshow' ? 'no-show' : 'cancelled'} (${fmtDate(a.date)}${a.time ? ' ' + fmtTime(a.time) : ''}, ${staffName(a.barberId)})`);
   },
   async apptBarber(el) { await patch('appointments', el.dataset.id, { barberId: el.value }); },
   async assignBarber(el) { if (!el.value) return; const a = S.appointments.find(x => x.id === el.dataset.id); if (await patch('appointments', el.dataset.id, { barberId: el.value, anyBarber: false })) toast(`${staffName(el.value)} is doing ${(a && a.name) || 'this'}’s ${a && a.source === 'walk-in' ? 'visit' : 'booking'}`); }
@@ -1779,6 +1802,7 @@ const faqOwn = () => JSON.parse(JSON.stringify(Array.isArray(info().faq) && info
 // Upcoming leave days, so the website doesn't offer those days (max 1 year, 200 days)
 function leaveDates(id) { const out = [], t = today(), end = addDays(t, 365); (S.leaves || []).filter(l => l.staffId === id && (l.to || l.from) >= t).forEach(l => { for (let d = l.from < t ? t : l.from; d <= (l.to || l.from) && d <= end && out.length < 200; d = addDays(d, 1)) out.push(d); }); return [...new Set(out)].sort(); }
 async function syncPublicBarbers() {
+  if (!isBoss()) return;
   const rated = S.appointments.filter(a => a.rating && a.barberId);
   await saveInfo({ barbers: S.staff.filter(b => b.active !== false && isServiceStaff(b)).sort((a, b) => (a.chair || 99) - (b.chair || 99)).map(b => {
     const r = rated.filter(a => a.barberId === b.id);
@@ -1788,7 +1812,11 @@ async function syncPublicBarbers() {
 const FORM = {
   async closing(f) {
     const fd = new FormData(f), d = f.dataset.date, v = k => { const x = String(fd.get(k) || '').trim(); return x === '' ? null : round2(num(x)); };
-    if (await put('closings', d, { date: d, float: v('float') || 0, counted: v('counted'), note: String(fd.get('note') || '').trim(), at: Date.now(), by: (S.user && S.user.email) || '' })) toast('Cash count saved');
+    const rec = { date: d, float: v('float') || 0, counted: v('counted'), note: String(fd.get('note') || '').trim(), at: Date.now(), by: meName() };
+    if (await put('closings', d, rec)) {
+      toast('Cash count saved');
+      setTimeout(() => { const D = dayData(d); logAct('close', `Cash count for ${fmtDate(d)}: ${rec.counted == null ? 'not counted' : `counted ${money(rec.counted)}, expected ${money(D.expected)}${D.diff ? ` (${D.diff > 0 ? 'extra' : 'short'} ${money(Math.abs(D.diff))})` : ' (matches)'}`}`); if (f.dataset.close && MODAL.cur) closeDayModal(d); }, 300);
+    }
   },
   async fb(f) {
     const fd = new FormData(f), token = String(fd.get('token') || '').trim(), pageId = String(fd.get('pageId') || '').trim();
@@ -1866,7 +1894,7 @@ const FORM = {
     if (amt <= 0) return modalErr(f, 'Enter an amount above zero.');
     const data = { date: String(fd.get('date')), cat: String(fd.get('cat')), desc: String(fd.get('desc') || '').trim(), amount: round2(amt), method: String(fd.get('method')) };
     const ok = f.dataset.id ? await patch('expenses', f.dataset.id, data) : await put('expenses', newId(), { ...data, createdAt: Date.now() });
-    if (ok) { closeModal(); toast(f.dataset.id ? 'Expense updated' : `Expense added · ${money(data.amount, 1)}`); }
+    if (ok) { logAct('money', `${f.dataset.id ? 'Changed' : 'Added'} expense: ${data.cat}${data.desc ? ' – ' + data.desc : ''} ${money(data.amount, 1)} (${data.method})`); closeModal(); toast(f.dataset.id ? 'Expense updated' : `Expense added · ${money(data.amount, 1)}`); }
   },
   async leave(f) {
     const fd = new FormData(f), from = String(fd.get('from') || ''), to = String(fd.get('to') || from), staffId = String(fd.get('staffId') || '');
@@ -1874,7 +1902,7 @@ const FORM = {
     if (to < from) return modalErr(f, '“To” is before “From”.');
     const data = { staffId, from, to, paid: fd.get('paid') === '1', note: String(fd.get('note') || '').trim(), at: Date.now() };
     const ok = f.dataset.id ? await patch('leaves', f.dataset.id, data) : await put('leaves', newId(), data);
-    if (ok) { closeModal(); toast(`${data.paid ? 'Paid' : 'Unpaid'} leave saved for ${staffName(staffId)}`); setTimeout(syncPublicBarbers, 400); }
+    if (ok) { logAct('staff', `${f.dataset.id ? 'Changed' : 'Added'} ${data.paid ? 'paid' : 'unpaid'} leave for ${staffName(staffId)}: ${fmtDate(from)}${to !== from ? ' – ' + fmtDate(to) : ''}`); closeModal(); toast(`${data.paid ? 'Paid' : 'Unpaid'} leave saved for ${staffName(staffId)}`); setTimeout(syncPublicBarbers, 400); }
   },
   async staff(f) {
     const fd = new FormData(f), name = String(fd.get('name') || '').trim(), role = String(fd.get('role') || 'barber'), svcRole = isServiceStaff({ role });
@@ -1883,15 +1911,19 @@ const FORM = {
     if (rate < 0 || rate > 100) return modalErr(f, 'Commission must be between 0 and 100%.');
     const groups = svcRole ? fd.getAll('groups') : []; if (svcRole && !groups.length) return modalErr(f, 'Pick which services they take bookings for.');
     const productFee = svcRole && fd.has('pf') ? { threshold: Math.max(0, num(fd.get('pfThreshold'))), low: Math.max(0, num(fd.get('pfLow'))), high: Math.max(0, num(fd.get('pfHigh'))) } : null;
-    const data = { name, title: String(fd.get('title') || '').trim(), phone: String(fd.get('phone') || '').trim(), specialty: String(fd.get('specialty') || '').trim(), bio: String(fd.get('bio') || '').trim().slice(0, 300), role, rate, productFee, noDeposit: svcRole && fd.has('noDeposit'), dailyPay: Math.max(0, Number(fd.get('dailyPay')) || 0), payType: ['quota', 'monthly'].includes(fd.get('payType')) ? fd.get('payType') : 'daily', monthlyPay: Math.max(0, Number(fd.get('monthlyPay')) || 0), groups, tiers: svcRole ? fd.getAll('tiers') : [], chair: fd.get('chair') ? +fd.get('chair') : '', days: fd.getAll('days').map(Number).sort() };
-    const id = f.dataset.id;
+    const data = { name, title: String(fd.get('title') || '').trim(), phone: String(fd.get('phone') || '').trim(), specialty: String(fd.get('specialty') || '').trim(), bio: String(fd.get('bio') || '').trim().slice(0, 300), role, rate, productFee, noDeposit: svcRole && fd.has('noDeposit'), dailyPay: Math.max(0, Number(fd.get('dailyPay')) || 0), payType: ['quota', 'monthly'].includes(fd.get('payType')) ? fd.get('payType') : 'daily', monthlyPay: Math.max(0, Number(fd.get('monthlyPay')) || 0), groups, tiers: svcRole ? fd.getAll('tiers') : [], chair: fd.get('chair') ? +fd.get('chair') : '', days: fd.getAll('days').map(Number).sort(), lateFine: String(fd.get('lateFine') ?? '').trim() === '' ? null : Math.max(0, num(fd.get('lateFine'))), shiftStart: String(fd.get('shiftStart') || '') };
+    const id = f.dataset.id, old = id ? staffById(id) : null;
     const ok = id ? await patch('staff', id, { ...data, active: fd.has('active') }) : await put('staff', newId(), { ...data, active: true, since: today() });
-    if (ok) { closeModal(); toast(id ? `${name} updated` : `${name} added`); setTimeout(syncPublicBarbers, 400); }
+    if (ok) {
+      const was = old ? payRule(old) : '', now = payRule({ ...old, ...data });
+      logAct('staff', !old ? `Added ${name} (${now})` : was !== now ? `Changed ${name}'s pay: ${was} → ${now}` : (old.lateFine ?? '') !== (data.lateFine ?? '') ? `Changed ${name}'s late deduction to ${money(lateRateOf(data))} per 15 min` : `Edited ${name}`);
+      closeModal(); toast(id ? `${name} updated` : `${name} added`); setTimeout(syncPublicBarbers, 400);
+    }
   },
   async payout(f) {
     const fd = new FormData(f), amt = num(fd.get('amount')), bid = f.dataset.id;
     if (amt <= 0) return modalErr(f, 'Enter an amount above zero.');
-    if (await put('payouts', newId(), { barberId: bid, amount: round2(amt), date: String(fd.get('date') || today()), note: String(fd.get('note') || '').trim(), createdAt: Date.now() })) { closeModal(); toast(`Paid ${staffName(bid)} ${money(amt, 1)}`); }
+    if (await put('payouts', newId(), { barberId: bid, amount: round2(amt), date: String(fd.get('date') || today()), note: String(fd.get('note') || '').trim(), createdAt: Date.now() })) { logAct('money', `Paid ${staffName(bid)} ${money(amt, 1)}`); closeModal(); toast(`Paid ${staffName(bid)} ${money(amt, 1)}`); }
   },
   async client(f) {
     const fd = new FormData(f), name = String(fd.get('name') || '').trim();
@@ -1927,22 +1959,22 @@ const FORM = {
     const data = { name, cat: String(fd.get('cat') || '').trim() || 'Services', group: String(fd.get('group')), price: round2(price), mins, desc: String(fd.get('desc') || '').trim(), perks: String(fd.get('perks') || '').split(',').map(x => x.trim()).filter(Boolean).slice(0, 4), options: String(fd.get('options') || '').split('\n').map(l => l.split('|').map(x => x.trim())).filter(([n]) => n).slice(0, 6).map(([n, a], i) => ({ id: 'o' + (i + 1), name: n.slice(0, 40), add: Math.max(0, Number(String(a || '0').replace(/[^\d.]/g, '')) || 0) })), usesProduct: fd.has('usesProduct'), kind: String(fd.get('kind') || ''), tier: String(fd.get('tier') || ''), priceFrom: fd.has('priceFrom'), active: fd.has('active') };
     const list = services().map(s => ({ ...s }));
     if (f.dataset.id) { const k = list.findIndex(s => s.id === f.dataset.id); if (k >= 0) list[k] = { ...list[k], ...data }; } else list.push({ id: newId(), ...data });
-    if (await saveInfo({ services: list })) { closeModal(); toast(f.dataset.id ? 'Service updated' : `${name} added`); }
+    if (await saveInfo({ services: list })) { const was = f.dataset.id && services().find(s => s.id === f.dataset.id); logAct('price', was ? (was.price !== data.price ? `Changed the price of ${name}: ${money(was.price)} → ${money(data.price)}` : `Edited the service ${name}`) : `Added the service ${name} at ${money(data.price)}`); closeModal(); toast(f.dataset.id ? 'Service updated' : `${name} added`); }
   },
   async shop(f) {
     const fd = new FormData(f), name = String(fd.get('name') || '').trim();
     if (!name) { toast('Enter the shop name.', 'bad'); return; }
     const g = k => String(fd.get(k) || '').trim();
-    const shop = { ...info().shop, name, wordmark: g('wordmark'), tagline: g('tagline'), about: g('about'), address: g('address'), phone: g('phone'), facebook: g('facebook'), instagram: g('instagram'), messenger: g('messenger'), directions: g('directions'), gcashNumber: g('gcashNumber'), gcashName: g('gcashName'), currency: g('currency') || '₱', loyaltyEvery: Math.max(0, parseInt(fd.get('loyaltyEvery'), 10) || 0), orEnabled: fd.has('orEnabled'), orPrefix: g('orPrefix'), tin: g('tin'), birPermit: g('birPermit') };
+    const shop = { ...info().shop, name, wordmark: g('wordmark'), tagline: g('tagline'), about: g('about'), address: g('address'), phone: g('phone'), facebook: g('facebook'), instagram: g('instagram'), messenger: g('messenger'), directions: g('directions'), gcashNumber: g('gcashNumber'), gcashName: g('gcashName'), currency: g('currency') || '₱', loyaltyEvery: Math.max(0, parseInt(fd.get('loyaltyEvery'), 10) || 0), orEnabled: fd.has('orEnabled'), orPrefix: g('orPrefix'), tin: g('tin'), birPermit: g('birPermit'), ownerPhone: g('ownerPhone') };
     const orNext = parseInt(fd.get('orNext'), 10); if (orNext > 0) { await put('private', 'receipts', { next: orNext, at: Date.now() }); S.orNext = orNext; }
     if (shop.facebook && !/^https:\/\//.test(shop.facebook)) shop.facebook = 'https://' + shop.facebook.replace(/^http:\/\//, '');
-    if (await saveInfo({ shop })) toast('Shop details saved');
+    if (await saveInfo({ shop })) { logAct('price', 'Changed the shop details'); toast('Shop details saved'); }
   },
   async hours(f) {
     const fd = new FormData(f);
     const hours = [0, 1, 2, 3, 4, 5, 6].map(d => ({ d, open: String(fd.get('open-' + d) || '09:00'), close: String(fd.get('close-' + d) || '20:00'), closed: fd.has('closed-' + d) }));
     if (hours.some(h => !h.closed && toMin(h.close) <= toMin(h.open))) { toast('Closing time must be after opening time.', 'bad'); return; }
-    if (await saveInfo({ hours })) toast('Hours saved');
+    if (await saveInfo({ hours })) { logAct('price', 'Changed the opening hours'); toast('Hours saved'); }
   },
   async announce(f) {
     const fd = new FormData(f), text = String(fd.get('text') || '').trim(); let link = String(fd.get('link') || '').trim();
@@ -1963,13 +1995,358 @@ const FORM = {
   async policy(f) {
     const fd = new FormData(f), n = (k, min, max) => Math.min(max, Math.max(min, parseInt(fd.get(k), 10) || 0));
     const policy = { ...pol(), deposit: n('deposit', 100, 100000), holdMinutes: n('holdMinutes', 5, 60), rescheduleHours: n('rescheduleHours', 0, 168), lateMinutes: n('lateMinutes', 0, 120), lateMinutesDeposit: n('lateMinutesDeposit', 0, 120), cancelHours: n('cancelHours', 0, 336), leadMinutes: n('leadMinutes', 0, 1440), bookAheadDays: n('bookAheadDays', 1, 365), rebookDays: n('rebookDays', 0, 120), manualGcash: fd.has('manualGcash'), receiptTexts: fd.has('receiptTexts'), lastBooking: /^\d{2}:\d{2}$/.test(String(fd.get('lastBooking') || '')) ? String(fd.get('lastBooking')) : '', onlineBooking: fd.has('onlineBooking') };
-    if (await saveInfo({ policy })) toast('Booking rules saved');
+    if (await saveInfo({ policy })) { logAct('price', 'Changed the online booking rules'); toast('Booking rules saved'); }
   }
 };
 
+// ================= ACCESS, OWNER PIN, ACTIVITY LOG =================
+// Roles come from admins/{uid}.role (Staff → Edit → Sign-in). firestore.rules enforces the same limits.
+function myRole() { return roleOf(S.me); }
+function isBoss() { return (myRole() === 'owner' && !S.lockOn) || (S.elevUntil || 0) > Date.now(); }
+function allowedTabs() {
+  if (myRole() === 'staff') return STAFF_TABS;
+  return isBoss() ? TABS.map(t => t[0]).filter(t => !STAFF_TABS.includes(t)) : DESK_TABS;
+}
+function navTabs() {
+  if (myRole() === 'staff') return TABS.filter(t => STAFF_TABS.includes(t[0]));
+  const boss = isBoss();
+  return TABS.filter(t => !STAFF_TABS.includes(t[0])).map(([id, l]) => [id, l, !boss && OWNER_TABS.includes(id)]);
+}
+const ROLE_LABEL = { owner: 'Owner', desk: 'Front desk', staff: 'Staff' };
+const meName = () => (S.me && S.me.name) || (S.user && S.user.email) || '';
+function whoChip() { return `<div class="who-chip"><b>${esc(meName())}</b><small>${ROLE_LABEL[myRole()]}${S.lockOn ? ' · this device is locked' : ''}</small></div>`; }
+const elevLeft = () => { const s = Math.max(0, Math.round(((S.elevUntil || 0) - Date.now()) / 1000)); return `${Math.floor(s / 60)}:${pad(s % 60)}`; };
+function elevBanner() {
+  if (!((S.elevUntil || 0) > Date.now())) return '';
+  return `<div class="banner elev"><span>${icon('lock')} <b>Owner PIN entered.</b> Owner pages and actions are open for <b id="elev-left">${elevLeft()}</b>.</span><button class="btn btn-sm" data-act="lockNow">Lock now</button></div>`;
+}
+function pinForm(why, inline) {
+  return `<form class="stack pin-form" data-form="pin" data-why="${esc(why)}">
+    ${field('Owner PIN', `<input id="${inline ? 'pg-pin' : 'm-pin'}" name="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="4" pattern="[0-9]{4}" class="pin-in" placeholder="••••" required>`, inline ? 'pg-pin' : 'm-pin')}
+    ${demo ? '<p class="hint">Demo PIN: 1234</p>' : ''}<p class="err" id="${inline ? 'pg-err' : 'm-err'}" hidden></p>
+    <button class="btn btn-primary" type="submit" ${S.pinBusy ? 'disabled' : ''}>${S.pinBusy ? 'Checking…' : 'Unlock for 5 minutes'}</button></form>`;
+}
+function vLocked(tab) {
+  const label = (TABS.find(t => t[0] === tab) || [, 'This page'])[1];
+  return `<div class="center locked-page"><div class="panel stack" style="width:min(100%,380px);text-align:left">
+    <div class="lock-big">${icon('lock')}</div><h1 style="font:400 26px/1.1 var(--f-slab)">${esc(label)} is for the owner</h1>
+    <p class="muted">Ask the owner to type their PIN. Owner pages and actions stay open for 5 minutes on this ${myRole() === 'owner' ? 'locked device' : 'sign-in'}, and it’s noted in the activity log.</p>
+    ${pinForm('open ' + label, true)}</div></div>`;
+}
+function pinModal(why) {
+  openModal('Owner PIN needed', `<div class="stack"><p>Only the owner can <b>${esc(why)}</b>. Ask the owner to type their PIN.</p>${pinForm(why)}</div>`);
+  setTimeout(() => $('#m-pin')?.focus(), 60);
+}
+function bossWatches() {
+  if (bossUnsubs.length) return;
+  if (myRole() !== 'owner' && !((S.elevUntil || 0) > Date.now())) { S.payouts = []; S.loaded.payouts = true; return; }
+  const w = (key, q) => bossUnsubs.push(q.onSnapshot(snap => { S[key] = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.loaded[key] = true; schedule(); }, err => { console.error(key, err); S.loaded[key] = true; schedule(); }));
+  w('payouts', db.collection('payouts'));
+  w('activity', db.collection('activity').where('at', '>=', Date.now() - 90 * 864e5));
+}
+function stopBossWatches() { while (bossUnsubs.length) { try { bossUnsubs.pop()(); } catch (_) {} } }
+// Staff see only their own records (the queries match firestore.rules)
+function startOwnWatches() {
+  const id = (S.me && S.me.staffId) || '__none';
+  ['expenses', 'customers', 'inventory', 'waitlist', 'promos', 'closings'].forEach(k => { S[k] = []; S.loaded[k] = true; });
+  unsubs.push(db.doc('public/info').onSnapshot(s => { S.info = s.exists ? s.data() : null; schedule(); }, () => {}));
+  unsubs.push(db.doc('staff/' + id).onSnapshot(s => { S.staff = s.exists ? [{ id: s.id, ...s.data() }] : []; S.loaded.staff = true; schedule(); }, () => { S.loaded.staff = true; schedule(); }));
+  watchCol('appointments', db.collection('appointments').where('barberId', '==', id));
+  watchCol('sales', db.collection('sales').where('barberId', '==', id));
+  watchCol('payouts', db.collection('payouts').where('barberId', '==', id));
+  watchCol('attendance', db.collection('attendance').where('barberId', '==', id));
+  watchCol('leaves', db.collection('leaves').where('staffId', '==', id));
+  watchCol('timeclock', db.collection('timeclock').where('staffId', '==', id));
+}
+// Activity log: who did what and when (owner reads it in Activity log; nobody can edit or delete entries)
+function logAct(kind, text, extra = {}) {
+  if (!S.user || !S.canAdmin) return;
+  db.collection('activity').doc(newId()).set({ at: Date.now(), by: S.user.uid, who: meName(), role: myRole(), kind, text: String(text).slice(0, 300), ...extra }).catch(e => console.warn('activity', e));
+}
+const ACT_KINDS = { sale: 'Sales', void: 'Voids & refunds', money: 'Expenses & payouts', staff: 'Staff & pay', clock: 'Time clock', visit: 'Visits', price: 'Prices & settings', close: 'Closing the day', pin: 'Owner PIN', login: 'Sign-ins', signin: 'Sign-ins', client: 'Clients' };
+function vActivity() {
+  const r = periodRange(S.period), q = (S.actQ || '').trim().toLowerCase();
+  const all = [...S.activity].filter(a => inR(ymd(new Date(a.at)), r)).sort((a, b) => b.at - a.at);
+  const people = [...new Set(all.map(a => a.who))].sort();
+  const list = all.filter(a => (!S.actWho || a.who === S.actWho) && (!S.actKind || ACT_KINDS[a.kind] === ACT_KINDS[S.actKind]) && (!q || (a.text + ' ' + a.who).toLowerCase().includes(q)));
+  const days = [...new Set(list.map(a => ymd(new Date(a.at))))];
+  const kinds = [...new Set(Object.values(ACT_KINDS))];
+  return `${pageHead(rangeLabel(r), 'Activity log', '')}
+  ${periodBar()}
+  <section class="panel">
+    <div class="filters"><input type="search" id="ac-q" data-bind="actQ" data-live value="${esc(S.actQ || '')}" placeholder="Search, e.g. void, 399, Marco" aria-label="Search the log">
+      <select id="ac-who" data-bind="actWho" data-live aria-label="Person">${opt('', `Everyone (${people.length})`, !S.actWho)}${people.map(p => opt(p, p, p === S.actWho)).join('')}</select>
+      <select id="ac-kind" data-bind="actKind" data-live aria-label="Type">${opt('', 'Everything', !S.actKind)}${kinds.map(k => opt(Object.keys(ACT_KINDS).find(x => ACT_KINDS[x] === k), k, S.actKind && ACT_KINDS[S.actKind] === k)).join('')}</select></div>
+    ${list.length ? days.map(d => `<h3 class="dc-h">${d === today() ? 'Today' : fmtDate(d, true)}</h3><ul class="list act-list">${list.filter(a => ymd(new Date(a.at)) === d).map(a => { const t = new Date(a.at);
+      return `<li class="act-${esc(a.kind)}"><span class="act-time tnum">${fmtTime(`${pad(t.getHours())}:${pad(t.getMinutes())}`)}</span><div class="grow"><b>${esc(a.who || 'Someone')}</b> <span class="muted small">${esc(ROLE_LABEL[a.role] || (a.role === 'system' ? 'System' : ''))}</span><div class="sub">${esc(a.text)}</div></div>${['void', 'pin'].includes(a.kind) || /wrong pin|deleted|voided|short/i.test(a.text) ? chip({ kind: 'warn', icon: '!', label: ACT_KINDS[a.kind] || 'Check' }) : ''}</li>`; }).join('')}</ul>`).join('')
+      : `<p class="empty">${all.length ? 'Nothing matches these filters.' : 'Nothing recorded in this period yet. Sales, voids, refunds, payouts, price and pay changes, time in/out and the owner PIN all show here.'}</p>`}
+    <p class="muted small" style="margin-top:12px">Kept for 90 days on this screen. Entries can’t be edited or deleted, not even by the owner.</p></section>`;
+}
+
+// ================= TIME CLOCK =================
+// Staff time in and out on their own phone by scanning the shop's QR (clock.html, Cloud Function clockPunch).
+// 9:01 is late; each started 15 minutes late costs their late rate (seniors ₱50, juniors ₱15), taken off their pay.
+const clockOf = (b, d) => payIndex().clock.get(`${d}_${b.id}`);
+const finesIn = (r, id) => round2(sum(S.timeclock.filter(t => inR(t.date, r) && (!id || t.staffId === id) && !t.waived), t => Number(t.fine) || 0));
+const hoursOf = t => t.in && t.out ? Math.max(0, (t.out - t.in) / 3600e3) : 0;
+const hrs = h => h ? `${Math.floor(h)}h ${pad(Math.round((h % 1) * 60))}m` : '—';
+function clockLine(t) {
+  if (!t) return '';
+  return `In ${fmtTime(t.inHM)}${t.outHM ? ` · out ${fmtTime(t.outHM)}` : ''}${t.lateMin ? ` · ${t.lateMin} min late${t.waived ? ' (excused)' : t.fine ? ` −${money(t.fine)}` : ''}` : ''}`;
+}
+function timePanel(list, r) {
+  const ids = new Set(list.map(b => b.id)), recs = S.timeclock.filter(t => inR(t.date, r) && ids.has(t.staffId)).sort((a, b) => b.date.localeCompare(a.date) || (a.inHM || '').localeCompare(b.inHM || ''));
+  const late = recs.filter(t => t.lateMin > 0), fines = round2(sum(late.filter(t => !t.waived), t => t.fine || 0));
+  const open = recs.filter(t => !t.out && t.date < today());
+  return `<section class="panel"><div class="panel-h"><h2>Time in and out</h2><div class="row"><button class="btn btn-sm" data-act="clockQr">Time clock QR</button><button class="btn btn-sm btn-primary" data-act="newTime">+ Add time</button></div></div>
+    <div class="kpis kpis-sm"><div class="kpi"><small>Times in</small><b>${recs.length}</b></div><div class="kpi"><small>Late</small><b>${late.length}</b></div><div class="kpi"><small>Late deductions</small><b>${money(fines)}</b></div><div class="kpi"><small>Forgot to time out</small><b class="${open.length ? 'down' : ''}">${open.length}</b></div></div>
+    ${recs.length ? `<div class="tbl-wrap" style="max-height:440px;overflow:auto"><table class="tbl"><thead><tr><th>Date</th><th>Name</th><th>In</th><th>Out</th><th class="r">Hours</th><th>Late</th><th class="r">Deduction</th><th></th></tr></thead><tbody>${recs.map(t => { const b = staffById(t.staffId);
+      return `<tr><td class="nowrap">${fmtDate(t.date)}</td><td><b>${esc(b ? b.name : 'Former staff')}</b></td><td class="nowrap tnum">${fmtTime(t.inHM)}${t.away ? ` ${chip({ kind: 'warn', icon: '!', label: `${t.inDist} m away` })}` : ''}</td><td class="nowrap tnum">${t.outHM ? fmtTime(t.outHM) : t.date < today() ? chip({ kind: 'warn', icon: '?', label: 'No time out' }) : '<span class="muted">—</span>'}</td>
+        <td class="r">${hrs(hoursOf(t))}</td><td>${t.lateMin ? chip({ kind: t.waived ? 'mute' : 'bad', icon: '◷', label: `${t.lateMin} min` }) : '<span class="muted small">On time</span>'}</td><td class="r">${t.fine ? (t.waived ? `<s class="muted">${money(t.fine)}</s> <span class="muted small">excused</span>` : `<b>−${money(t.fine)}</b>`) : ''}</td>
+        <td><div class="acts"><button class="btn btn-sm btn-ghost" data-act="editTime" data-id="${esc(t.id)}">Edit</button></div></td></tr>`; }).join('')}</tbody></table></div>`
+      : '<p class="empty">No times yet. Print the time clock QR and put it by the door. Staff scan it on their phone when they come in and when they leave.</p>'}
+    <p class="muted small" style="margin-top:10px">Starts at ${fmtTime(pol().clockStart || CLOCK_START)}: one minute after is late. Each started 15 minutes late is taken off their pay (seniors ${money(50)}, juniors ${money(15)}; change it per person in Edit → Late deduction). Timing in also counts as a day in for daily pay. Excuse a late day with Edit.</p></section>`;
+}
+function timeModal(t) {
+  const c = t || { date: today(), inHM: pol().clockStart || CLOCK_START, outHM: '' };
+  openModal(t ? 'Edit time record' : 'Add a time record', `<form class="stack" data-form="time" data-id="${esc(c.id || '')}">
+    ${t ? `<p><b>${esc(staffName(c.staffId))}</b> · ${fmtDate(c.date, true)}</p>` : `<div class="fgrid">${field('Staff member', `<select id="m-tstaff" name="staffId" required>${activeStaff().map(b => opt(b.id, b.name, b.id === c.staffId)).join('')}</select>`, 'm-tstaff')}${field('Date', `<input id="m-tdate" name="date" type="date" value="${esc(c.date)}" max="${today()}" required>`, 'm-tdate')}</div>`}
+    <div class="fgrid">${field('Time in', `<input id="m-tin" name="inHM" type="time" value="${esc(c.inHM || '')}" required>`, 'm-tin')}${field('Time out', `<input id="m-tout" name="outHM" type="time" value="${esc(c.outHM || '')}">`, 'm-tout')}</div>
+    <label class="row small"><input type="checkbox" name="waived" ${c.waived ? 'checked' : ''}> Excuse being late (no deduction)</label>
+    ${field('Reason (shows in the activity log)', `<input id="m-tnote" name="note" value="${esc(c.note || '')}" maxlength="120" placeholder="e.g. Forgot to time out, traffic from an accident">`, 'm-tnote')}
+    <p class="muted small">The deduction is worked out again from the time in and their late rate.</p>
+    <p class="err" id="m-err" hidden></p>${mFoot(t ? 'Save' : 'Add', t ? `<button type="button" class="btn btn-danger" data-act="delTime" data-id="${esc(c.id)}" style="margin-right:auto">Delete</button>` : '')}</form>`);
+}
+const clockUrl = () => S.clockKey ? new URL(`../clock.html?k=${encodeURIComponent(S.clockKey)}`, location.href).href : '';
+async function loadClockKey() {
+  if (S.clockKey !== undefined) return;
+  S.clockKey = null;
+  try { const d = await db.doc('private/clock').get(); if (d.exists && d.data().key) S.clockKey = d.data().key; else { S.clockKey = newToken(); await put('private', 'clock', { key: S.clockKey, at: Date.now() }); } } catch (_) { S.clockKey = ''; }
+  schedule();
+}
+function clockModal() {
+  loadClockKey();
+  const url = clockUrl();
+  openModal('Time clock QR', `<div class="stack qr-modal">${url ? `<div class="qr-box">${qrSvg(url, { size: 240 })}</div>` : '<p class="muted"><span class="spinner"></span> Getting the code…</p>'}
+    <p>Put this by the door. Staff scan it with their phone when they come in and when they leave, signed in with their own account. It stamps the time on the server, so the phone’s clock doesn’t matter.</p>
+    <p class="muted small">Someone took a photo of it? Make a new code. The old one stops working.</p>
+    <div class="modal-f"><button type="button" class="btn btn-ghost" data-act="newClockKey">Make a new code</button><button type="button" class="btn btn-primary" data-act="printClock" ${url ? '' : 'disabled'}>Print poster</button></div></div>`);
+}
+function printClockPoster() {
+  const sh = info().shop, url = clockUrl(), w = window.open('', '_blank'); if (!w || !url) { toast('Allow pop-ups to print the poster.', 'bad'); return; }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Time clock · ${esc(sh.name)}</title><style>
+    @page{size:A4;margin:0}body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#111;display:grid;place-items:center;min-height:100vh;text-align:center}
+    .p{width:180mm;padding:16mm 0}.logo{width:38mm;height:38mm;object-fit:contain}h1{font-size:40pt;margin:6mm 0 2mm}p{font-size:16pt;margin:2mm 0;color:#333}
+    .qr{margin:8mm auto;width:105mm;height:105mm}.qr svg{width:100%;height:100%}.s{font-size:13pt;color:#555;margin-top:6mm}</style></head><body><div class="p">
+    <img class="logo" src="${new URL('../assets/logo.png', location.href).href}" alt=""><h1>Staff time clock</h1><p>Scan when you come in and when you leave.</p>
+    <div class="qr">${qrSvg(url, { size: 400 })}</div><p><b>${esc(sh.name)}</b> · staff only</p><p class="s">Time in by ${fmtTime(pol().clockStart || CLOCK_START)}. Late is counted from one minute after.</p></div>
+    <script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`);
+  w.document.close();
+}
+function clockSetupPanel() {
+  const p = pol(), sh = info().shop;
+  return `<section class="panel"><div class="panel-h"><h2>Time clock</h2><button class="btn btn-sm" data-act="clockQr">Show QR</button></div>
+    <form class="stack" data-form="clockset">
+      <div class="fgrid three">${field('Time in by', `<input id="ck-start" name="clockStart" type="time" value="${esc(p.clockStart || CLOCK_START)}">`, 'ck-start')}${field('Shop location (latitude)', `<input id="ck-lat" name="lat" inputmode="decimal" value="${esc(sh.lat ?? '')}" placeholder="optional">`, 'ck-lat')}${field('Longitude', `<input id="ck-lng" name="lng" inputmode="decimal" value="${esc(sh.lng ?? '')}" placeholder="optional">`, 'ck-lng')}</div>
+      <p class="muted small">One minute after this time is late. With the shop’s location set, a time in from more than 300 m away is flagged. <button type="button" class="link-btn" data-act="useLocation">Use this phone’s location</button> (do it inside the shop).</p>
+      <div class="modal-f"><button class="btn btn-primary" type="submit">Save</button></div></form></section>`;
+}
+
+// ================= STAFF: MY DAY, MY PAY =================
+function vMe() {
+  const b = staffAll()[0], t = today();
+  if (!b) return `${pageHead('', 'My day', '')}<p class="empty">This sign-in isn’t linked to a staff member yet. Ask the owner.</p>`;
+  const tc = clockOf(b, t), mine = S.appointments.filter(a => a.barberId === b.id && !['cancelled', 'expired', 'pending_payment'].includes(a.status));
+  const todays = mine.filter(a => a.date === t).sort((x, y) => (x.time || '').localeCompare(y.time || '')), next = mine.filter(a => a.date > t && a.date <= addDays(t, 7)).sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time));
+  const lv = leaveOn(b, t), first = b.name.split(' ')[0];
+  const row = a => `<li><span class="act-time tnum">${a.source === 'walk-in' ? '#' + esc(a.queueNo || '') : fmtTime(a.time)}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${refChip(a)}<div class="sub">${esc(svcNames(a.serviceIds, a.options) || 'Not set')}${a.notes ? ' · ' + esc(a.notes) : ''}</div></div>${chip(APPT[a.status] || APPT.booked)}</li>`;
+  return `${pageHead(fmtDate(t, true), `Hi, ${first}`, '')}
+  <section class="panel me-clock"><div class="panel-h"><h2>Time clock</h2>${tc ? (tc.lateMin && !tc.waived ? chip({ kind: 'bad', icon: '◷', label: `${tc.lateMin} min late` }) : chip({ kind: 'good', icon: '✓', label: 'On time' })) : ''}</div>
+    ${lv ? `<p>You’re on ${lv.paid ? 'paid' : 'unpaid'} leave today${lv.note ? ` (${esc(lv.note)})` : ''}.</p>` : tc ? `<p class="clock-big">${esc(clockLine(tc))}</p>${tc.outHM ? '' : '<p class="muted small">Scan the time clock QR again when you leave.</p>'}` : `<p class="clock-big muted">Not timed in yet</p><p class="muted small">Scan the time clock QR by the door with your phone camera. Time in by ${fmtTime(shiftStartOf(b, pol()))}; each started 15 minutes late is ${money(lateRateOf(b))} off your pay.</p>`}</section>
+  <section class="panel"><div class="panel-h"><h2>Today</h2><span class="muted small">${todays.length} client${todays.length === 1 ? '' : 's'}</span></div>${todays.length ? `<ul class="list">${todays.map(row).join('')}</ul>` : '<p class="empty">No bookings with you today yet. Walk-ins show here when the front desk assigns them to you.</p>'}</section>
+  <section class="panel"><div class="panel-h"><h2>Next 7 days</h2></div>${next.length ? next.reduce((h, a, i, arr) => h + (i === 0 || arr[i - 1].date !== a.date ? `${i ? '</ul>' : ''}<h3 class="dc-h">${fmtDate(a.date)}</h3><ul class="list">` : '') + row(a) + (i === arr.length - 1 ? '</ul>' : ''), '') : '<p class="empty">Nothing booked with you yet.</p>'}</section>`;
+}
+function vMyPay() {
+  const b = staffAll()[0]; if (!b) return vMe();
+  const r = periodRange(S.period), P = payFor(b, r), owed = owedFor(b.id);
+  const recs = S.timeclock.filter(t => inR(t.date, r)).sort((x, y) => y.date.localeCompare(x.date));
+  const sales = P.x.slice().sort((x, y) => (y.date + (y.time || '')).localeCompare(x.date + (x.time || '')));
+  const pays = S.payouts.slice().sort((x, y) => y.date.localeCompare(x.date)).slice(0, 10);
+  return `${pageHead(rangeLabel(r), 'My pay', '')}
+  ${periodBar()}
+  <div class="kpis kpis-sm"><div class="kpi"><small>Days in</small><b>${P.days}</b></div><div class="kpi"><small>${P.t === 'monthly' ? 'Salary' : P.t === 'quota' ? 'Daily minimum top-ups' : 'Daily pay'}</small><b>${money(P.base)}</b></div><div class="kpi"><small>Commission</small><b>${money(P.comm)}</b></div><div class="kpi"><small>Tips</small><b>${money(P.tips)}</b></div>${P.fines ? `<div class="kpi"><small>Late deductions</small><b class="down">−${money(P.fines)}</b></div>` : ''}<div class="kpi"><small>Earned</small><b>${money(P.total)}</b></div><div class="kpi"><small>Owed to you now</small><b>${money(owed)}</b></div></div>
+  <section class="panel"><div class="panel-h"><h2>How you’re paid</h2></div><p>${esc(payRule(b))}.</p><p class="muted small">${esc(payExample(b))}${lateRateOf(b) ? ` Late (after ${fmtTime(shiftStartOf(b, pol()))}): ${money(lateRateOf(b))} for each started 15 minutes.` : ''}</p></section>
+  <section class="panel"><div class="panel-h"><h2>Your clients</h2><span class="muted small">${sales.length} · ${money(P.svc)} in services</span></div>
+    ${sales.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Client</th><th>Services</th><th class="r">Commission</th><th class="r">Tip</th></tr></thead><tbody>${sales.slice(0, S.allMine ? 400 : 25).map(x => `<tr><td class="nowrap">${shortDate(x.date)} <span class="muted small">${x.time ? fmtTime(x.time) : ''}</span></td><td>${esc(x.name || 'Walk-in')}</td><td class="muted small">${esc((x.lines || []).filter(l => l.kind === 'service').map(l => l.name).join(', '))}</td><td class="r">${money(x.commission || 0)}</td><td class="r">${x.tip ? money(x.tip) : ''}</td></tr>`).join('')}</tbody></table></div>${sales.length > 25 && !S.allMine ? `<button class="btn btn-sm" data-act="allMine" style="margin-top:10px">Show all ${sales.length}</button>` : ''}` : '<p class="empty">No clients in this period.</p>'}</section>
+  <div class="grid2e">
+  <section class="panel"><div class="panel-h"><h2>Time in and out</h2></div>${recs.length ? `<ul class="list">${recs.map(t => `<li><span class="grow"><b>${fmtDate(t.date)}</b><span class="sub" style="display:block">${esc(clockLine(t))}</span></span></li>`).join('')}</ul>` : '<p class="empty">No times in this period.</p>'}</section>
+  <section class="panel"><div class="panel-h"><h2>Paid to you</h2></div>${pays.length ? `<ul class="list">${pays.map(p => `<li><span class="grow"><b>${fmtDate(p.date)}</b>${p.note ? `<span class="sub" style="display:block">${esc(p.note)}</span>` : ''}</span><b>${money(p.amount, 1)}</b></li>`).join('')}</ul>` : '<p class="empty">No payouts yet.</p>'}</section></div>`;
+}
+
+// ================= CLOSING THE DAY =================
+// One tap at closing: money by payment type, the cash drawer, each barber's clients, sales, tips and no-shows,
+// who was late. "Text to owner" sends it to the owner's mobile (Shop setup → Shop details) through Semaphore.
+function dayData(d) {
+  const sales = S.sales.filter(s => s.date === d), appts = apptsOn(d), exps = S.expenses.filter(e => e.date === d);
+  const atShop = s => (s.total || 0) - (s.depositCredit || 0);
+  const methods = METHODS.map(m => [m, round2(sum(sales.filter(s => (s.method || 'Cash') === m), atShop))]).filter(x => x[1]);
+  const online = round2(sum(sales, s => s.depositCredit || 0));
+  const cashIn = round2(sum(sales.filter(s => (s.method || 'Cash') === 'Cash'), atShop)), cashOut = round2(sum(exps.filter(e => e.method === 'Cash'), e => e.amount || 0));
+  const c = S.closings.find(x => x.id === d) || {}, expected = round2((c.float || 0) + cashIn - cashOut), diff = c.counted == null ? null : round2(c.counted - expected);
+  const barbers = activeStaff().map(b => { const x = sales.filter(s => s.barberId === b.id), tc = clockOf(b, d);
+    return { b, clients: x.length, sales: round2(sum(x, s => (s.svcTotal || 0) + (s.prodTotal || 0) - (s.discount || 0))), tips: round2(sum(x, s => s.tip || 0)), noshow: appts.filter(a => a.barberId === b.id && a.status === 'noshow').length, tc }; })
+    .filter(r => r.clients || r.noshow || r.tc);
+  const total = round2(sum(sales, s => (s.total || 0) - (s.tip || 0))), tips = round2(sum(sales, s => s.tip || 0));
+  const visits = { served: sales.length, walk: appts.filter(a => a.source === 'walk-in' && a.status === 'done').length, noshow: appts.filter(a => a.status === 'noshow').length, cancelled: appts.filter(a => a.status === 'cancelled').length, unpaid: appts.filter(a => a.status === 'done' && !a.saleId).length };
+  const late = barbers.filter(r => r.tc && r.tc.lateMin), noOut = barbers.filter(r => r.tc && !r.tc.outHM);
+  return { d, sales, methods, online, cashIn, cashOut, c, expected, diff, barbers, total, tips, visits, late, noOut, expTotal: round2(sum(exps, e => e.amount || 0)) };
+}
+// Plain text for the owner's SMS (P instead of ₱ keeps it a normal-length text)
+function daySummaryText(D) {
+  const P = n => 'P' + Math.round(n).toLocaleString('en-PH'), sh = info().shop;
+  const lines = [`${sh.name} · ${fmtDate(D.d)}`, `Sales ${P(D.total)}${D.methods.length ? ' (' + D.methods.map(([m, v]) => `${m} ${P(v)}`).join(', ') + ')' : ''}${D.online ? ` + ${P(D.online)} paid online earlier` : ''}`,
+    `Clients ${D.visits.served} · No-shows ${D.visits.noshow} · Cancelled ${D.visits.cancelled}${D.visits.unpaid ? ` · ${D.visits.unpaid} done but not paid` : ''}`,
+    D.diff == null ? `Drawer should have ${P(D.expected)} (not counted yet)` : `Drawer ${P(D.expected)} expected, ${P(D.c.counted)} counted${D.diff ? ` (${D.diff > 0 ? 'extra' : 'short'} ${P(Math.abs(D.diff))})` : ' (matches)'}`,
+    `Tips ${P(D.tips)}${D.expTotal ? ` · Expenses ${P(D.expTotal)}` : ''}`,
+    D.barbers.filter(r => r.clients).length ? 'Per barber: ' + D.barbers.filter(r => r.clients).map(r => `${r.b.name} ${r.clients}/${P(r.sales)}${r.noshow ? ` ${r.noshow}NS` : ''}`).join(', ') : '',
+    D.late.length ? 'Late: ' + D.late.map(r => `${r.b.name} ${r.tc.lateMin}m${r.tc.fine && !r.tc.waived ? ` (-${P(r.tc.fine)})` : ''}`).join(', ') : 'Late: nobody',
+    D.noOut.length && D.d < today() ? 'No time out: ' + D.noOut.map(r => r.b.name).join(', ') : ''];
+  return lines.filter(Boolean).join('\n');
+}
+function closeDayModal(d = today()) {
+  const D = dayData(d), row = (l, v, cls = '') => `<div class="${cls}"><span>${l}</span><b>${v}</b></div>`, sh = info().shop;
+  openModal(`Close the day · ${d === today() ? 'today' : fmtDate(d)}`, `<div class="stack close-day">
+    <div class="kpis kpis-sm"><div class="kpi"><small>Sales</small><b>${money(D.total)}</b></div><div class="kpi"><small>Clients</small><b>${D.visits.served}</b></div><div class="kpi"><small>Tips</small><b>${money(D.tips)}</b></div><div class="kpi"><small>No-shows</small><b class="${D.visits.noshow ? 'down' : ''}">${D.visits.noshow}</b></div></div>
+    ${D.visits.unpaid ? `<p class="hint bad-hint"><b>${D.visits.unpaid} visit${D.visits.unpaid > 1 ? 's are' : ' is'} marked done without a payment.</b> Ring ${D.visits.unpaid > 1 ? 'them' : 'it'} up in Schedule before closing.</p>` : ''}
+    <div class="grid2e">
+      <div class="dc-box"><h3>Money in</h3><div class="totals">${D.methods.length ? D.methods.map(([m, v]) => row(m, money(v))).join('') : row('No sales', '—')}${row('Total at the shop', money(sum(D.methods, x => x[1])), 'tot')}${D.online ? row('Paid online earlier (down payments)', money(D.online)) : ''}</div></div>
+      <form class="dc-box" data-form="closing" data-date="${d}" data-close="1"><h3>Cash drawer</h3>
+        <div class="fgrid">${field('Starting cash', `<input id="cd-float" name="float" inputmode="decimal" value="${esc(D.c.float ?? '')}" placeholder="0">`, 'cd-float')}${field('Cash counted now', `<input id="cd-count" name="counted" inputmode="decimal" value="${esc(D.c.counted ?? '')}" placeholder="Count the drawer">`, 'cd-count')}</div>
+        <input type="hidden" name="note" value="${esc(D.c.note || '')}">
+        <div class="totals">${row('+ Cash sales', money(D.cashIn))}${row('− Cash expenses', money(D.cashOut))}${row('Should be in the drawer', money(D.expected), 'tot')}${D.diff == null ? '' : row(D.diff === 0 ? 'Matches' : D.diff > 0 ? 'Extra cash' : 'Short', D.diff === 0 ? '✓' : money(Math.abs(D.diff)), D.diff === 0 ? 'ok' : 'bad')}</div>
+        <button class="btn btn-sm btn-primary" type="submit">${D.c.at ? 'Update the count' : 'Save the count'}</button></form>
+    </div>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Staff</th><th>Time</th><th class="r">Clients</th><th class="r">Sales</th><th class="r">Tips</th><th class="r">No-shows</th></tr></thead><tbody>
+      ${D.barbers.length ? D.barbers.map(r => `<tr><td><b>${esc(r.b.name)}</b></td><td class="small">${r.tc ? esc(clockLine(r.tc)) : '<span class="muted">No time in</span>'}</td><td class="r">${r.clients}</td><td class="r">${money(r.sales)}</td><td class="r">${r.tips ? money(r.tips) : ''}</td><td class="r">${r.noshow || ''}</td></tr>`).join('') : '<tr><td colspan="6" class="muted">Nobody yet.</td></tr>'}</tbody></table></div>
+    <details class="sms-prev"><summary>Text for the owner</summary><pre>${esc(daySummaryText(D))}</pre></details>
+    <p class="muted small">${sh.ownerPhone ? `Sends to ${esc(sh.ownerPhone)}.` : 'Add the owner’s mobile number in Shop setup → Shop details to text this.'}</p>
+    <div class="modal-f"><button type="button" class="btn btn-ghost" data-act="copyDay" data-d="${d}">Copy</button><button type="button" class="btn btn-primary" data-act="textDay" data-d="${d}" ${sh.ownerPhone ? '' : 'disabled'}>Text to owner</button></div></div>`, true);
+}
+
+// ================= OWNER PIN & SIGN-INS (Shop setup, Staff → Edit) =================
+function pinPanel() {
+  if (S.pinSet === undefined) { S.pinSet = null; db.doc('private/pin').get().then(d => { S.pinSet = d.exists; schedule(); }).catch(() => { S.pinSet = false; }); }
+  return `<section class="panel"><div class="panel-h"><h2>Owner PIN</h2>${S.pinSet ? chip({ kind: 'good', icon: '✓', label: 'Set' }) : S.pinSet === false ? chip({ kind: 'warn', icon: '!', label: 'Not set' }) : ''}</div>
+    <p class="muted small" style="max-width:72ch">The front desk needs the owner PIN to void a sale, mark a refund, delete a client or a visit, or open owner pages. It opens them for 5 minutes and goes in the activity log. 5 wrong tries lock it for 15 minutes.</p>
+    <form class="stack" data-form="setpin"><div class="fgrid three">${field(S.pinSet ? 'New 4-digit PIN' : '4-digit PIN', `<input id="pn-a" name="a" type="password" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" autocomplete="new-password" required>`, 'pn-a')}${field('Type it again', `<input id="pn-b" name="b" type="password" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" autocomplete="new-password" required>`, 'pn-b')}<div class="field" style="align-self:end"><button class="btn btn-primary" type="submit">${S.pinSet ? 'Change PIN' : 'Set PIN'}</button></div></div><p class="err" id="pn-err" hidden></p></form>
+    ${myRole() === 'owner' ? `<label class="consent"><input type="checkbox" id="pn-lock" data-change="lockDevice" ${S.lockOn ? 'checked' : ''}><span><b>Lock owner pages on this device.</b> For a shared phone or tablet signed in as the owner: income, staff pay, settings and voids ask for the PIN. Only this device is locked.</span></label>` : ''}</section>`;
+}
+function signinsPanel() {
+  const withLogin = staffAll().filter(b => b.login);
+  return `<section class="panel"><div class="panel-h"><h2>Who can use this dashboard</h2><a class="btn btn-sm btn-ghost" href="#team">Staff</a></div>
+    <p class="muted small" style="max-width:72ch">Give each person their own sign-in in <b>Staff → Edit → Sign-in</b>. <b>Front desk</b>: bookings, walk-ins, checkout, clients and the cash count, but no income pages, pay or settings. <b>Own schedule and pay</b>: barbers see their own clients, time in/out and pay, nothing else.</p>
+    ${withLogin.length ? `<ul class="list">${withLogin.map(b => `<li>${av(b)}<div class="grow"><b>${esc(b.name)}</b><div class="sub">${esc(b.login.email)} · ${esc(ACCESS[b.login.role] || '')}</div></div><button class="btn btn-sm btn-ghost" data-act="editStaff" data-id="${esc(b.id)}">Edit</button></li>`).join('')}</ul>` : '<p class="empty">No staff sign-ins yet. Only the owner can sign in.</p>'}</section>`;
+}
+function loginFields(b) {
+  if (!b) return '<p class="muted small">Save first, then give them a sign-in here.</p>';
+  const L = b.login;
+  return `<fieldset class="field login-set"><legend>Sign-in</legend>
+    ${L ? `<p class="small">Signs in as <b>${esc(L.email)}</b> · ${esc(ACCESS[L.role] || '')}</p>` : '<p class="muted small">No sign-in yet. Give them one so they can time in and see their own day and pay.</p>'}
+    <div class="fgrid three">${field('Email', `<input id="m-lgemail" type="email" value="${esc(L ? L.email : '')}" autocomplete="off">`, 'm-lgemail')}${field(L ? 'New password (optional)' : 'Password (8+ characters)', `<input id="m-lgpass" type="text" autocomplete="new-password" placeholder="${L ? 'Leave empty to keep' : ''}">`, 'm-lgpass')}${field('Access', `<select id="m-lgrole">${Object.entries(ACCESS).map(([k, l]) => opt(k, l, (L ? L.role : (b.role === 'reception' ? 'desk' : 'staff')) === k)).join('')}</select>`, 'm-lgrole')}</div>
+    <div class="row"><button type="button" class="btn btn-sm btn-primary" data-act="saveLogin" data-id="${esc(b.id)}">${L ? 'Update sign-in' : 'Create sign-in'}</button>${L ? `<button type="button" class="btn btn-sm btn-ghost" data-act="removeLogin" data-id="${esc(b.id)}">Remove sign-in</button>` : ''}<span class="muted small" id="m-lgmsg"></span></div></fieldset>`;
+}
+
+// ================= ACTIONS & FORMS for the above =================
+Object.assign(ACT, {
+  demoAs(el) { const f = $('form[data-form="login"]'); if (f) { f.querySelector('#l-email').value = el.dataset.email; f.querySelector('#l-pass').value = 'demo'; f.requestSubmit(); } },
+  allMine() { S.allMine = true; render(); },
+  lockNow() { S.elevUntil = 0; if (myRole() !== 'owner') stopBossWatches(); toast('Owner pages locked'); render(); },
+  clockQr() { clockModal(); },
+  printClock() { printClockPoster(); },
+  async newClockKey(el) { if (!armed(el)) return; S.clockKey = newToken(); if (await put('private', 'clock', { key: S.clockKey, at: Date.now() })) { logAct('clock', 'Made a new time clock QR code (the old one stopped working)'); toast('New code made. Print the new poster.'); clockModal(); } },
+  newTime() { timeModal(null); },
+  editTime(el) { const t = S.timeclock.find(x => x.id === el.dataset.id); if (t) timeModal(t); },
+  async delTime(el) { if (!armed(el)) return; const t = S.timeclock.find(x => x.id === el.dataset.id); if (t && await del('timeclock', t.id)) { logAct('clock', `Deleted ${staffName(t.staffId)}'s time record for ${fmtDate(t.date)}`); closeModal(); toast('Time record deleted'); } },
+  useLocation() {
+    if (!navigator.geolocation) { toast('This phone can’t share its location.', 'bad'); return; }
+    navigator.geolocation.getCurrentPosition(p => { const a = $('#ck-lat'), b = $('#ck-lng'); if (a && b) { a.value = p.coords.latitude.toFixed(6); b.value = p.coords.longitude.toFixed(6); toast('Location filled in. Tap Save.'); } }, () => toast('Couldn’t get the location. Allow location for this site.', 'bad'), { enableHighAccuracy: true, timeout: 10000 });
+  },
+  closeDay(el) { closeDayModal(el.dataset.d || today()); },
+  async copyDay(el) { const t = daySummaryText(dayData(el.dataset.d)); try { await navigator.clipboard.writeText(t); toast('Summary copied'); } catch (_) { toast('Couldn’t copy. Select the text instead.', 'bad'); } },
+  async textDay(el) {
+    el.disabled = true;
+    try { const r = await call('sendDaySummary', { text: daySummaryText(dayData(el.dataset.d)), date: el.dataset.d }); toast(demo ? `Demo: not actually sent (would text ${r.to})` : `Texted to ${r.to}`); }
+    catch (e) { toast(e.message || 'Couldn’t send the text.', 'bad'); }
+    el.disabled = false;
+  },
+  async saveLogin(el) {
+    const b = staffById(el.dataset.id), msg = $('#m-lgmsg'); if (!b) return;
+    const data = { staffId: b.id, email: $('#m-lgemail').value.trim(), password: $('#m-lgpass').value, role: $('#m-lgrole').value };
+    el.disabled = true; if (msg) msg.textContent = 'Saving…';
+    try { await call('staffLogin', data); if (msg) msg.textContent = ''; toast(`Sign-in saved for ${b.name}`); setTimeout(() => { const nb = staffById(b.id); if (nb && MODAL.cur) staffModal(nb); }, 300); }
+    catch (e) { if (msg) msg.textContent = e.message || 'Couldn’t save the sign-in.'; }
+    el.disabled = false;
+  },
+  async removeLogin(el) { if (!armed(el)) return; const b = staffById(el.dataset.id); try { await call('staffLogin', { staffId: b.id, remove: true }); toast(`${b.name} can’t sign in any more`); setTimeout(() => { const nb = staffById(b.id); if (nb && MODAL.cur) staffModal(nb); }, 300); } catch (e) { toast(e.message || 'Couldn’t remove it.', 'bad'); } }
+});
+Object.assign(CHG, {
+  lockDevice(el) { S.lockOn = el.checked; try { localStorage.setItem('rb-lock', el.checked ? '1' : '0'); } catch (_) {} if (el.checked) S.elevUntil = 0; logAct('pin', el.checked ? 'Locked owner pages on a device' : 'Unlocked owner pages on a device'); toast(el.checked ? 'Owner pages locked on this device' : 'This device is no longer locked'); render(); }
+});
+Object.assign(FORM, {
+  async pin(f) {
+    const pin = String(new FormData(f).get('pin') || '').trim(), err = f.querySelector('.err');
+    if (!/^\d{4}$/.test(pin)) { if (err) { err.textContent = 'The PIN is 4 digits.'; err.hidden = false; } return; }
+    S.pinBusy = true; render();
+    try { const r = await call('pinUnlock', { pin, why: f.dataset.why || '' }); S.elevUntil = r.until; if (!$('#modal').hidden && $('#modal').contains(f)) closeModal(); bossWatches(); toast('Unlocked for 5 minutes'); }
+    catch (e) { const er = document.querySelector('form[data-form="pin"] .err'); if (er) { er.textContent = e.message || 'Wrong PIN.'; er.hidden = false; } const i = document.querySelector('form[data-form="pin"] input[name=pin]'); if (i) { i.value = ''; i.focus(); } }
+    S.pinBusy = false; render();
+  },
+  async setpin(f) {
+    const fd = new FormData(f), a = String(fd.get('a') || ''), b = String(fd.get('b') || ''), err = $('#pn-err');
+    const show = m => { err.textContent = m; err.hidden = false; };
+    if (!/^\d{4}$/.test(a)) return show('The PIN is 4 digits.'); if (a !== b) return show('The two PINs don’t match.');
+    if (['0000', '1111', '1234', '4321', '2580'].includes(a) && !demo) return show('Pick a PIN that’s harder to guess.');
+    try { await call('setPin', { pin: a }); S.pinSet = true; f.reset(); err.hidden = true; toast('Owner PIN saved'); render(); } catch (e) { show(e.message || 'Couldn’t save the PIN.'); }
+  },
+  async time(f) {
+    const fd = new FormData(f), t = f.dataset.id ? S.timeclock.find(x => x.id === f.dataset.id) : null;
+    const staffId = t ? t.staffId : String(fd.get('staffId') || ''), date = t ? t.date : String(fd.get('date') || ''), b = staffById(staffId);
+    const inHM = String(fd.get('inHM') || ''), outHM = String(fd.get('outHM') || ''), waived = fd.has('waived'), note = String(fd.get('note') || '').trim();
+    if (!b || !date || !inHM) return modalErr(f, 'Pick the person, the date and the time in.');
+    if (outHM && outHM <= inHM) return modalErr(f, 'Time out has to be after time in.');
+    if (!t && S.timeclock.some(x => x.id === `${date}_${staffId}`)) return modalErr(f, `${b.name} already has a time record that day. Edit that one.`);
+    const start = (t && t.start) || shiftStartOf(b, pol()), rate = t && t.rate != null ? t.rate : lateRateOf(b), L = lateFine(inHM, start, rate);
+    const rec = { ...(t || {}), date, staffId, inHM, in: startMs(date, inHM), start, rate, lateMin: L.mins, fine: L.fine, waived, note, edited: { by: meName(), at: Date.now() } };
+    if (outHM) { rec.outHM = outHM; rec.out = startMs(date, outHM); } else { delete rec.outHM; delete rec.out; }
+    delete rec.id;
+    if (await put('timeclock', `${date}_${staffId}`, rec)) {
+      const what = !t ? `Added a time record for ${b.name} on ${fmtDate(date)}: in ${fmtTime(inHM)}${outHM ? ', out ' + fmtTime(outHM) : ''}`
+        : [t.inHM !== inHM ? `time in ${fmtTime(t.inHM)} → ${fmtTime(inHM)}` : '', (t.outHM || '') !== outHM ? `time out ${t.outHM ? fmtTime(t.outHM) : 'none'} → ${outHM ? fmtTime(outHM) : 'none'}` : '', !!t.waived !== waived ? (waived ? `excused ${money(L.fine)} late deduction` : 'removed the excuse') : ''].filter(Boolean).join(', ');
+      logAct('clock', t ? `Changed ${b.name}'s time on ${fmtDate(date)}: ${what || 'no change'}${note ? ` (${note})` : ''}` : what + (note ? ` (${note})` : ''));
+      closeModal(); toast('Time saved');
+    }
+  },
+  async clockset(f) {
+    const fd = new FormData(f), st = String(fd.get('clockStart') || CLOCK_START), la = String(fd.get('lat') || '').trim(), ln = String(fd.get('lng') || '').trim();
+    const lat = la === '' ? '' : num(la), lng = ln === '' ? '' : num(ln);
+    if ((lat !== '' && Math.abs(lat) > 90) || (lng !== '' && Math.abs(lng) > 180)) { toast('That location doesn’t look right.', 'bad'); return; }
+    if (await saveInfo({ policy: { ...pol(), clockStart: st }, shop: { ...info().shop, lat, lng } })) { logAct('price', `Time clock: time in by ${fmtTime(st)}`); toast('Time clock saved'); }
+  }
+});
+Object.assign(TAB_VIEWS, { activity: vActivity, me: vMe, mypay: vMyPay });
+setInterval(() => {
+  if (!S.elevUntil) return;
+  if (S.elevUntil <= Date.now()) { S.elevUntil = 0; if (myRole() !== 'owner') stopBossWatches(); toast('Owner pages locked again'); render(); return; }
+  const el = document.getElementById('elev-left'); if (el) el.textContent = elevLeft();
+}, 1000);
+
 // ================= EVENTS =================
 function setPath(path, val) { const k = path.split('.'); let o = S; for (let i = 0; i < k.length - 1; i++) { o = o[k[i]] = o[k[i]] || {}; } o[k[k.length - 1]] = val; }
-document.addEventListener('click', e => { const el = e.target.closest('[data-act]'); if (!el) return; const fn = ACT[el.dataset.act]; if (fn) fn(el, e); });
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]'); if (!el) return; const fn = ACT[el.dataset.act]; if (!fn) return;
+  if (OWNER_ACTS[el.dataset.act] && !isBoss()) { pinModal(OWNER_ACTS[el.dataset.act]); return; } // owner-only: ask for the owner PIN first
+  fn(el, e);
+});
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !$('#modal').hidden) modalBack();
   if (e.key === 'Enter' && e.target.matches('tr.click[data-act]')) ACT[e.target.dataset.act](e.target, e);
@@ -1997,7 +2374,7 @@ window.addEventListener('hashchange', () => { if (!$('#modal').hidden) closeModa
 // whether it's in stock go public (never cost or stock counts). Kept in step whenever inventory changes.
 let productsSig = '';
 function syncProducts() {
-  if (!S.info || !S.loaded.inventory) return;
+  if (!S.info || !S.loaded.inventory || !isBoss()) return;
   const list = S.inventory.filter(i => i.cat === 'Retail' && i.web).sort((a, b) => (a.webOrder || 0) - (b.webOrder || 0) || a.name.localeCompare(b.name))
     .map(i => ({ id: i.id, name: i.name, price: i.price || 0, desc: i.webDesc || '', photo: i.photo || '', tag: i.webTag || '', inStock: (i.stock || 0) > 0 }));
   const sig = JSON.stringify(list);
@@ -2008,9 +2385,10 @@ function watchCol(key, q) {
   unsubs.push(q.onSnapshot(snap => { S[key] = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.loaded[key] = true; if (key === 'inventory') syncProducts(); schedule(); },
     err => { console.error(key, err); S.loaded[key] = true; S.slow = true; schedule(); }));
 }
-function stopWatches() { while (unsubs.length) { try { unsubs.pop()(); } catch (_) {} } S.loaded = {}; }
+function stopWatches() { while (unsubs.length) { try { unsubs.pop()(); } catch (_) {} } stopBossWatches(); S.loaded = {}; }
 function startWatches() {
   stopWatches();
+  if (myRole() === 'staff') return startOwnWatches();
   const since = addDays(today(), -400);
   const slow = setTimeout(() => { S.slow = true; schedule(); }, 10000);
   unsubs.push(db.doc('public/info').onSnapshot(s => { clearTimeout(slow); S.info = s.exists ? s.data() : null; S.infoMissing = !s.exists; schedule(); }, () => { S.slow = true; schedule(); }));
@@ -2020,8 +2398,9 @@ function startWatches() {
   watchCol('expenses', db.collection('expenses').where('date', '>=', since));
   watchCol('customers', db.collection('customers'));
   watchCol('inventory', db.collection('inventory'));
-  watchCol('payouts', db.collection('payouts'));
   watchCol('leaves', db.collection('leaves'));
+  watchCol('timeclock', db.collection('timeclock').where('date', '>=', addDays(today(), -120)));
+  bossWatches();
   watchCol('attendance', db.collection('attendance'));
   watchCol('promos', db.collection('promos'));
   watchCol('closings', db.collection('closings'));
@@ -2034,9 +2413,11 @@ render();
   onAuth(async user => {
     S.user = user; S.canAdmin = false;
     if (user) {
-      try { const a = await db.doc(`admins/${user.uid}`).get(); S.canAdmin = a.exists; } catch (_) { S.canAdmin = false; }
-      if (S.canAdmin) startWatches();
-    } else stopWatches();
+      try { const a = await db.doc(`admins/${user.uid}`).get(); S.canAdmin = a.exists; S.me = a.exists ? { uid: user.uid, ...a.data() } : null; } catch (_) { S.canAdmin = false; S.me = null; }
+      try { S.lockOn = myRole() === 'owner' && localStorage.getItem('rb-lock') === '1'; } catch (_) { S.lockOn = false; }
+      S.elevUntil = 0; NAV.length = 0; trackNav();
+      if (S.canAdmin) { startWatches(); try { const k = 'rb-in-' + user.uid; if (!sessionStorage.getItem(k)) { sessionStorage.setItem(k, '1'); logAct('signin', 'Signed in'); } } catch (_) {} }
+    } else { stopWatches(); S.me = null; }
     S.ready = true; render();
   });
 }

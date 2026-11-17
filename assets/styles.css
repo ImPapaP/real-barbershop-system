@@ -1347,3 +1347,49 @@ input[data-cust][aria-expanded="true"]{background-image:url("data:image/svg+xml,
 /* empty events section */
 .happen-empty{display:flex;gap:14px;align-items:flex-start;padding:20px;border:1.5px dashed var(--line-2);border-radius:16px;max-width:640px}
 .happen-empty p{margin:4px 0 0}
+
+/* ---------- staff sign-ins, owner PIN, activity log, time clock, closing the day ---------- */
+.who-chip{display:grid;gap:1px;padding:8px 10px;border-radius:10px;background:var(--surface-2);font-size:13px;min-width:0}
+.who-chip b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who-chip small{color:var(--muted);font-size:11.5px}
+.side-nav a.locked{color:var(--muted)}
+.side-nav a .lock-ic{margin-left:auto;display:inline-flex;opacity:.7}
+.side-nav a .lock-ic .ic{width:14px;height:14px}
+@media (max-width:860px){ .who-chip{display:none} .side-nav a .lock-ic{display:none} }
+.banner.elev{background:color-mix(in srgb,var(--accent) 12%,var(--surface));border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
+.banner.elev .ic{width:16px;height:16px;vertical-align:-3px}
+.locked-page{min-height:60vh}
+.lock-big{width:52px;height:52px;border-radius:14px;display:grid;place-items:center;background:var(--surface-2)}
+.lock-big .ic{width:26px;height:26px}
+.pin-in{font:700 28px/1 var(--f-mono,ui-monospace,monospace);letter-spacing:.5em;text-align:center;max-width:220px}
+.kpi > small{font-size:12.5px;font-weight:600;color:var(--muted)}
+.kpi > b{font:800 28px/1.05 var(--f-display);letter-spacing:.01em}
+.kpi > b.down{color:var(--bad)}
+.kpis-sm{grid-template-columns:repeat(auto-fit,minmax(min(100%,130px),1fr));margin-bottom:12px}
+.kpis-sm .kpi{padding:10px 12px}
+.kpis-sm .kpi > b{font-size:22px}
+.act-list li{align-items:flex-start}
+.act-time{flex:none;width:70px;font-size:12.5px;color:var(--muted);padding-top:2px}
+.act-list .sub{white-space:normal}
+.who.late{border-color:var(--bad)}
+.who.on.late{background:color-mix(in srgb,var(--bad) 8%,var(--surface))}
+.clock-big{font:600 18px/1.35 var(--f-body);margin:0}
+.close-day .dc-box{display:grid;gap:10px;align-content:start}
+.close-day .totals{font-size:14px}
+.sms-prev summary{cursor:pointer;font-weight:600;font-size:14px}
+.sms-prev pre{white-space:pre-wrap;font-size:12.5px;background:var(--surface-2);border-radius:10px;padding:12px;margin-top:8px;overflow-x:auto}
+.bad-hint{background:color-mix(in srgb,var(--bad) 10%,var(--surface));border-color:color-mix(in srgb,var(--bad) 35%,var(--line))}
+.login-set{border-top:1px dashed var(--line);padding-top:12px}
+/* time clock page */
+.clock-pg{max-width:480px}
+.clock-card,.clock-done{text-align:center;justify-items:center;padding:28px 20px}
+.clock-card h1,.clock-done h1{font:800 30px/1.05 var(--f-display);text-transform:uppercase}
+.btn-xl{padding:22px 28px;font-size:22px;border-radius:18px;width:min(100%,320px);justify-content:center}
+.clock-btn{margin:10px 0}
+.clock-time{font:800 64px/1 var(--f-display);letter-spacing:.01em}
+.clock-done.is-ok .clock-time{color:var(--good)}
+.clock-done.is-late .clock-time{color:var(--bad)}
+.tnum{font-variant-numeric:tabular-nums}
+.locked-page .center,.locked-page{text-align:left}
+.pin-form{justify-items:stretch;text-align:left}
+.pin-form .pin-in{max-width:none}

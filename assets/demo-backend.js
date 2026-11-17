@@ -2,12 +2,13 @@
 // Used for the live preview before Firebase is connected. Payments are skipped; bookings confirm instantly.
 import {
   windowOfTime, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, comboError, commissionFor, isServiceStaff, rebookLink, slotId, blockTimes, isActiveSlot, availableTimes, policyOf,
-  startMs, phNow, addDays, sum, promoCheck, cleanCode, cleanBday, queueItems, accountView, depositFor, cleanOptions, withOption, lateLimit, refundOnCancel
+  startMs, phNow, addDays, sum, promoCheck, cleanCode, cleanBday, queueItems, accountView, depositFor, cleanOptions, withOption, lateLimit, refundOnCancel,
+  lateFine, lateRateOf, shiftStartOf, roleOf, ACCESS, CLOCK_START
 } from './shared.js';
 
 // The saved demo is keyed by a fingerprint of the starter data, so changing the menu or team
 // (or a browser briefly mixing old and new files) never leaves stale sample data behind.
-const SEED_REV = 25; // bump when seed() itself changes
+const SEED_REV = 26; // bump when seed() itself changes
 const fingerprint = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const KEY = `rb-demo-${SEED_REV}-${fingerprint(JSON.stringify([STARTER, STARTER_STAFF]))}`, USER_KEY = 'rb-demo-user';
 try { Object.keys(localStorage).filter(k => k.startsWith('rb-demo-') && k !== KEY && k !== USER_KEY).forEach(k => localStorage.removeItem(k)); } catch (_) {}
@@ -37,11 +38,33 @@ function seed() {
       { id: 'h_s1', kind: 'promo', title: 'First visit? ₱50 off your cut', text: 'New to REAL Barbers? Use the code when you book online and get ₱50 off your first haircut.', start: '', end: day(30), code: 'WELCOME50', badge: '₱50 OFF', sample: true },
       { id: 'h_s2', kind: 'event', title: 'December: open every day', text: 'We’re open daily from 9 AM to 8 PM all December. Book early for the holidays, slots fill up fast.', start: '', end: day(45), sample: true }
     ] });
-  STARTER_STAFF.forEach(({ id, ...b }) => m.set('staff/' + id, { ...b, since: day(-40) }));
   // sample leave: Mac unpaid two days last week, Vince paid leave next week (the website hides those days for him)
   m.set('leaves/l1', { staffId: 'mac', from: day(-6), to: day(-5), paid: false, note: 'Family emergency', at: Date.now() });
   m.set('leaves/l2', { staffId: 'vince', from: day(5), to: day(6), paid: true, note: 'Vacation', at: Date.now() });
-  m.set('admins/demo', { role: 'owner' });
+  // demo sign-ins: the owner, the front desk (Alex) and two barbers who see only their own day and pay
+  m.set('admins/demo', { role: 'owner', name: 'Owner', email: 'owner@demo.realbarbers' });
+  [['alex', 'desk'], ['lyndon', 'staff'], ['vince', 'staff']].forEach(([id, role]) => { const email = `${id}@demo.realbarbers`; m.set('admins/u_' + id, { role, staffId: id, name: STARTER_STAFF.find(b => b.id === id).name, email }); });
+  STARTER_STAFF.forEach(({ id, ...b }) => { const a = ['alex', 'lyndon', 'vince'].includes(id) ? { login: { uid: 'u_' + id, email: `${id}@demo.realbarbers`, role: id === 'alex' ? 'desk' : 'staff' } } : {}; m.set('staff/' + id, { ...b, since: day(-40), ...a }); });
+  m.set('private/pin', { pin: '1234' }); // demo only: the real PIN is stored hashed by the server
+  m.set('private/clock', { key: 'demo-clock' });
+  // a few sample activity-log entries (the real log fills itself as people use the dashboard)
+  [[-1, '09:12', 'u_alex', 'Alex', 'desk', 'sale', 'Rang up ₱399 for Carlo Mendoza · Reymart · GCash'], [-1, '11:40', 'u_alex', 'Alex', 'desk', 'pin', 'Owner PIN entered: void a sale'], [-1, '11:41', 'u_alex', 'Alex', 'desk', 'void', 'Voided a ₱299 sale for a walk-in (11:20 AM, Mac, Cash)'],
+    [-1, '15:05', 'demo', 'Owner', 'owner', 'money', 'Added expense: Supplies – blades and talc ₱850 (Cash)'], [-1, '20:32', 'u_alex', 'Alex', 'desk', 'close', 'Cash count: counted ₱8,650, expected ₱8,700 (short ₱50)'],
+    [-2, '18:10', 'demo', 'Owner', 'owner', 'staff', 'Changed Jay\'s pay: ₱500 a day minimum, or 35% → ₱500 a day minimum, or 40%'], [-2, '19:00', 'demo', 'Owner', 'owner', 'clock', 'Changed Renz\'s time: excused ₱15 late deduction (traffic, accident on Sumulong)']]
+    .forEach(([n, hm, by, who, role, kind, text], i) => m.set('activity/s' + i, { at: startMs(day(n), hm), by, who, role, kind, text, sample: true }));
+  // time clock: the last 12 days (and this morning), mostly on time, a few late
+  { const now = phNow(), pol0 = policyOf(STARTER);
+    for (let n = -12; n <= 0; n++) {
+      const dt = day(n);
+      STARTER_STAFF.forEach(b => {
+        if ((b.id === 'mac' && (n === -6 || n === -5)) || rnd() < 0.08) return; // leave / day off
+        if (n === 0 && (now.time < '09:05' || ['jay', 'luz'].includes(b.id))) return; // not in yet
+        const start = shiftStartOf(b, pol0), r0 = rnd(), late = r0 < 0.18 ? 1 + Math.floor(rnd() * 40) : 0, early = late ? 0 : Math.floor(rnd() * 25);
+        const inMin = 9 * 60 + late - early, inHM = `${String(Math.floor(inMin / 60)).padStart(2, '0')}:${String(inMin % 60).padStart(2, '0')}`, L = lateFine(inHM, start, lateRateOf(b));
+        const outMin = 20 * 60 + Math.floor(rnd() * 20), outHM = `${Math.floor(outMin / 60)}:${String(outMin % 60).padStart(2, '0')}`;
+        m.set(`timeclock/${dt}_${b.id}`, { date: dt, staffId: b.id, in: startMs(dt, inHM), inHM, start, lateMin: L.mins, fine: L.fine, rate: lateRateOf(b), ...(n < 0 ? { out: startMs(dt, outHM), outHM } : {}) });
+      });
+    } }
   const svc = STARTER.services, him = svc.filter(s => s.group === 'him'), her = svc.filter(s => s.group === 'her');
   const names = ['Marco Reyes', 'Jericho Santos', 'Carlo Mendoza', 'Rafael Cruz', 'Joshua Villanueva', 'Kevin Ramos', 'Miguel Torres', 'Andrea Cruz', 'Bea Lim', 'Dennis Aquino'];
   const bd = n => day(n).slice(5); // sample birthdays: today, in 4 days, in 10 days
@@ -297,6 +320,52 @@ const FUNCS = {
     if (!r.ok) fail('invalid-argument', r.error);
     return { code, off: r.off, label: r.label };
   },
+  // ----- staff sign-ins, owner PIN, time clock, day summary (mirror functions/index.js) -----
+  staffLogin(d, u) {
+    const me = adminDoc(u); if (!me || !isBossNow(u) || roleOf(me) !== 'owner') fail('permission-denied', 'Only the owner can manage sign-ins.');
+    const k = 'staff/' + d.staffId, b = store.get(k); if (!b) fail('not-found', 'Staff member not found.');
+    if (d.remove) { if (b.login) store.delete('admins/' + b.login.uid); const { login, ...rest } = b; store.set(k, rest); actLog(u, 'login', `Removed ${b.name}'s sign-in`); changed(); return { ok: true }; }
+    const email = String(d.email || '').trim().toLowerCase(), role = ACCESS[d.role] ? d.role : 'staff';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) fail('invalid-argument', 'Enter a valid email.');
+    if ((!b.login || d.password) && String(d.password || '').length < 8) fail('invalid-argument', 'The password needs at least 8 characters.');
+    const taken = [...store].find(([key, v]) => key.startsWith('admins/') && v.email === email && (!b.login || key !== 'admins/' + b.login.uid));
+    if (taken) fail('failed-precondition', 'That email already has a sign-in.');
+    const uid = (b.login && b.login.uid) || 'u_' + d.staffId;
+    store.set('admins/' + uid, { role, staffId: d.staffId, name: b.name, email }); store.set(k, { ...b, login: { uid, email, role } });
+    actLog(u, 'login', `${b.login ? 'Changed' : 'Gave'} ${b.name} a sign-in (${ACCESS[role]})`); changed(); return { ok: true, uid };
+  },
+  setPin(d, u) {
+    const me = adminDoc(u); if (!me || roleOf(me) !== 'owner') fail('permission-denied', 'Only the owner can set the PIN.');
+    if (!/^\d{4}$/.test(String(d.pin || ''))) fail('invalid-argument', 'The PIN is 4 digits.');
+    store.set('private/pin', { pin: String(d.pin), fails: 0, lockUntil: 0 }); actLog(u, 'pin', 'Changed the owner PIN'); changed(); return { ok: true };
+  },
+  pinUnlock(d, u) {
+    const me = adminDoc(u); if (!me) fail('permission-denied', 'Sign in first.');
+    const p = store.get('private/pin'); if (!p) fail('failed-precondition', 'No owner PIN yet. The owner sets it in Shop setup → Owner PIN.');
+    const now = Date.now(); if ((p.lockUntil || 0) > now) fail('resource-exhausted', `Too many wrong tries. Try again in ${Math.ceil((p.lockUntil - now) / 60000)} min.`);
+    if (String(d.pin || '') !== p.pin) { const fails = (p.fails || 0) + 1; store.set('private/pin', { ...p, fails: fails >= 5 ? 0 : fails, lockUntil: fails >= 5 ? now + 15 * 60e3 : 0 }); actLog(u, 'pin', 'Wrong owner PIN' + (fails >= 5 ? ' (5 tries: locked 15 minutes)' : '')); changed(); fail('permission-denied', fails >= 5 ? 'Too many wrong tries. Locked for 15 minutes.' : 'Wrong PIN.'); }
+    const until = now + 5 * 60e3; store.set('private/pin', { ...p, fails: 0 }); store.set('elevations/' + u.uid, { until, at: now });
+    actLog(u, 'pin', `Owner PIN entered${d.why ? ': ' + String(d.why).slice(0, 80) : ''}`); changed(); return { until };
+  },
+  clockPunch(d, u) {
+    const me = adminDoc(u); if (!me || !me.staffId) fail('permission-denied', 'This sign-in isn’t linked to a staff member. Ask the owner.');
+    const key = (store.get('private/clock') || {}).key; if (!key || String(d.k || '') !== key) fail('permission-denied', 'This QR code is old. Scan the one at the shop.');
+    const b = store.get('staff/' + me.staffId); if (!b) fail('not-found', 'Staff member not found.');
+    const pol = policyOf(info()), now = Date.now(), { date, time } = phNow(now), k = `timeclock/${date}_${me.staffId}`, cur = store.get(k);
+    if (d.peek) return { name: b.name, state: !cur ? 'out' : cur.out ? 'done' : 'in', rec: cur || null, start: shiftStartOf(b, pol) };
+    if (!cur) {
+      const start = shiftStartOf(b, pol), rate = lateRateOf(b), L = lateFine(time, start, rate), rec = { date, staffId: me.staffId, in: now, inHM: time, start, lateMin: L.mins, fine: L.fine, rate };
+      store.set(k, rec); actLog(u, 'clock', `${b.name} timed in at ${time}${L.mins ? ` (${L.mins} min late, −₱${L.fine})` : ''}`); changed(); return { action: 'in', name: b.name, rec };
+    }
+    if (cur.out) fail('failed-precondition', `You already timed out at ${cur.outHM}. Ask the owner if this is wrong.`);
+    if (now - cur.in < 2 * 60e3) fail('failed-precondition', `You timed in at ${cur.inHM}. Scan again when you leave.`);
+    const rec = { ...cur, out: now, outHM: time }; store.set(k, rec); actLog(u, 'clock', `${b.name} timed out at ${time}`); changed(); return { action: 'out', name: b.name, rec };
+  },
+  sendDaySummary(d, u) {
+    const me = adminDoc(u); if (!me || roleOf(me) === 'staff') fail('permission-denied', 'Only the shop can do this.');
+    const to = String((info().shop || {}).ownerPhone || '').replace(/\D/g, ''); if (!to) fail('failed-precondition', 'Add the owner’s mobile number in Shop setup → End-of-day summary.');
+    actLog(u, 'close', 'Texted the day summary to the owner'); changed(); return { sms: 'demo', to };
+  },
   nextReceiptNo() { const r = store.get('private/receipts') || {}, n = Math.max(1, r.next || 1); store.set('private/receipts', { ...r, next: n + 1 }); changed(); return { no: n }; },
   // Client accounts (mirrors the server). In the demo the code is shown on screen instead of texted.
   requestCode(d) {
@@ -431,18 +500,24 @@ const FUNCS = {
     return publicView(d.id);
   }
 };
+const adminDoc = u => u && store.get('admins/' + u.uid) ? { uid: u.uid, ...store.get('admins/' + u.uid) } : null;
+const isBossNow = u => { const a = adminDoc(u); return !!a && (roleOf(a) === 'owner' || ((store.get('elevations/' + u.uid) || {}).until || 0) > Date.now()); };
+function actLog(u, kind, text) { const a = adminDoc(u); store.set('activity/a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), { at: Date.now(), by: (a && a.uid) || 'server', who: (a && (a.name || a.email)) || 'System', role: a ? roleOf(a) : 'system', kind, text }); }
 export async function call(name, data) {
   await new Promise(r => setTimeout(r, 400));
   if (!FUNCS[name]) fail('not-found', 'Unknown function');
-  return FUNCS[name](data || {});
+  return FUNCS[name](data || {}, user);
 }
 
 // ---------- sign-in (demo owner is signed in by default) ----------
 const authFns = new Set();
 let user = null;
-try { user = localStorage.getItem(USER_KEY) === 'out' ? null : { uid: 'demo', email: 'owner@demo.realbarbers' }; } catch (_) { user = { uid: 'demo', email: 'owner@demo.realbarbers' }; }
+// Demo: any password works. An email of one of the demo sign-ins (alex@, lyndon@, vince@demo.realbarbers, or one
+// the owner adds in Staff → Edit → Sign-in) signs in as that person; any other email is the owner.
+const demoUser = email => { const e = String(email || '').trim().toLowerCase(), hit = [...store].find(([k, v]) => k.startsWith('admins/') && v.email && v.email === e); return hit ? { uid: hit[0].slice(7), email: e } : { uid: 'demo', email: e || 'owner@demo.realbarbers' }; };
+try { const v = localStorage.getItem(USER_KEY); user = v === 'out' ? null : demoUser(v && v !== 'in' ? v : ''); } catch (_) { user = demoUser(''); }
 export function onAuth(fn) { authFns.add(fn); setTimeout(() => fn(user), 0); return () => authFns.delete(fn); }
-export async function login(email) { user = { uid: 'demo', email: email || 'owner@demo.realbarbers' }; try { localStorage.setItem(USER_KEY, 'in'); } catch (_) {} authFns.forEach(f => f(user)); }
+export async function login(email) { user = demoUser(email); try { localStorage.setItem(USER_KEY, user.email); } catch (_) {} authFns.forEach(f => f(user)); }
 export async function logout() { user = null; try { localStorage.setItem(USER_KEY, 'out'); } catch (_) {} authFns.forEach(f => f(null)); }
 export async function resetPassword() {}
 

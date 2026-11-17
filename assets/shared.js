@@ -2,7 +2,7 @@
 export const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 5, lateMinutesDeposit: 20, cancelHours: 48, leadMinutes: 60, bookAheadDays: 365, step: 60, maxReschedules: 2, rebookDays: 28, onlineBooking: true, receiptTexts: true, birthdaySvc: 'h8', birthdayPrice: 249, regularVisits: 3, lastBooking: '19:00' };
+export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 5, lateMinutesDeposit: 20, cancelHours: 48, leadMinutes: 60, bookAheadDays: 365, step: 60, maxReschedules: 2, rebookDays: 28, onlineBooking: true, receiptTexts: true, birthdaySvc: 'h8', birthdayPrice: 249, regularVisits: 3, lastBooking: '19:00', clockStart: '09:00' };
 
 export const $ = (s, r = document) => r.querySelector(s);
 export const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -13,7 +13,7 @@ export const sum = (a, f) => a.reduce((t, x) => t + (Number(f(x)) || 0), 0);
 
 // Dates are handled as "YYYY-MM-DD" strings in Philippine time, whatever the visitor's own time zone.
 export const TZ = '+08:00';
-export function phNow(ms = Date.now()) { const d = new Date(ms + 8 * 3600e3); return { date: d.toISOString().slice(0, 10), min: d.getUTCHours() * 60 + d.getUTCMinutes(), dow: d.getUTCDay() }; }
+export function phNow(ms = Date.now()) { const d = new Date(ms + 8 * 3600e3); return { date: d.toISOString().slice(0, 10), min: d.getUTCHours() * 60 + d.getUTCMinutes(), time: d.toISOString().slice(11, 16), dow: d.getUTCDay() }; }
 export const addDays = (date, n) => { const d = new Date(`${date}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 export const dowOf = date => new Date(`${date}T00:00:00Z`).getUTCDay();
 export const startMs = (date, time) => Date.parse(`${date}T${time}:00${TZ}`);
@@ -190,15 +190,15 @@ export const STARTER_PRODUCTS = [
   { id: 'sea-salt-spray', name: 'Sea Salt Spray', price: 370, size: '100 ml', unit: 'bottles', desc: 'Medium hold, medium shine. Spray on damp hair for a loose, textured look.', tag: '', photo: 'assets/products/sea-salt-spray.jpg' }
 ];
 export const STARTER_STAFF = [
-  { id: 'lyndon', photo: 'assets/staff/lyndon.jpg', name: 'Lyndon', role: 'barber', title: 'Senior barber', specialty: 'Classic and modern cuts, and braids', groups: ['him', 'braids'], tiers: ['deluxe'], payType: 'quota', rate: 50, dailyPay: 700, chair: 1 },
-  { id: 'rod', photo: 'assets/staff/rod.jpg', name: 'Roderick', role: 'barber', title: 'Senior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['deluxe'], payType: 'quota', rate: 50, dailyPay: 700, chair: 2 },
-  { id: 'reymart', photo: 'assets/staff/reymart.jpg', name: 'Reymart', role: 'barber', title: 'Senior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['deluxe'], payType: 'quota', rate: 50, dailyPay: 700, chair: 3 },
-  { id: 'angelo', photo: 'assets/staff/angelo.jpg', name: 'Angelo', role: 'barber', title: 'Senior barber', specialty: 'Classic and modern cuts', groups: ['him'], tiers: ['deluxe'], payType: 'quota', rate: 50, dailyPay: 700, chair: 4 },
-  { id: 'ed', photo: 'assets/staff/ed.jpg', name: 'Joe Ed', role: 'barber', title: 'Junior barber', specialty: 'Classic and modern cuts', groups: ['him'], tiers: ['regular'], payType: 'quota', rate: 40, dailyPay: 500, noDeposit: true, chair: 5 },
-  { id: 'renz', photo: 'assets/staff/renz.jpg', name: 'Renz', role: 'barber', title: 'Junior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['regular'], payType: 'quota', rate: 40, dailyPay: 500, noDeposit: true, chair: 6 },
-  { id: 'jay', photo: 'assets/staff/jay.jpg', name: 'Jay', role: 'barber', title: 'Junior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['regular'], payType: 'quota', rate: 40, dailyPay: 500, noDeposit: true, chair: 7 },
-  { id: 'vince', photo: 'assets/staff/vince.jpg', name: 'Vince', role: 'barber', title: 'Junior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['regular'], payType: 'quota', rate: 40, dailyPay: 500, noDeposit: true, chair: 8 },
-  { id: 'mac', photo: 'assets/staff/mac.jpg', name: 'Mac', role: 'barber', title: 'Junior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['regular'], payType: 'quota', rate: 40, dailyPay: 500, noDeposit: true, chair: 9 },
+  { id: 'lyndon', photo: 'assets/staff/lyndon.jpg', name: 'Lyndon', role: 'barber', title: 'Senior barber', specialty: 'Classic and modern cuts, and braids', groups: ['him', 'braids'], tiers: ['deluxe'], payType: 'quota', rate: 50, dailyPay: 700, lateFine: 50, chair: 1 },
+  { id: 'rod', photo: 'assets/staff/rod.jpg', name: 'Roderick', role: 'barber', title: 'Senior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['deluxe'], payType: 'quota', rate: 50, dailyPay: 700, lateFine: 50, chair: 2 },
+  { id: 'reymart', photo: 'assets/staff/reymart.jpg', name: 'Reymart', role: 'barber', title: 'Senior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['deluxe'], payType: 'quota', rate: 50, dailyPay: 700, lateFine: 50, chair: 3 },
+  { id: 'angelo', photo: 'assets/staff/angelo.jpg', name: 'Angelo', role: 'barber', title: 'Senior barber', specialty: 'Classic and modern cuts', groups: ['him'], tiers: ['deluxe'], payType: 'quota', rate: 50, dailyPay: 700, lateFine: 50, chair: 4 },
+  { id: 'ed', photo: 'assets/staff/ed.jpg', name: 'Joe Ed', role: 'barber', title: 'Junior barber', specialty: 'Classic and modern cuts', groups: ['him'], tiers: ['regular'], payType: 'quota', rate: 40, dailyPay: 500, lateFine: 15, noDeposit: true, chair: 5 },
+  { id: 'renz', photo: 'assets/staff/renz.jpg', name: 'Renz', role: 'barber', title: 'Junior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['regular'], payType: 'quota', rate: 40, dailyPay: 500, lateFine: 15, noDeposit: true, chair: 6 },
+  { id: 'jay', photo: 'assets/staff/jay.jpg', name: 'Jay', role: 'barber', title: 'Junior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['regular'], payType: 'quota', rate: 40, dailyPay: 500, lateFine: 15, noDeposit: true, chair: 7 },
+  { id: 'vince', photo: 'assets/staff/vince.jpg', name: 'Vince', role: 'barber', title: 'Junior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['regular'], payType: 'quota', rate: 40, dailyPay: 500, lateFine: 15, noDeposit: true, chair: 8 },
+  { id: 'mac', photo: 'assets/staff/mac.jpg', name: 'Mac', role: 'barber', title: 'Junior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['regular'], payType: 'quota', rate: 40, dailyPay: 500, lateFine: 15, noDeposit: true, chair: 9 },
   { id: 'dave', photo: 'assets/staff/dave.jpg', name: 'Dave', role: 'stylist', title: 'Stylist', specialty: 'Women’s services: hair color, rebonding, styling and perming', groups: ['her'], rate: 45, dailyPay: 1000, productFee: { threshold: 1500, low: 50, high: 100 }, noDeposit: true, chair: 10 },
   { id: 'luz', photo: 'assets/staff/luz.jpg', name: 'Luz', role: 'nails', title: 'Nail technician', specialty: 'Nail care', groups: ['nails'], payType: 'quota', rate: 40, dailyPay: 500, noDeposit: true, chair: 11 },
   { id: 'liza', photo: 'assets/staff/liza.jpg', name: 'Liza', role: 'nails', title: 'Nail technician', specialty: 'Nail care', groups: ['nails'], payType: 'quota', rate: 40, dailyPay: 500, noDeposit: true, chair: 12 },
@@ -507,3 +507,17 @@ export const withOption = (s, opts) => { const o = s && (s.options || []).find(x
 export const hasDeposit = a => !!(a && a.deposit && a.deposit.status !== 'none' && (a.deposit.amount || 0) > 0);
 export const lateLimit = (a, pol) => hasDeposit(a) ? (pol.lateMinutesDeposit ?? 20) : (pol.lateMinutes ?? 5);
 export const refundOnCancel = (a, pol, now = Date.now()) => hasDeposit(a) && a.deposit.status === 'paid' && (a.startAt || 0) - now >= (pol.cancelHours ?? 48) * 3600e3;
+
+// ---------- time clock ----------
+// 9:01 is late. Each started 15 minutes late costs the person's late rate (seniors ₱50, juniors ₱15):
+// 9:01–9:15 → 1 × rate, 9:16–9:30 → 2 × rate, and so on. Times are "HH:MM" in Philippine time.
+export const CLOCK_START = '09:00';
+export function lateFine(inHM, startHM, rate) {
+  const mins = Math.max(0, toMin(inHM) - toMin(startHM || CLOCK_START)), blocks = mins > 0 ? Math.ceil(mins / 15) : 0;
+  return { mins, blocks, fine: blocks * Math.max(0, Number(rate) || 0) };
+}
+export const lateRateOf = b => (b && b.lateFine != null && b.lateFine !== '') ? Math.max(0, Number(b.lateFine) || 0) : (b && (b.role || 'barber') === 'barber' ? ((b.tiers || []).includes('deluxe') ? 50 : 15) : 0);
+export const shiftStartOf = (b, pol) => (b && b.shiftStart) || (pol && pol.clockStart) || CLOCK_START;
+// Who can do what in the dashboard (admins/{uid}.role). A missing role means owner (accounts made before roles).
+export const ACCESS = { owner: 'Owner (everything)', desk: 'Front desk (bookings, checkout, clients)', staff: 'Own schedule and pay only' };
+export const roleOf = a => (a && ACCESS[a.role]) ? a.role : 'owner';
