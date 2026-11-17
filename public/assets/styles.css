@@ -213,6 +213,11 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .tbl tr.click{cursor:pointer}
 .tbl tr.click:hover td{background:var(--surface-2)}
 .tbl .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:nowrap}
+.tbl .acts-col{flex-direction:column;align-items:stretch}
+.pay-tbl td,.pay-tbl th{padding-left:8px;padding-right:8px}
+.pay-tbl .pay-rule{max-width:22ch}
+.pay-tbl .avatar{flex:none}
+.pay-tbl td .nowrap{white-space:normal}
 .tbl select{width:auto;padding:5px 8px;font-size:13px}
 .empty{padding:22px;text-align:center;color:var(--muted);font-size:14px;border:1px dashed var(--line-2);border-radius:10px}
 .list{display:grid;grid-template-columns:minmax(0,1fr);gap:0;margin:0;padding:0;list-style:none}
