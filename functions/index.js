@@ -18,6 +18,10 @@
 //   joinQueue          walk-in QR poster in the shop -> join today's walk-in queue (no deposit)
 //   syncFacebookPhotos every 3 hours -> newest Facebook page photos into the website gallery
 //   syncFacebookNow    dashboard -> the same, right away
+//   staffLogin         owner -> create, change or remove a staff member's dashboard sign-in and access level
+//   setPin / pinUnlock owner PIN: unlock owner-only actions on a front-desk account for 5 minutes
+//   clockPunch         staff phone, after scanning the shop's time-clock QR -> time in / time out
+//   sendDaySummary     dashboard -> text the end-of-day summary to the owner
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentWritten, onDocumentCreated } from 'firebase-functions/v2/firestore';
@@ -28,11 +32,13 @@ import crypto from 'node:crypto';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
+import { getAuth } from 'firebase-admin/auth';
 import {
   validateRequest, policyOf, slotId, isActiveSlot, desiredSlots, slotStateFor, apptMins, startMs,
   verifyPaymongoSignature, rebookLink, newToken, tokenMatches, bookingCode, smsText, emailContent, eligibleBarbers,
   servicesById, blockTimes, phNow, addDays, normalizePhone, validEmail, parseSlotId, waitlistMatches,
-  promoCheck, cleanCode, validProofImage, cleanBday, receiptView, receiptSms, receiptEmail, queueItems, accountView, depositFor, cleanOptions, withOption, hasDeposit, lateLimit, refundOnCancel
+  promoCheck, cleanCode, validProofImage, cleanBday, receiptView, receiptSms, receiptEmail, queueItems, accountView, depositFor, cleanOptions, withOption, hasDeposit, lateLimit, refundOnCancel,
+  lateFine, lateRateOf, shiftStartOf, roleOf, ACCESS
 } from './src/core.js';
 import { createCheckout, expireCheckout, sendSms, sendEmail } from './src/providers.js';
 
@@ -782,7 +788,7 @@ export const syncFacebookPhotos = onSchedule({ schedule: 'every 3 hours', timeZo
 // =============== weekly backup ===============
 // Every Sunday at 3 AM: all the shop's records (no photos) as one JSON file in Cloud Storage, backups/YYYY-MM-DD.json.
 // The last 12 are kept. Download them in the Firebase console → Storage → backups.
-const BACKUP_COLS = ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts', 'waitlist', 'attendance', 'promos', 'closings', 'leaves'];
+const BACKUP_COLS = ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts', 'waitlist', 'attendance', 'promos', 'closings', 'leaves', 'timeclock', 'activity'];
 export const weeklyBackup = onSchedule({ schedule: '0 3 * * 0', timeZone: 'Asia/Manila', timeoutSeconds: 540, memory: '512MiB' }, async () => {
   const out = { at: new Date().toISOString(), info: (await db.doc('public/info').get()).data() || null };
   for (const c of BACKUP_COLS) out[c] = (await db.collection(c).get()).docs.map(d => ({ id: d.id, ...d.data() }));
@@ -805,4 +811,119 @@ export const nextReceiptNo = onCall(async req => {
 export const syncFacebookNow = onCall(async req => {
   if (!(await isAdmin(req))) throw new HttpsError('permission-denied', 'Only the shop can do this.');
   return pullFacebookPhotos();
+});
+
+// =============== staff accounts, owner PIN, activity log ===============
+// admins/{uid}: { role: 'owner' | 'desk' | 'staff', staffId, name, email }. A missing role means owner.
+// The owner PIN unlocks owner-only actions on another account for 5 minutes: elevations/{uid}.until,
+// which firestore.rules checks. Every sensitive change is written to activity/ (read by the owner only).
+async function adminOf(req) { if (!req.auth) return null; const s = await db.doc(`admins/${req.auth.uid}`).get(); return s.exists ? { uid: req.auth.uid, ...s.data() } : null; }
+async function bossOf(req) {
+  const a = await adminOf(req); if (!a) return null;
+  if (roleOf(a) === 'owner') return a;
+  const e = await db.doc(`elevations/${a.uid}`).get();
+  return e.exists && (e.data().until || 0) > Date.now() ? a : null;
+}
+async function logActivity(a, kind, text, extra = {}) {
+  try { await db.collection('activity').add({ at: Date.now(), by: (a && a.uid) || 'server', who: (a && (a.name || a.email)) || 'System', role: a ? roleOf(a) : 'system', kind, text: String(text).slice(0, 300), ...extra }); }
+  catch (e) { logger.warn('activity log failed', e.message); }
+}
+const pinHash = (pin, salt) => crypto.scryptSync(String(pin), salt, 32).toString('hex');
+
+export const staffLogin = onCall(async req => {
+  const me = await bossOf(req); if (!me || roleOf(me) !== 'owner') throw new HttpsError('permission-denied', 'Only the owner can manage sign-ins.');
+  const d = req.data || {}, staffId = String(d.staffId || ''), sRef = db.doc(`staff/${staffId}`), st = staffId ? await sRef.get() : null;
+  if (!st || !st.exists) throw new HttpsError('not-found', 'Staff member not found.');
+  const b = st.data(), cur = b.login || null, auth = getAuth();
+  if (d.remove) {
+    if (cur && cur.uid) { await db.doc(`admins/${cur.uid}`).delete(); try { await auth.deleteUser(cur.uid); } catch (_) {} }
+    await sRef.update({ login: FieldValue.delete() });
+    await logActivity(me, 'login', `Removed ${b.name}'s sign-in`);
+    return { ok: true };
+  }
+  const email = String(d.email || '').trim().toLowerCase(), role = ACCESS[d.role] ? d.role : 'staff', pass = String(d.password || '');
+  if (!validEmail(email)) throw new HttpsError('invalid-argument', 'Enter a valid email.');
+  if ((!cur || pass) && pass.length < 8) throw new HttpsError('invalid-argument', 'The password needs at least 8 characters.');
+  let uid = cur && cur.uid;
+  try {
+    if (uid) await auth.updateUser(uid, { email, ...(pass ? { password: pass } : {}), displayName: b.name });
+    else { let u; try { u = await auth.getUserByEmail(email); await auth.updateUser(u.uid, { password: pass, displayName: b.name }); } catch (_) { u = await auth.createUser({ email, password: pass, displayName: b.name }); } uid = u.uid; }
+  } catch (e) { throw new HttpsError('failed-precondition', e.code === 'auth/email-already-exists' ? 'That email already has a sign-in.' : 'Couldn’t save the sign-in. ' + (e.message || '')); }
+  await db.doc(`admins/${uid}`).set({ role, staffId, name: b.name, email, at: Date.now() });
+  await sRef.update({ login: { uid, email, role } });
+  await logActivity(me, 'login', `${cur ? 'Changed' : 'Gave'} ${b.name} a sign-in (${ACCESS[role]})`);
+  return { ok: true, uid };
+});
+
+export const setPin = onCall(async req => {
+  const me = await adminOf(req); if (!me || roleOf(me) !== 'owner') throw new HttpsError('permission-denied', 'Only the owner can set the PIN.');
+  const pin = String(req.data && req.data.pin || '');
+  if (!/^\d{4}$/.test(pin)) throw new HttpsError('invalid-argument', 'The PIN is 4 digits.');
+  const salt = crypto.randomBytes(16).toString('hex');
+  await db.doc('private/pin').set({ hash: pinHash(pin, salt), salt, fails: 0, lockUntil: 0, at: Date.now() });
+  await logActivity(me, 'pin', 'Changed the owner PIN');
+  return { ok: true };
+});
+export const pinUnlock = onCall(async req => {
+  const me = await adminOf(req); if (!me) throw new HttpsError('permission-denied', 'Sign in first.');
+  const ref = db.doc('private/pin'), s = await ref.get();
+  if (!s.exists) throw new HttpsError('failed-precondition', 'No owner PIN yet. The owner sets it in Shop setup → Owner PIN.');
+  const p = s.data(), now = Date.now();
+  if ((p.lockUntil || 0) > now) throw new HttpsError('resource-exhausted', `Too many wrong tries. Try again in ${Math.ceil((p.lockUntil - now) / 60000)} min.`);
+  const ok = crypto.timingSafeEqual(Buffer.from(pinHash(String(req.data && req.data.pin || ''), p.salt), 'hex'), Buffer.from(p.hash, 'hex'));
+  if (!ok) {
+    const fails = (p.fails || 0) + 1;
+    await ref.update({ fails: fails >= 5 ? 0 : fails, lockUntil: fails >= 5 ? now + 15 * 60e3 : 0 });
+    await logActivity(me, 'pin', 'Wrong owner PIN' + (fails >= 5 ? ' (5 tries: locked 15 minutes)' : ''));
+    throw new HttpsError('permission-denied', fails >= 5 ? 'Too many wrong tries. Locked for 15 minutes.' : 'Wrong PIN.');
+  }
+  const until = now + 5 * 60e3, why = String(req.data && req.data.why || '').slice(0, 80);
+  await ref.update({ fails: 0 });
+  await db.doc(`elevations/${me.uid}`).set({ until, at: now });
+  await logActivity(me, 'pin', `Owner PIN entered${why ? ': ' + why : ''}`);
+  return { until };
+});
+
+// =============== time clock ===============
+// The shop prints a QR (Shop setup → Time clock) that opens clock.html?k=<key>. A signed-in staff member taps
+// "Time in" / "Time out"; the server stamps Philippine time, works out lateness (9:01 is late) and the fine.
+// timeclock/{date}_{staffId}: { date, staffId, in, inHM, out, outHM, start, lateMin, fine, rate, away }
+const distM = (a, b) => { const R = 6371e3, r = x => x * Math.PI / 180, dLat = r(b.lat - a.lat), dLng = r(b.lng - a.lng); const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLng / 2) ** 2; return Math.round(2 * R * Math.asin(Math.sqrt(h))); };
+export const clockPunch = onCall(async req => {
+  const me = await adminOf(req); if (!me || !me.staffId) throw new HttpsError('permission-denied', 'This sign-in isn’t linked to a staff member. Ask the owner.');
+  const d = req.data || {}, key = (await db.doc('private/clock').get()).data() || {};
+  if (!key.key || !tokenMatches(String(d.k || ''), key.key)) throw new HttpsError('permission-denied', 'This QR code is old. Scan the one at the shop.');
+  const st = await db.doc(`staff/${me.staffId}`).get(); if (!st.exists) throw new HttpsError('not-found', 'Staff member not found.');
+  const b = st.data(), info = await loadInfo(), pol = policyOf(info), now = Date.now(), { date, time } = phNow(now);
+  const ref = db.doc(`timeclock/${date}_${me.staffId}`), cur = (await ref.get()).data();
+  const shop = info.shop || {}, here = Number.isFinite(+d.lat) && Number.isFinite(+d.lng) ? { lat: +d.lat, lng: +d.lng } : null;
+  const dist = here && Number.isFinite(+shop.lat) && Number.isFinite(+shop.lng) && shop.lat !== '' ? distM(here, { lat: +shop.lat, lng: +shop.lng }) : null;
+  const away = dist != null && dist > 300;
+  if (d.peek) return { name: b.name, state: !cur ? 'out' : cur.out ? 'done' : 'in', rec: cur || null, start: shiftStartOf(b, pol) };
+  if (!cur) {
+    const start = shiftStartOf(b, pol), rate = lateRateOf(b), L = lateFine(time, start, rate);
+    const rec = { date, staffId: me.staffId, in: now, inHM: time, start, lateMin: L.mins, fine: L.fine, rate, ...(dist != null ? { inDist: dist } : {}), ...(away ? { away: true } : {}) };
+    await ref.set(rec);
+    await logActivity(me, 'clock', `${b.name} timed in at ${time}${L.mins ? ` (${L.mins} min late, −₱${L.fine})` : ''}${away ? ` · ${dist} m from the shop` : ''}`);
+    return { action: 'in', name: b.name, rec };
+  }
+  if (cur.out) throw new HttpsError('failed-precondition', `You already timed out at ${cur.outHM}. Ask the owner if this is wrong.`);
+  if (now - cur.in < 2 * 60e3) throw new HttpsError('failed-precondition', `You timed in at ${cur.inHM}. Scan again when you leave.`);
+  const upd = { out: now, outHM: time, ...(dist != null ? { outDist: dist } : {}), ...(away ? { awayOut: true } : {}) };
+  await ref.update(upd);
+  await logActivity(me, 'clock', `${b.name} timed out at ${time}${away ? ` · ${dist} m from the shop` : ''}`);
+  return { action: 'out', name: b.name, rec: { ...cur, ...upd } };
+});
+
+// =============== end-of-day summary ===============
+export const sendDaySummary = onCall({ secrets: NOTIFY_SECRETS }, async req => {
+  const me = await adminOf(req); if (!me || roleOf(me) === 'staff') throw new HttpsError('permission-denied', 'Only the shop can do this.');
+  const info = await loadInfo(), to = normalizePhone((info.shop || {}).ownerPhone || '');
+  if (!to) throw new HttpsError('failed-precondition', 'Add the owner’s mobile number in Shop setup → End-of-day summary.');
+  const text = String(req.data && req.data.text || '').slice(0, 900);
+  if (!text) throw new HttpsError('invalid-argument', 'Nothing to send.');
+  const smsCfg = { apiKey: SEMAPHORE_API_KEY.value(), sender: SMS_SENDER_NAME.value() };
+  const r = await sendSms(smsCfg, to, text);
+  await logActivity(me, 'close', `Texted the day summary to the owner`);
+  return { sms: r, to };
 });

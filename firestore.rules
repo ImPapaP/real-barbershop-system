@@ -2,31 +2,69 @@ rules_version = '2';
 // Who can read and write what.
 //  - Anyone: read the shop menu (public/info) and which time slots are taken (slots/, no customer details).
 //  - Customers never write directly. Bookings go through the Cloud Functions, which check everything.
-//  - Admins (a document in admins/ with their user id) manage everything else from the dashboard.
+//  - Dashboard sign-ins have a document in admins/ with a role (set in Staff → Edit → Sign-in):
+//      owner  everything (a missing role also means owner, for accounts made before roles)
+//      desk   front desk: bookings, checkout, clients, the cash count. No income pages, pay, settings or deleting sales.
+//      staff  their own appointments, sales, pay, leave and time records only.
+//  - The owner PIN (Cloud Function pinUnlock) gives any sign-in owner powers for 5 minutes: elevations/{uid}.until.
+//  - activity/ is the log of who did what: anyone signed in adds their own entries, only the owner reads, nobody edits.
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isAdmin() {
-      return request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+    function me() { return get(/databases/$(database)/documents/admins/$(request.auth.uid)).data; }
+    function role() { return me().get('role', 'owner'); }
+    function elevated() {
+      return exists(/databases/$(database)/documents/elevations/$(request.auth.uid))
+        && get(/databases/$(database)/documents/elevations/$(request.auth.uid)).data.until > request.time.toMillis();
     }
+    function boss() { return isAdmin() && (role() == 'owner' || elevated()); }
+    function desk() { return isAdmin() && role() == 'desk'; }
+    function front() { return boss() || desk(); }
+    function staff() { return isAdmin() && role() == 'staff'; }
+    function own(field) { return staff() && resource.data[field] == me().staffId; }
 
     match /public/{doc} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if boss();
     }
-
     match /slots/{slot} {
       allow read: if true;
       allow write: if false; // only Cloud Functions
     }
-
     match /admins/{uid} {
-      allow read: if request.auth != null && request.auth.uid == uid;
-      allow write: if false; // add admins in the Firebase console
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false; // Cloud Function staffLogin, or the Firebase console for the first owner
+    }
+    match /elevations/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false; // Cloud Function pinUnlock
+    }
+    match /activity/{id} {
+      allow read: if boss();
+      allow create: if isAdmin() && request.resource.data.by == request.auth.uid;
+      allow update, delete: if false;
     }
 
-    match /{col}/{id} {
-      allow read, write: if isAdmin()
-        && col in ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts', 'waitlist', 'attendance', 'promos', 'proofs', 'cuts', 'refs', 'private', 'closings', 'leaves'];
-    }
+    // Front desk and owner
+    match /appointments/{id} { allow read: if front() || own('barberId'); allow write: if front(); }
+    match /customers/{id} { allow read, create, update: if front(); allow delete: if boss(); }
+    match /waitlist/{id} { allow read, write: if front(); }
+    match /cuts/{id} { allow read, write: if front(); }
+    match /refs/{id} { allow read, write: if front(); }
+    match /proofs/{id} { allow read, write: if front(); }
+    match /closings/{id} { allow read, write: if front(); }
+    match /attendance/{id} { allow read: if front() || own('barberId'); allow write: if front(); }
+    match /sales/{id} { allow read: if front() || own('barberId'); allow create, update: if front(); allow delete: if boss(); }
+    match /inventory/{id} { allow read: if front(); allow update: if front(); allow create, delete: if boss(); }
+    match /promos/{id} { allow read: if front(); allow write: if boss(); }
+    match /timeclock/{id} { allow read: if front() || own('staffId'); allow write: if boss(); }
+    match /leaves/{id} { allow read: if front() || own('staffId'); allow write: if boss(); }
+    match /staff/{id} { allow read: if front() || (staff() && id == me().staffId); allow write: if boss(); }
+
+    // Owner only
+    match /expenses/{id} { allow read: if front(); allow write: if boss(); }
+    match /payouts/{id} { allow read: if boss() || own('barberId'); allow write: if boss(); }
+    match /private/{id} { allow read, write: if boss(); }
   }
 }

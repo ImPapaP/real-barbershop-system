@@ -17,7 +17,8 @@ export const DEFAULT_POLICY = {
   onlineBooking: true,   // the shop can switch online booking off in Shop setup
   rebookDays: 28,        // days after a visit to send a "time for a trim" text (0 = off)
   receiptTexts: true,    // text the client a short receipt after checkout (the full one goes by email)
-  lastBooking: '19:00'   // latest start time for online bookings ('' = until the service would end at closing)
+  lastBooking: '19:00',  // latest start time for online bookings ('' = until the service would end at closing)
+  clockStart: '09:00'    // staff time in by this; 9:01 is late (see lateFine)
 };
 
 export const pad = n => String(n).padStart(2, '0');
@@ -28,7 +29,7 @@ export const addDays = (date, n) => { const d = new Date(`${date}T00:00:00Z`); d
 export const dowOf = date => new Date(`${date}T00:00:00Z`).getUTCDay();
 export function phNow(ms = Date.now()) {
   const d = new Date(ms + 8 * 3600e3);
-  return { date: d.toISOString().slice(0, 10), min: d.getUTCHours() * 60 + d.getUTCMinutes() };
+  return { date: d.toISOString().slice(0, 10), min: d.getUTCHours() * 60 + d.getUTCMinutes(), time: d.toISOString().slice(11, 16) };
 }
 export const policyOf = info => ({ ...DEFAULT_POLICY, ...(info && info.policy || {}) });
 export const slotId = (barberId, date, time) => `${barberId}_${date.replace(/-/g, '')}_${time.replace(':', '')}`;
@@ -367,3 +368,17 @@ export const withOption = (s, opts) => { const o = s && (s.options || []).find(x
 export const hasDeposit = a => !!(a && a.deposit && a.deposit.status !== 'none' && (a.deposit.amount || 0) > 0);
 export const lateLimit = (a, pol) => hasDeposit(a) ? (pol.lateMinutesDeposit ?? 20) : (pol.lateMinutes ?? 5);
 export const refundOnCancel = (a, pol, now = Date.now()) => hasDeposit(a) && a.deposit.status === 'paid' && (a.startAt || 0) - now >= (pol.cancelHours ?? 48) * 3600e3;
+
+// ---------- time clock ----------
+// 9:01 is late. Each started 15 minutes late costs the person's late rate (seniors ₱50, juniors ₱15):
+// 9:01–9:15 → 1 × rate, 9:16–9:30 → 2 × rate, and so on. Times are "HH:MM" in Philippine time.
+export const CLOCK_START = '09:00';
+export function lateFine(inHM, startHM, rate) {
+  const mins = Math.max(0, toMin(inHM) - toMin(startHM || CLOCK_START)), blocks = mins > 0 ? Math.ceil(mins / 15) : 0;
+  return { mins, blocks, fine: blocks * Math.max(0, Number(rate) || 0) };
+}
+export const lateRateOf = b => (b && b.lateFine != null && b.lateFine !== '') ? Math.max(0, Number(b.lateFine) || 0) : (b && (b.role || 'barber') === 'barber' ? ((b.tiers || []).includes('deluxe') ? 50 : 15) : 0);
+export const shiftStartOf = (b, pol) => (b && b.shiftStart) || (pol && pol.clockStart) || CLOCK_START;
+// Who can do what in the dashboard (admins/{uid}.role). A missing role means owner (accounts made before roles).
+export const ACCESS = { owner: 'Owner (everything)', desk: 'Front desk (bookings, checkout, clients)', staff: 'Own schedule and pay only' };
+export const roleOf = a => (a && ACCESS[a.role]) ? a.role : 'owner';

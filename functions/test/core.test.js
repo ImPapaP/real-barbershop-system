@@ -35,7 +35,7 @@ test('phone numbers normalise to 09XXXXXXXXX', () => {
 });
 
 test('PH time helpers', () => {
-  assert.deepEqual(phNow(NOW), { date: '2026-11-04', min: 600 });
+  assert.deepEqual(phNow(NOW), { date: '2026-11-04', min: 600, time: '10:00' });
   assert.equal(startMs('2026-11-04', '10:00'), NOW);
 });
 
@@ -264,4 +264,18 @@ test('a barber on leave is not offered that day, and 0-minute add-ons fit in the
   const svc = [{ id: 'h9', group: 'him', tier: 'regular' }];
   assert.deepEqual(eligibleBarbers(info, svc, '2026-12-01'), []);
   assert.deepEqual(eligibleBarbers(info, svc, '2026-12-02'), ['v']);
+});
+
+test('late fines: 9:01 is late, each started 15 minutes costs the rate', async () => {
+  const { lateFine, lateRateOf } = await import('../src/core.js');
+  assert.deepEqual(lateFine('09:00', '09:00', 50), { mins: 0, blocks: 0, fine: 0 });
+  assert.deepEqual(lateFine('08:40', '09:00', 50), { mins: 0, blocks: 0, fine: 0 });
+  assert.equal(lateFine('09:01', '09:00', 15).fine, 15);
+  assert.equal(lateFine('09:15', '09:00', 15).fine, 15);
+  assert.equal(lateFine('09:16', '09:00', 15).fine, 30);
+  assert.equal(lateFine('09:31', '09:00', 50).fine, 150);
+  assert.equal(lateRateOf({ role: 'barber', tiers: ['deluxe'] }), 50);
+  assert.equal(lateRateOf({ role: 'barber', tiers: ['regular'] }), 15);
+  assert.equal(lateRateOf({ role: 'reception' }), 0);
+  assert.equal(lateRateOf({ role: 'reception', lateFine: 20 }), 20);
 });

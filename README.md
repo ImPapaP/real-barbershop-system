@@ -69,7 +69,7 @@ Until this is done, every page runs in demo mode (see Live preview above).
 2. Copy that user's **User UID**.
 3. Firestore → Start collection `admins` → Document ID = that UID → add any field, for example `role: "owner"`.
 
-Repeat for each staff member who should use the dashboard. Remove their `admins` document to take access away.
+That's the only account you make by hand. Everyone else gets their sign-in from the dashboard: **Staff → Edit → Sign-in** (email, a starting password, and what they can see). Then set your **owner PIN** in Shop setup → Owner PIN, and print the **time clock QR** (Staff → Time in and out → Time clock QR).
 
 #### 4. Deploy the free parts
 
@@ -200,6 +200,42 @@ Men first choose **Deluxe** or **Regular**. Only that level's haircuts are shown
 - An add-on that's already in the chosen promo (for example Hair Spa with BL2) can't be added twice.
 - Change it in the dashboard: **Barbers → Edit → Men’s haircuts they do**, and **Shop setup → Services → Booking type / Haircut level**.
 - The booking functions check the same rules, so they can't be skipped.
+
+## Staff sign-ins, owner PIN and activity log
+
+- **Who sees what.** Give each person a sign-in in **Staff → Edit → Sign-in**:
+  - **Owner:** everything.
+  - **Front desk:** Schedule, walk-ins, bookings, Checkout, Clients and the cash count. No income pages, pay, inventory or settings.
+  - **Own schedule and pay only (barbers and stylists):** **My day** (their clients today and the next 7 days, and their time in) and **My pay** (days in, commission, tips, late deductions, what's owed and past payouts). Nothing about anyone else.
+  The Firestore rules enforce this, so it's not just hidden buttons.
+- **Owner PIN** (Shop setup → Owner PIN). The front desk needs it to void a sale, mark a down payment refunded, delete a client or a visit, or open owner pages. Typing it opens owner powers for 5 minutes on that sign-in (a banner counts down, and "Lock now" closes it early). The PIN is checked on the server and stored hashed. 5 wrong tries lock it for 15 minutes. On a shared phone or tablet signed in as the owner, tick **Lock owner pages on this device** so income, pay and settings ask for the PIN there too.
+- **Activity log** (owner only). Records who did what and when, for example "Alex · Front desk · Voided a ₱299 sale for a walk-in (11:20 AM, Mac, Cash)". It covers:
+  - sales, voids and refunds
+  - no-shows, cancelled and deleted visits, deleted clients
+  - expenses and payouts
+  - pay plan, price and settings changes
+  - leave and attendance marks
+  - time in/out and time fixes
+  - cash counts, the owner PIN (including wrong tries) and sign-ins
+  Filter by person, type or a search. Nobody can edit or delete an entry, not even the owner.
+
+## Time in and time out
+
+- **How it works.** Print the QR from Staff → **Time in and out** → **Time clock QR** and put it by the door. Staff scan it with their own phone and tap **Time in** when they arrive and **Time out** when they leave. They sign in with their own account once; the phone remembers it.
+- **Time and location.** The server stamps the time, so changing the phone's clock does nothing. If the shop's location is set (Shop setup → Time clock → "Use this phone's location", done inside the shop), a scan from more than 300 m away is flagged. If someone shares a photo of the QR, tap **Make a new code** and the old one stops working.
+- **Late rule.** Time in by 9:00 AM (Shop setup → Time clock; one person can have their own start time in Staff → Edit). **9:01 is late.** Each started 15 minutes late is taken off their pay: senior barbers ₱50, junior barbers ₱15. So 9:01–9:15 costs one block, 9:16–9:30 two, and so on. Other staff start at ₱0; set anyone's amount in Staff → Edit → **Late deduction per 15 minutes**.
+- **Where it shows.** The staff member sees the deduction right away on their phone and in My pay. The owner sees it in Who's in, in the **Time in and out** table (times, hours, late, deduction) and under "Earned" in the pay table. Deductions come off "Earned" and "Owed now".
+- **Fixing records.** Forgot to time out, or had a good reason to be late? **Edit** the record: change the times or tick **Excuse being late**. **+ Add time** is for someone who forgot to scan. Every change goes in the activity log.
+- Timing in also counts as a day in for daily pay.
+
+## Closing the day
+
+**Close the day** (Schedule or Overview) shows on one screen:
+- money in by payment type, plus down payments paid online earlier
+- the cash drawer: starting cash + cash sales − cash expenses, against what you counted, with "short" or "extra"
+- each person's time in, clients, sales, tips and no-shows
+- visits marked done but not paid
+**Text to owner** sends a short summary to the owner's mobile (Shop setup → Shop details → Owner's mobile) through Semaphore. **Copy** puts the same text on the clipboard, for Messenger.
 
 ## Barber pay
 
