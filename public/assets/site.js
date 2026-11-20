@@ -5,7 +5,6 @@ import {
   $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, DAYS_LONG, MONTHS, sum, phNow, dowOf, policyOf, openStatus,
   availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph, brand, LOGO_LG, dur, isServiceStaff, toMin, fromMin, addDays, blockTimes, slotId, messengerLink, defaultFaq, monthGrid, shiftMonth, BACK_IC, bdaySelects, cleanBday, BDAY_TITLE, BDAY_HINT, queueEstimate, resizeImage, depositFor
 } from './shared.js';
-import { L, lang, setLang } from './i18n.js';
 import { paintBanners } from './banner.js';
 
 const S = {
@@ -81,14 +80,13 @@ function keepFocus(fn) {
   if (id) { const n = document.getElementById(id); if (n && n !== document.activeElement) { n.focus({ preventScroll: true }); try { if (s != null) n.setSelectionRange(s, e); } catch (_) {} } }
 }
 function renderAll() {
-  keepFocus(() => { $('#app').innerHTML = L(page()); });
+  keepFocus(() => { $('#app').innerHTML = page(); });
   paintBanners(happenings(), info().shop);
-  document.documentElement.lang = lang() === 'tl' ? 'fil' : 'en';
   S.painted = true;
   revealOnScroll();
   syncHeader();
 }
-function renderBooker() { const el = $('#booker'); if (el) morph(el, L(booker())); syncStickyBar(); maybeApplyPromo(); }
+function renderBooker() { const el = $('#booker'); if (el) morph(el, booker()); syncStickyBar(); maybeApplyPromo(); }
 // A promo picked from Promos & events is applied as soon as there's a service to price it against
 function maybeApplyPromo() { const P = S.promo; if (P.pending && !P.busy && !P.applied && chosen().length) { P.pending = ''; ACT.promoApply(); } }
 function renderMenu() { const el = $('#menu-board'); if (el) el.innerHTML = menuBoard(S.menuTab); document.querySelectorAll('[data-act=menuTab]').forEach(b => b.setAttribute('aria-selected', b.dataset.v === S.menuTab)); }
@@ -127,7 +125,6 @@ function page() {
       <button class="lnk" data-act="scroll" data-to="visit">Visit</button>
       <a class="lnk acct-lnk" href="account.html" aria-label="My visits">${ic('user') || ''}<span>My visits</span></a>
       <span class="head-open${st.open ? ' on' : ''}" title="${esc(st.text)}"><b aria-hidden="true">●</b>${st.open ? 'Open now' : 'Closed now'}</span>
-      ${langToggle()}
       <button class="btn btn-accent btn-sm" data-act="scroll" data-to="book">Book now</button>
     </nav>
   </div></header>
@@ -262,7 +259,6 @@ function happenCard(h) {
 }
 // Has at least one service on the menu this person can do (Luz has none until nail services are added)
 const bookable = b => svcs().some(s => canServe(b, [s]));
-const langToggle = () => `<div class="lang" role="group" aria-label="Language"><button type="button" data-act="lang" data-v="en" aria-pressed="${lang() === 'en'}">EN</button><button type="button" data-act="lang" data-v="tl" aria-pressed="${lang() === 'tl'}">TL</button></div>`;
 const faqList = () => (Array.isArray(info().faq) && info().faq.length ? info().faq : defaultFaq(info()));
 // ---------- style gallery ----------
 function galTags() {
@@ -275,7 +271,7 @@ function galleryGrid() {
   return `<div class="gallery">${gal.map((g, i) => { const by = barber(g.barberId); const cap = [g.caption || g.style, by ? `by ${by.name}` : ''].filter(Boolean).join(' · ');
     return `<button type="button" class="g-item reveal" data-act="lightbox" data-i="${i}" style="--d:${(i % 4) * 70}ms" aria-label="Open photo${cap ? ': ' + esc(cap) : ''}"><img src="${esc(g.url)}" alt="${esc(g.caption || g.style || 'Haircut at ' + shop.name)}" loading="lazy">${cap ? `<span class="g-cap">${esc(cap)}</span>` : ''}</button>`; }).join('')}</div>`;
 }
-function renderGallery() { const w = $('#gal-wrap'); if (w) { w.innerHTML = L(galleryGrid()); revealOnScroll(); } document.querySelectorAll('[data-act=galTag]').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S.galTag)); }
+function renderGallery() { const w = $('#gal-wrap'); if (w) { w.innerHTML = galleryGrid(); revealOnScroll(); } document.querySelectorAll('[data-act=galTag]').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S.galTag)); }
 // ---------- pop-ups and the phone's back button ----------
 // Opening a profile or a photo adds a step to the browser history, so the phone's back button closes it
 // instead of leaving the site.
@@ -294,7 +290,7 @@ function profile() {
   if (!b) { el.hidden = true; el.innerHTML = ''; document.body.style.overflow = ''; popClosed('pf'); return; }
   popOpened('pf');
   const photos = galAll().filter(g => g.barberId === b.id).slice(0, 6), bases = svcs().filter(x => x.kind === 'base' && (b.tiers || []).includes(x.tier));
-  el.innerHTML = L(`<div class="pf-scrim" data-act="pfClose"><div class="pf" role="dialog" aria-modal="true" aria-labelledby="pf-name">
+  el.innerHTML = (`<div class="pf-scrim" data-act="pfClose"><div class="pf" role="dialog" aria-modal="true" aria-labelledby="pf-name">
     <button type="button" class="pop-back pf-back" data-act="pfClose">${BACK_IC}<span>Back</span></button><button type="button" class="icon-btn pf-x" data-act="pfClose" aria-label="Close">${ic('close')}</button>
     <div class="pf-top"><div class="pf-photo">${b.photo ? `<img src="${esc(b.photo)}" alt="">` : `<span>${esc(initials(b.name))}</span>`}</div>
       <div><p class="eyebrow">${esc(b.title || '')}</p><h3 id="pf-name">${esc(b.name)}</h3>${b.ratingCount ? `<p class="m-rate">${ic('star', 'star')}<b>${Number(b.rating).toFixed(1)}</b><span>${b.ratingCount} rating${b.ratingCount === 1 ? '' : 's'} from booked clients</span></p>` : ''}${b.specialty ? `<p class="muted small">${esc(b.specialty)}</p>` : ''}</div></div>
@@ -846,7 +842,6 @@ function lightbox() {
     ${g.length > 1 ? `<button class="lb-btn lb-prev" data-act="lbStep" data-d="-1" aria-label="Previous photo">${ic('left')}</button><button class="lb-btn lb-next" data-act="lbStep" data-d="1" aria-label="Next photo">${ic('right')}</button>` : ''}
     <figure><img src="${esc(g[i].url)}" alt="${esc(g[i].caption || g[i].style || 'Gallery photo')}">${g[i].caption || g[i].style ? `<figcaption>${esc(g[i].caption || g[i].style)}</figcaption>` : ''}<span class="lb-n">${i + 1} / ${g.length}</span>
     ${barber(g[i].barberId) ? `<button type="button" class="btn btn-accent lb-book" data-act="lookBook" data-i="${i}">Book this look with ${esc(barber(g[i].barberId).name)}</button>` : ''}</figure></div>`;
-  el.innerHTML = L(el.innerHTML);
   el.hidden = false; document.body.style.overflow = 'hidden';
   el.querySelector('.lb-x').focus();
 }
@@ -859,13 +854,12 @@ const ACT = {
   mbar() { ACT.scroll({ dataset: { to: 'book' } }); },
   async copy(el) { try { await navigator.clipboard.writeText(el.dataset.text); toast('Copied'); } catch (_) { toast(el.dataset.text); } },
   menuTab(el) { S.menuTab = el.dataset.v; renderMenu(); },
-  lang(el) { if (lang() === el.dataset.v) return; setLang(el.dataset.v); renderAll(); },
   galTag(el) { S.galTag = el.dataset.v; renderGallery(); },
   prodQty(el) {
     const n = el.dataset.name, q = prodQ(), was = q[n] || 0, now = Math.max(0, Math.min(MAX_PROD, was + (+el.dataset.d)));
     if (now) q[n] = now; else delete q[n];
     if (!was && now) toast(`${n} will be set aside for your visit`);
-    const sec = document.querySelector('#products .prod-grid'); if (sec) { sec.innerHTML = L(products().map(productCard).join('')); revealOnScroll(); }
+    const sec = document.querySelector('#products .prod-grid'); if (sec) { sec.innerHTML = products().map(productCard).join(''); revealOnScroll(); }
     renderBooker();
   },
   usePromo(el) { S.promo = { open: true, code: el.dataset.code, applied: null, err: '', busy: false, pending: el.dataset.code }; toast(`Code ${el.dataset.code} will be applied when you pick your service`); goStep(chosen().length ? 3 : 1); maybeApplyPromo(); },

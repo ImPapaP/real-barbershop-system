@@ -314,7 +314,6 @@ Barbers earn their **daily amount or their commission, whichever is higher**, fo
 - **Map:** a Google map under Visit, with your own "How to find us" note (Shop setup).
 - **Open now:** in the header, hero and next to the map.
 - **Messenger:** a floating "Message us" button, made from your Facebook page link (or set your own in Shop setup).
-- **Tagalog:** EN / TL switch in the header of the website and booking page. Menu items, names and your own text stay as you wrote them.
 - **FAQ:** "Good to know" section. It starts with suggested answers written from your booking rules; edit them in Website → Questions (FAQ).
 
 ## Repeat business

@@ -2,7 +2,6 @@
 // Shows the booking status and lets the customer reschedule or cancel within the policy.
 import { db, call, demoBar, resetDemo } from './fb.js';
 import { $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, MONTHS, dowOf, sum, policyOf, availableTimes, bookableDates, timeChips, STARTER, icsFor, brand, LOGO_LG, resizeImage, phNow, monthGrid, shiftMonth, BACK_IC, receiptHTML } from './shared.js';
-import { L, lang, setLang } from './i18n.js';
 
 const q = new URLSearchParams(location.search);
 const ID = q.get('id') || '', TOKEN = q.get('t') || '';
@@ -15,10 +14,10 @@ const S = {
 const info = () => S.info || STARTER;
 const m = n => money(n, info().shop.currency || '₱');
 
-function render() { const a = document.activeElement, id = a && a.id; $('#app').innerHTML = L(shell(body())); if (id) document.getElementById(id)?.focus({ preventScroll: true }); }
+function render() { const a = document.activeElement, id = a && a.id; $('#app').innerHTML = shell(body()); if (id) document.getElementById(id)?.focus({ preventScroll: true }); }
 function shell(inner) {
   const shop = info().shop;
-  return `${demoBar('admin/')}<header class="site-head"><div class="wrap head-in"><a class="wordmark" href="./">${brand(shop.wordmark || shop.name)}</a><nav class="site-nav"><a class="lnk acct-lnk" href="account.html" aria-label="My visits"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="6.5" r="3.2"/><path d="M3.5 17.5a6.5 6.5 0 0113 0"/></svg><span>My visits</span></a><div class="lang" role="group" aria-label="Language"><button type="button" data-act="lang" data-v="en" aria-pressed="${lang() === 'en'}">EN</button><button type="button" data-act="lang" data-v="tl" aria-pressed="${lang() === 'tl'}">TL</button></div><a class="btn btn-sm" href="./#book">Book again</a></nav></div></header>
+  return `${demoBar('admin/')}<header class="site-head"><div class="wrap head-in"><a class="wordmark" href="./">${brand(shop.wordmark || shop.name)}</a><nav class="site-nav"><a class="lnk acct-lnk" href="account.html" aria-label="My visits"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="6.5" r="3.2"/><path d="M3.5 17.5a6.5 6.5 0 0113 0"/></svg><span>My visits</span></a><a class="btn btn-sm" href="./#book">Book again</a></nav></div></header>
   <main class="sec"><div class="wrap" style="max-width:760px;display:grid;gap:18px"><a class="pop-back page-back-link" href="./">${BACK_IC}<span>Back to the website</span></a>${inner}</div></main>
   <footer class="site-foot"><div class="wrap"><span>${esc(shop.name)} · ${esc(shop.phone)}</span><span>${esc(shop.address)}</span></div></footer>`;
 }
@@ -210,7 +209,6 @@ const fileToData = blob => new Promise((res, rej) => { const r = new FileReader(
 
 const ACT = {
   resetDemo,
-  lang(el) { setLang(el.dataset.v); render(); },
   async refRemove() { try { S.b = { ...S.b, ...(await call('removeRefPhoto', { id: ID, token: TOKEN })) }; S.ref = { busy: false, preview: '', err: '' }; } catch (e) { S.ref.err = e.message || 'Couldn’t remove it.'; } render(); },
   rsCal(el) { S.rs.calM = shiftMonth(el.dataset.m, +el.dataset.v); render(); },
   async copy(el) { try { await navigator.clipboard.writeText(el.dataset.text); toast('Copied'); } catch (_) { toast(el.dataset.text); } },

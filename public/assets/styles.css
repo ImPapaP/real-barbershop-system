@@ -894,14 +894,11 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ink);box
 .booker>*,.steps>*,.step>*,.guest-box>*,.guest-box>div{min-width:0}
 
 /* ================= Round: payment, on the day, after the visit, website, contact ================= */
-/* header: open badge + language */
+/* header: open badge */
 .head-open{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;padding:5px 10px;border-radius:999px;background:var(--surface-2);color:var(--ink-2);margin-inline:4px}
 .head-open b{color:var(--muted);font-size:10px}
 .head-open.on b{color:var(--good)}
 @media (max-width:760px){.head-open{display:none}}
-.lang{display:inline-flex;border:1px solid var(--line-2);border-radius:999px;padding:2px;margin-inline:4px;background:var(--surface)}
-.lang button{border:0;background:none;font-size:12px;font-weight:800;letter-spacing:.04em;padding:5px 9px;border-radius:999px;cursor:pointer;color:var(--muted);min-height:30px}
-.lang button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
 
 /* price breakdown, promo, how to pay */
 .bill{display:grid;gap:6px;padding:12px 0;border-top:1px dashed var(--line-2)}
@@ -1031,8 +1028,7 @@ body:has(#mbar[hidden]) .msgr{bottom:max(18px,env(safe-area-inset-bottom,0px))}
 .gal-meta select{font-size:13px;padding:6px 8px}
 .cut-thumb{width:84px;height:84px;object-fit:cover;border-radius:10px;border:1px solid var(--line)}
 
-@media (max-width:640px){.site-nav{flex-wrap:nowrap;gap:6px}.lang{margin-inline:0}.lang button{padding:4px 7px;min-height:28px;font-size:11px}}
-@media (max-width:360px){.site-head .wordmark span{font-size:15px}}
+@media (max-width:640px){.site-nav{flex-wrap:nowrap;gap:6px}@media (max-width:360px){.site-head .wordmark span{font-size:15px}}
 
 /* ---------- services menu: organized for desktop, stacked on phones ---------- */
 .board2{display:grid;gap:28px}
