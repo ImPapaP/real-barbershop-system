@@ -19,7 +19,7 @@
 //   syncFacebookPhotos every 3 hours -> newest Facebook page photos into the website gallery
 //   syncFacebookNow    dashboard -> the same, right away
 //   staffLogin         owner -> create, change or remove a staff member's dashboard sign-in and access level
-//   setPin / pinUnlock owner PIN: unlock owner-only actions on a front-desk account for 5 minutes
+//   setPin / pinUnlock / pinLock  owner PIN: unlock owner-only actions on a front-desk account until Lock or sign-out
 //   clockPunch         staff phone, after scanning the shop's time-clock QR -> time in / time out
 //   sendDaySummary     dashboard -> text the end-of-day summary to the owner
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
@@ -815,7 +815,7 @@ export const syncFacebookNow = onCall(async req => {
 
 // =============== staff accounts, owner PIN, activity log ===============
 // admins/{uid}: { role: 'owner' | 'desk' | 'staff', staffId, name, email }. A missing role means owner.
-// The owner PIN unlocks owner-only actions on another account for 5 minutes: elevations/{uid}.until,
+// The owner PIN unlocks owner-only actions on another account until Lock or sign-out (pinLock), with a 12-hour safety cap: elevations/{uid}.until,
 // which firestore.rules checks. Every sensitive change is written to activity/ (read by the owner only).
 async function adminOf(req) { if (!req.auth) return null; const s = await db.doc(`admins/${req.auth.uid}`).get(); return s.exists ? { uid: req.auth.uid, ...s.data() } : null; }
 async function bossOf(req) {
@@ -877,11 +877,17 @@ export const pinUnlock = onCall(async req => {
     await logActivity(me, 'pin', 'Wrong owner PIN' + (fails >= 5 ? ' (5 tries: locked 15 minutes)' : ''));
     throw new HttpsError('permission-denied', fails >= 5 ? 'Too many wrong tries. Locked for 15 minutes.' : 'Wrong PIN.');
   }
-  const until = now + 5 * 60e3, why = String(req.data && req.data.why || '').slice(0, 80);
+  const until = now + 12 * 3600e3, why = String(req.data && req.data.why || '').slice(0, 80);
   await ref.update({ fails: 0 });
   await db.doc(`elevations/${me.uid}`).set({ until, at: now });
   await logActivity(me, 'pin', `Owner PIN entered${why ? ': ' + why : ''}`);
   return { until };
+});
+
+export const pinLock = onCall(async req => {
+  if (!req.auth) return { ok: true };
+  await db.doc(`elevations/${req.auth.uid}`).delete().catch(() => {});
+  return { ok: true };
 });
 
 // =============== time clock ===============

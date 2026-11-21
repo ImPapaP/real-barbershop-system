@@ -6,7 +6,7 @@ rules_version = '2';
 //      owner  everything (a missing role also means owner, for accounts made before roles)
 //      desk   front desk: bookings, checkout, clients, the cash count. No income pages, pay, settings or deleting sales.
 //      staff  their own appointments, sales, pay, leave and time records only.
-//  - The owner PIN (Cloud Function pinUnlock) gives any sign-in owner powers for 5 minutes: elevations/{uid}.until.
+//  - The owner PIN (Cloud Function pinUnlock) gives any sign-in owner powers until Lock or sign-out (12-hour cap): elevations/{uid}.until.
 //  - activity/ is the log of who did what: anyone signed in adds their own entries, only the owner reads, nobody edits.
 service cloud.firestore {
   match /databases/{database}/documents {

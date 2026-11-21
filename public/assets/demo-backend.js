@@ -344,9 +344,10 @@ const FUNCS = {
     const p = store.get('private/pin'); if (!p) fail('failed-precondition', 'No owner PIN yet. The owner sets it in Shop setup → Owner PIN.');
     const now = Date.now(); if ((p.lockUntil || 0) > now) fail('resource-exhausted', `Too many wrong tries. Try again in ${Math.ceil((p.lockUntil - now) / 60000)} min.`);
     if (String(d.pin || '') !== p.pin) { const fails = (p.fails || 0) + 1; store.set('private/pin', { ...p, fails: fails >= 5 ? 0 : fails, lockUntil: fails >= 5 ? now + 15 * 60e3 : 0 }); actLog(u, 'pin', 'Wrong owner PIN' + (fails >= 5 ? ' (5 tries: locked 15 minutes)' : '')); changed(); fail('permission-denied', fails >= 5 ? 'Too many wrong tries. Locked for 15 minutes.' : 'Wrong PIN.'); }
-    const until = now + 5 * 60e3; store.set('private/pin', { ...p, fails: 0 }); store.set('elevations/' + u.uid, { until, at: now });
+    const until = now + 12 * 3600e3; store.set('private/pin', { ...p, fails: 0 }); store.set('elevations/' + u.uid, { until, at: now });
     actLog(u, 'pin', `Owner PIN entered${d.why ? ': ' + String(d.why).slice(0, 80) : ''}`); changed(); return { until };
   },
+  pinLock(d, u) { if (u) store.delete('elevations/' + u.uid); changed(); return { ok: true }; },
   clockPunch(d, u) {
     const me = adminDoc(u); if (!me || !me.staffId) fail('permission-denied', 'This sign-in isn’t linked to a staff member. Ask the owner.');
     const key = (store.get('private/clock') || {}).key; if (!key || String(d.k || '') !== key) fail('permission-denied', 'This QR code is old. Scan the one at the shop.');

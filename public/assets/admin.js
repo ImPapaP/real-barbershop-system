@@ -38,7 +38,7 @@ const S = {
 };
 const unsubs = [];
 // Who sees what: the owner everything; the front desk Schedule, Checkout and Clients; staff only their own day and pay.
-// Owner pages show a lock screen on other sign-ins (and on the owner's own shared device when locked): the owner PIN opens them for 5 minutes.
+// Owner pages show a lock screen on other sign-ins (and on the owner's own shared device when locked): the owner PIN opens them until someone taps Lock or signs out.
 const OWNER_TABS = ['overview', 'money', 'team', 'stock', 'website', 'setup', 'activity'];
 const DESK_TABS = ['schedule', 'checkout', 'clients'], STAFF_TABS = ['me', 'mypay'];
 const OWNER_ACTS = { voidSale: 'void a sale', markRefunded: 'mark a down payment as refunded', delClient: 'delete a client', delAppt: 'delete a visit' };
@@ -1514,7 +1514,7 @@ const ACT = {
   closeModal,
   modalBack,
   pageBack() { if (NAV.length > 1) history.back(); else location.hash = '#' + allowedTabs()[0]; },
-  async logout() { stopWatches(); try { sessionStorage.removeItem('rb-in-' + (S.user && S.user.uid)); } catch (_) {} await logout(); },
+  async logout() { if (S.elevUntil) { S.elevUntil = 0; await call('pinLock').catch(() => {}); } stopWatches(); try { sessionStorage.removeItem('rb-in-' + (S.user && S.user.uid)); } catch (_) {} await logout(); },
   async forgot() { const email = $('#l-email')?.value.trim(); if (!email) { S.loginErr = 'Type your email first, then tap “Forgot password?”.'; render(); return; } try { await resetPassword(email); S.loginErr = ''; S.loginMsg = 'Password reset email sent. Check your inbox.'; } catch (e) { S.loginErr = 'Couldn’t send the reset email. Check the address.'; } render(); },
   newBooking() { apptModal(null, 'booking'); },
   newWalkin() { apptModal(null, 'walkin'); },
@@ -2015,22 +2015,21 @@ function navTabs() {
 const ROLE_LABEL = { owner: 'Owner', desk: 'Front desk', staff: 'Staff' };
 const meName = () => (S.me && S.me.name) || (S.user && S.user.email) || '';
 function whoChip() { return `<div class="who-chip"><b>${esc(meName())}</b><small>${ROLE_LABEL[myRole()]}${S.lockOn ? ' · this device is locked' : ''}</small></div>`; }
-const elevLeft = () => { const s = Math.max(0, Math.round(((S.elevUntil || 0) - Date.now()) / 1000)); return `${Math.floor(s / 60)}:${pad(s % 60)}`; };
 function elevBanner() {
   if (!((S.elevUntil || 0) > Date.now())) return '';
-  return `<div class="banner elev"><span>${icon('lock')} <b>Owner PIN entered.</b> Owner pages and actions are open for <b id="elev-left">${elevLeft()}</b>.</span><button class="btn btn-sm" data-act="lockNow">Lock now</button></div>`;
+  return `<div class="banner elev"><span>${icon('lock')} <b>Owner PIN entered.</b> Owner pages and actions are open. Tap Lock when the owner is done.</span><button class="btn btn-sm" data-act="lockNow">Lock</button></div>`;
 }
 function pinForm(why, inline) {
   return `<form class="stack pin-form" data-form="pin" data-why="${esc(why)}">
     ${field('Owner PIN', `<input id="${inline ? 'pg-pin' : 'm-pin'}" name="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="4" pattern="[0-9]{4}" class="pin-in" placeholder="••••" required>`, inline ? 'pg-pin' : 'm-pin')}
     ${demo ? '<p class="hint">Demo PIN: 1234</p>' : ''}<p class="err" id="${inline ? 'pg-err' : 'm-err'}" hidden></p>
-    <button class="btn btn-primary" type="submit" ${S.pinBusy ? 'disabled' : ''}>${S.pinBusy ? 'Checking…' : 'Unlock for 5 minutes'}</button></form>`;
+    <button class="btn btn-primary" type="submit" ${S.pinBusy ? 'disabled' : ''}>${S.pinBusy ? 'Checking…' : 'Unlock'}</button></form>`;
 }
 function vLocked(tab) {
   const label = (TABS.find(t => t[0] === tab) || [, 'This page'])[1];
   return `<div class="center locked-page"><div class="panel stack" style="width:min(100%,380px);text-align:left">
     <div class="lock-big">${icon('lock')}</div><h1 style="font:400 26px/1.1 var(--f-slab)">${esc(label)} is for the owner</h1>
-    <p class="muted">Ask the owner to type their PIN. Owner pages and actions stay open for 5 minutes on this ${myRole() === 'owner' ? 'locked device' : 'sign-in'}, and it’s noted in the activity log.</p>
+    <p class="muted">Ask the owner to type their PIN. Owner pages and actions stay open on this ${myRole() === 'owner' ? 'locked device' : 'sign-in'} until someone taps Lock or signs out, and it’s noted in the activity log.</p>
     ${pinForm('open ' + label, true)}</div></div>`;
 }
 function pinModal(why) {
@@ -2237,7 +2236,7 @@ function closeDayModal(d = today()) {
 function pinPanel() {
   if (S.pinSet === undefined) { S.pinSet = null; db.doc('private/pin').get().then(d => { S.pinSet = d.exists; schedule(); }).catch(() => { S.pinSet = false; }); }
   return `<section class="panel"><div class="panel-h"><h2>Owner PIN</h2>${S.pinSet ? chip({ kind: 'good', icon: '✓', label: 'Set' }) : S.pinSet === false ? chip({ kind: 'warn', icon: '!', label: 'Not set' }) : ''}</div>
-    <p class="muted small" style="max-width:72ch">The front desk needs the owner PIN to void a sale, mark a refund, delete a client or a visit, or open owner pages. It opens them for 5 minutes and goes in the activity log. 5 wrong tries lock it for 15 minutes.</p>
+    <p class="muted small" style="max-width:72ch">The front desk needs the owner PIN to void a sale, mark a refund, delete a client or a visit, or open owner pages. It opens them until someone taps Lock or signs out and goes in the activity log. 5 wrong tries lock it for 15 minutes.</p>
     <form class="stack" data-form="setpin"><div class="fgrid three">${field(S.pinSet ? 'New 4-digit PIN' : '4-digit PIN', `<input id="pn-a" name="a" type="password" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" autocomplete="new-password" required>`, 'pn-a')}${field('Type it again', `<input id="pn-b" name="b" type="password" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" autocomplete="new-password" required>`, 'pn-b')}<div class="field" style="align-self:end"><button class="btn btn-primary" type="submit">${S.pinSet ? 'Change PIN' : 'Set PIN'}</button></div></div><p class="err" id="pn-err" hidden></p></form>
     ${myRole() === 'owner' ? `<label class="consent"><input type="checkbox" id="pn-lock" data-change="lockDevice" ${S.lockOn ? 'checked' : ''}><span><b>Lock owner pages on this device.</b> For a shared phone or tablet signed in as the owner: income, staff pay, settings and voids ask for the PIN. Only this device is locked.</span></label>` : ''}</section>`;
 }
@@ -2260,7 +2259,7 @@ function loginFields(b) {
 Object.assign(ACT, {
   demoAs(el) { const f = $('form[data-form="login"]'); if (f) { f.querySelector('#l-email').value = el.dataset.email; f.querySelector('#l-pass').value = 'demo'; f.requestSubmit(); } },
   allMine() { S.allMine = true; render(); },
-  lockNow() { S.elevUntil = 0; if (myRole() !== 'owner') stopBossWatches(); toast('Owner pages locked'); render(); },
+  lockNow() { S.elevUntil = 0; if (myRole() !== 'owner') stopBossWatches(); call('pinLock').catch(() => {}); toast('Owner pages locked'); render(); },
   clockQr() { clockModal(); },
   printClock() { printClockPoster(); },
   async newClockKey(el) { if (!armed(el)) return; S.clockKey = newToken(); if (await put('private', 'clock', { key: S.clockKey, at: Date.now() })) { logAct('clock', 'Made a new time clock QR code (the old one stopped working)'); toast('New code made. Print the new poster.'); clockModal(); } },
@@ -2297,7 +2296,7 @@ Object.assign(FORM, {
     const pin = String(new FormData(f).get('pin') || '').trim(), err = f.querySelector('.err');
     if (!/^\d{4}$/.test(pin)) { if (err) { err.textContent = 'The PIN is 4 digits.'; err.hidden = false; } return; }
     S.pinBusy = true; render();
-    try { const r = await call('pinUnlock', { pin, why: f.dataset.why || '' }); S.elevUntil = r.until; if (!$('#modal').hidden && $('#modal').contains(f)) closeModal(); bossWatches(); toast('Unlocked for 5 minutes'); }
+    try { const r = await call('pinUnlock', { pin, why: f.dataset.why || '' }); S.elevUntil = r.until; if (!$('#modal').hidden && $('#modal').contains(f)) closeModal(); bossWatches(); toast('Unlocked. Tap Lock when the owner is done.'); }
     catch (e) { const er = document.querySelector('form[data-form="pin"] .err'); if (er) { er.textContent = e.message || 'Wrong PIN.'; er.hidden = false; } const i = document.querySelector('form[data-form="pin"] input[name=pin]'); if (i) { i.value = ''; i.focus(); } }
     S.pinBusy = false; render();
   },
@@ -2336,8 +2335,7 @@ Object.assign(FORM, {
 Object.assign(TAB_VIEWS, { activity: vActivity, me: vMe, mypay: vMyPay });
 setInterval(() => {
   if (!S.elevUntil) return;
-  if (S.elevUntil <= Date.now()) { S.elevUntil = 0; if (myRole() !== 'owner') stopBossWatches(); toast('Owner pages locked again'); render(); return; }
-  const el = document.getElementById('elev-left'); if (el) el.textContent = elevLeft();
+  if (S.elevUntil <= Date.now()) { S.elevUntil = 0; if (myRole() !== 'owner') stopBossWatches(); toast('Owner pages locked'); render(); return; }
 }, 1000);
 
 // ================= EVENTS =================
@@ -2416,6 +2414,7 @@ render();
       try { const a = await db.doc(`admins/${user.uid}`).get(); S.canAdmin = a.exists; S.me = a.exists ? { uid: user.uid, ...a.data() } : null; } catch (_) { S.canAdmin = false; S.me = null; }
       try { S.lockOn = myRole() === 'owner' && localStorage.getItem('rb-lock') === '1'; } catch (_) { S.lockOn = false; }
       S.elevUntil = 0; NAV.length = 0; trackNav();
+      db.doc(`elevations/${user.uid}`).get().then(e => { if (e.exists) call('pinLock').catch(() => {}); }).catch(() => {}); // a reload locks owner pages again
       if (S.canAdmin) { startWatches(); try { const k = 'rb-in-' + user.uid; if (!sessionStorage.getItem(k)) { sessionStorage.setItem(k, '1'); logAct('signin', 'Signed in'); } } catch (_) {} }
     } else { stopWatches(); S.me = null; }
     S.ready = true; render();
