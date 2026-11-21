@@ -202,7 +202,7 @@ export const STARTER_STAFF = [
   { id: 'dave', photo: 'assets/staff/dave.jpg', name: 'Dave', role: 'stylist', title: 'Stylist', specialty: 'Women’s services: hair color, rebonding, styling and perming', groups: ['her'], rate: 45, dailyPay: 1000, productFee: { threshold: 1500, low: 50, high: 100 }, noDeposit: true, chair: 10 },
   { id: 'luz', photo: 'assets/staff/luz.jpg', name: 'Luz', role: 'nails', title: 'Nail technician', specialty: 'Nail care', groups: ['nails'], payType: 'quota', rate: 40, dailyPay: 500, noDeposit: true, chair: 11 },
   { id: 'liza', photo: 'assets/staff/liza.jpg', name: 'Liza', role: 'nails', title: 'Nail technician', specialty: 'Nail care', groups: ['nails'], payType: 'quota', rate: 40, dailyPay: 500, noDeposit: true, chair: 12 },
-  { id: 'alex', name: 'Alex', role: 'reception', title: 'Receptionist', specialty: '', groups: [], payType: 'monthly', monthlyPay: 20000, rate: 0, dailyPay: 0 },
+  { id: 'alex', name: 'Alex', role: 'reception', title: 'Owner', specialty: '', groups: [], payType: 'monthly', monthlyPay: 20000, rate: 0, dailyPay: 0 },
   { id: 'airyl', name: 'Airyl', role: 'stylist', title: 'Receptionist · braids', specialty: 'Braids', groups: ['braids'], rate: 70, dailyPay: 700, noDeposit: true, chair: 13 },
 ].map(b => ({ ...b, phone: '', days: [0, 1, 2, 3, 4, 5, 6], active: true }));
 export const publicBarber = b => ({ id: b.id, name: b.name, noDeposit: !!b.noDeposit, off: b.off || [], role: b.role || 'barber', title: b.title || '', specialty: b.specialty || '', groups: b.groups || ['him'], tiers: b.tiers || [], days: b.days || [], chair: b.chair || '', photo: b.photo || '', bio: b.bio || '', rating: b.rating || 0, ratingCount: b.ratingCount || 0 });
@@ -477,6 +477,7 @@ export function accountView({ phone, customers = [], appts = [], sales = [], inf
   return {
     name: c.name || (appts[0] && appts[0].name) || '', phone, birthday: c.birthday || '',
     upcoming, visits, visitCount: paid.length,
+    coupons: customers.flatMap(x => x.coupons || []).filter(cp => couponLive(cp, today)).map(cp => ({ id: cp.id, label: couponLabel(cp, info.services || [], (info.shop || {}).currency || '₱'), note: cp.note || '', expires: cp.expires || '' })),
     loyalty: every ? { every, visits: paid.length, nextFree: (paid.length + 1) % every === 0 } : null,
     again: last ? { svc: (last.lines || []).filter(l => l.kind === 'service').map(l => l.ref).filter(id => (info.services || []).some(s => s.id === id && s.active !== false)), barber: (info.barbers || []).some(b => b.id === last.barberId) ? last.barberId : '' } : null
   };
@@ -519,5 +520,15 @@ export function lateFine(inHM, startHM, rate) {
 export const lateRateOf = b => (b && b.lateFine != null && b.lateFine !== '') ? Math.max(0, Number(b.lateFine) || 0) : (b && (b.role || 'barber') === 'barber' ? ((b.tiers || []).includes('deluxe') ? 50 : 15) : 0);
 export const shiftStartOf = (b, pol) => (b && b.shiftStart) || (pol && pol.clockStart) || CLOCK_START;
 // Who can do what in the dashboard (admins/{uid}.role). A missing role means owner (accounts made before roles).
-export const ACCESS = { owner: 'Owner (everything)', desk: 'Front desk (bookings, checkout, clients)', staff: 'Own schedule and pay only' };
+export const ACCESS = { owner: 'Owner (everything)', desk: 'Receptionist (bookings, checkout, clients)', staff: 'Own schedule and pay only' };
 export const roleOf = a => (a && ACCESS[a.role]) ? a.role : 'owner';
+
+// ---------- client coupons (given in Edit client, used at checkout) ----------
+// { id, kind: 'amount' | 'percent' | 'service', value, svcId, note, expires: 'YYYY-MM-DD' | '', at, used, usedAt, saleId }
+export const couponLive = (cp, today) => !!cp && !cp.used && (!cp.expires || cp.expires >= today);
+export function couponLabel(cp, services = [], cur = '₱') {
+  if (!cp) return '';
+  if (cp.kind === 'percent') return `${Number(cp.value) || 0}% off`;
+  if (cp.kind === 'service') { const s = services.find(x => x.id === cp.svcId); return `Free ${s ? s.name : 'service'}`; }
+  return `${cur}${(Number(cp.value) || 0).toLocaleString('en-PH')} off`;
+}

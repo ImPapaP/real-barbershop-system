@@ -65,6 +65,7 @@ function home() {
   return `<section class="acct-hi"><div><p class="eyebrow">My visits</p><h1>Hi, ${esc(first)}</h1><p class="muted small">${esc(d.phone)}${d.birthday ? ` · Birthday ${esc(fmtBday(d.birthday))}: your haircut is on us` : ''}</p></div><button type="button" class="btn btn-sm btn-ghost" data-act="logout">Log out</button></section>
     <div class="row">${again ? `<a class="btn btn-accent" href="${esc(again)}">Book the same again</a>` : ''}<a class="btn" href="./#book">Book something new</a></div>
     ${loy}
+    ${(d.coupons || []).length ? `<section class="acct-card"><h2>Your coupons</h2><ul class="cp-acct">${d.coupons.map(cp => `<li><span class="cp-tag">${esc(cp.label)}</span><span>${esc(cp.note || 'Use it on your next visit')}${cp.expires ? `<small class="muted"> · until ${esc(fmtDate(cp.expires))}</small>` : ''}</span></li>`).join('')}</ul><p class="muted small">Show this at checkout. Each coupon is used once.</p></section>` : ''}
     <section class="acct-card"><h2>Coming up</h2>${upcoming}</section>
     <section class="acct-card"><h2>Past visits</h2>${visits}${more}</section>`;
 }
