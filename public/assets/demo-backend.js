@@ -3,7 +3,7 @@
 import {
   windowOfTime, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, comboError, commissionFor, isServiceStaff, rebookLink, slotId, blockTimes, isActiveSlot, availableTimes, policyOf,
   startMs, phNow, addDays, sum, promoCheck, cleanCode, cleanBday, queueItems, accountView, depositFor, cleanOptions, withOption, lateLimit, refundOnCancel,
-  lateFine, lateRateOf, shiftStartOf, roleOf, ACCESS, CLOCK_START, fullAccess
+  lateFine, lateRateOf, shiftStartOf, roleOf, ACCESS, CLOCK_START
 } from './shared.js';
 
 // The saved demo is keyed by a fingerprint of the starter data, so changing the menu or team
@@ -322,7 +322,7 @@ const FUNCS = {
   },
   // ----- staff sign-ins, owner PIN, time clock, day summary (mirror functions/index.js) -----
   staffLogin(d, u) {
-    const me = adminDoc(u); if (!me || !isBossNow(u)) fail('permission-denied', 'Only the owner or receptionist can manage sign-ins.');
+    const me = adminDoc(u); if (!me || !isBossNow(u) || roleOf(me) !== 'owner') fail('permission-denied', 'Only the owner can manage sign-ins.');
     const k = 'staff/' + d.staffId, b = store.get(k); if (!b) fail('not-found', 'Staff member not found.');
     if (d.remove) { if (b.login) store.delete('admins/' + b.login.uid); const { login, ...rest } = b; store.set(k, rest); actLog(u, 'login', `Removed ${b.name}'s sign-in`); changed(); return { ok: true }; }
     const email = String(d.email || '').trim().toLowerCase(), role = ACCESS[d.role] ? d.role : 'staff';
@@ -335,7 +335,7 @@ const FUNCS = {
     actLog(u, 'login', `${b.login ? 'Changed' : 'Gave'} ${b.name} a sign-in (${ACCESS[role]})`); changed(); return { ok: true, uid };
   },
   setPin(d, u) {
-    const me = adminDoc(u); if (!me || !fullAccess(me)) fail('permission-denied', 'Only the owner or receptionist can set the PIN.');
+    const me = adminDoc(u); if (!me || roleOf(me) !== 'owner') fail('permission-denied', 'Only the owner can set the PIN.');
     if (!/^\d{4}$/.test(String(d.pin || ''))) fail('invalid-argument', 'The PIN is 4 digits.');
     store.set('private/pin', { pin: String(d.pin), fails: 0, lockUntil: 0 }); actLog(u, 'pin', 'Changed the owner PIN'); changed(); return { ok: true };
   },
@@ -502,7 +502,7 @@ const FUNCS = {
   }
 };
 const adminDoc = u => u && store.get('admins/' + u.uid) ? { uid: u.uid, ...store.get('admins/' + u.uid) } : null;
-const isBossNow = u => { const a = adminDoc(u); return !!a && (fullAccess(a) || ((store.get('elevations/' + u.uid) || {}).until || 0) > Date.now()); };
+const isBossNow = u => { const a = adminDoc(u); return !!a && (roleOf(a) === 'owner' || ((store.get('elevations/' + u.uid) || {}).until || 0) > Date.now()); };
 function actLog(u, kind, text) { const a = adminDoc(u); store.set('activity/a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), { at: Date.now(), by: (a && a.uid) || 'server', who: (a && (a.name || a.email)) || 'System', role: a ? roleOf(a) : 'system', kind, text }); }
 export async function call(name, data) {
   await new Promise(r => setTimeout(r, 400));

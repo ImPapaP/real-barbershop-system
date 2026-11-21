@@ -38,7 +38,7 @@ import {
   verifyPaymongoSignature, rebookLink, newToken, tokenMatches, bookingCode, smsText, emailContent, eligibleBarbers,
   servicesById, blockTimes, phNow, addDays, normalizePhone, validEmail, parseSlotId, waitlistMatches,
   promoCheck, cleanCode, validProofImage, cleanBday, receiptView, receiptSms, receiptEmail, queueItems, accountView, depositFor, cleanOptions, withOption, hasDeposit, lateLimit, refundOnCancel,
-  lateFine, lateRateOf, shiftStartOf, roleOf, ACCESS, fullAccess
+  lateFine, lateRateOf, shiftStartOf, roleOf, ACCESS
 } from './src/core.js';
 import { createCheckout, expireCheckout, sendSms, sendEmail } from './src/providers.js';
 
@@ -815,13 +815,12 @@ export const syncFacebookNow = onCall(async req => {
 
 // =============== staff accounts, owner PIN, activity log ===============
 // admins/{uid}: { role: 'owner' | 'desk' | 'staff', staffId, name, email }. A missing role means owner.
-// 'desk' (receptionist) has the same access as the owner; 'staff' sees only their own day and pay.
 // The owner PIN unlocks owner-only actions on another account until Lock or sign-out (pinLock), with a 12-hour safety cap: elevations/{uid}.until,
 // which firestore.rules checks. Every sensitive change is written to activity/ (read by the owner only).
 async function adminOf(req) { if (!req.auth) return null; const s = await db.doc(`admins/${req.auth.uid}`).get(); return s.exists ? { uid: req.auth.uid, ...s.data() } : null; }
 async function bossOf(req) {
   const a = await adminOf(req); if (!a) return null;
-  if (fullAccess(a)) return a;
+  if (roleOf(a) === 'owner') return a;
   const e = await db.doc(`elevations/${a.uid}`).get();
   return e.exists && (e.data().until || 0) > Date.now() ? a : null;
 }
@@ -832,7 +831,7 @@ async function logActivity(a, kind, text, extra = {}) {
 const pinHash = (pin, salt) => crypto.scryptSync(String(pin), salt, 32).toString('hex');
 
 export const staffLogin = onCall(async req => {
-  const me = await bossOf(req); if (!me) throw new HttpsError('permission-denied', 'Only the owner or receptionist can manage sign-ins.');
+  const me = await bossOf(req); if (!me || roleOf(me) !== 'owner') throw new HttpsError('permission-denied', 'Only the owner can manage sign-ins.');
   const d = req.data || {}, staffId = String(d.staffId || ''), sRef = db.doc(`staff/${staffId}`), st = staffId ? await sRef.get() : null;
   if (!st || !st.exists) throw new HttpsError('not-found', 'Staff member not found.');
   const b = st.data(), cur = b.login || null, auth = getAuth();
@@ -857,7 +856,7 @@ export const staffLogin = onCall(async req => {
 });
 
 export const setPin = onCall(async req => {
-  const me = await adminOf(req); if (!me || !fullAccess(me)) throw new HttpsError('permission-denied', 'Only the owner or receptionist can set the PIN.');
+  const me = await adminOf(req); if (!me || roleOf(me) !== 'owner') throw new HttpsError('permission-denied', 'Only the owner can set the PIN.');
   const pin = String(req.data && req.data.pin || '');
   if (!/^\d{4}$/.test(pin)) throw new HttpsError('invalid-argument', 'The PIN is 4 digits.');
   const salt = crypto.randomBytes(16).toString('hex');
