@@ -338,6 +338,7 @@ export function accountView({ phone, customers = [], appts = [], sales = [], inf
   return {
     name: c.name || (appts[0] && appts[0].name) || '', phone, birthday: c.birthday || '',
     upcoming, visits, visitCount: paid.length,
+    coupons: customers.flatMap(x => x.coupons || []).filter(cp => couponLive(cp, today)).map(cp => ({ id: cp.id, label: couponLabel(cp, info.services || [], (info.shop || {}).currency || '₱'), note: cp.note || '', expires: cp.expires || '' })),
     loyalty: every ? { every, visits: paid.length, nextFree: (paid.length + 1) % every === 0 } : null,
     again: last ? { svc: (last.lines || []).filter(l => l.kind === 'service').map(l => l.ref).filter(id => (info.services || []).some(s => s.id === id && s.active !== false)), barber: (info.barbers || []).some(b => b.id === last.barberId) ? last.barberId : '' } : null
   };
@@ -380,5 +381,15 @@ export function lateFine(inHM, startHM, rate) {
 export const lateRateOf = b => (b && b.lateFine != null && b.lateFine !== '') ? Math.max(0, Number(b.lateFine) || 0) : (b && (b.role || 'barber') === 'barber' ? ((b.tiers || []).includes('deluxe') ? 50 : 15) : 0);
 export const shiftStartOf = (b, pol) => (b && b.shiftStart) || (pol && pol.clockStart) || CLOCK_START;
 // Who can do what in the dashboard (admins/{uid}.role). A missing role means owner (accounts made before roles).
-export const ACCESS = { owner: 'Owner (everything)', desk: 'Front desk (bookings, checkout, clients)', staff: 'Own schedule and pay only' };
+export const ACCESS = { owner: 'Owner (everything)', desk: 'Receptionist (bookings, checkout, clients)', staff: 'Own schedule and pay only' };
 export const roleOf = a => (a && ACCESS[a.role]) ? a.role : 'owner';
+
+// ---------- client coupons (given in Edit client, used at checkout) ----------
+// { id, kind: 'amount' | 'percent' | 'service', value, svcId, note, expires: 'YYYY-MM-DD' | '', at, used, usedAt, saleId }
+export const couponLive = (cp, today) => !!cp && !cp.used && (!cp.expires || cp.expires >= today);
+export function couponLabel(cp, services = [], cur = '₱') {
+  if (!cp) return '';
+  if (cp.kind === 'percent') return `${Number(cp.value) || 0}% off`;
+  if (cp.kind === 'service') { const s = services.find(x => x.id === cp.svcId); return `Free ${s ? s.name : 'service'}`; }
+  return `${cur}${(Number(cp.value) || 0).toLocaleString('en-PH')} off`;
+}

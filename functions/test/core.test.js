@@ -279,3 +279,15 @@ test('late fines: 9:01 is late, each started 15 minutes costs the rate', async (
   assert.equal(lateRateOf({ role: 'reception' }), 0);
   assert.equal(lateRateOf({ role: 'reception', lateFine: 20 }), 20);
 });
+
+test('client coupons: live until used or expired, labels, shown on My visits', async () => {
+  const { couponLive, couponLabel, accountView } = await import('../src/core.js');
+  assert.equal(couponLive({ kind: 'amount', value: 100 }, '2026-11-21'), true);
+  assert.equal(couponLive({ kind: 'amount', value: 100, used: true }, '2026-11-21'), false);
+  assert.equal(couponLive({ kind: 'amount', value: 100, expires: '2026-11-20' }, '2026-11-21'), false);
+  assert.equal(couponLabel({ kind: 'percent', value: 20 }), '20% off');
+  assert.equal(couponLabel({ kind: 'service', svcId: 'h2' }, [{ id: 'h2', name: 'Hair Spa' }]), 'Free Hair Spa');
+  assert.equal(couponLabel({ kind: 'amount', value: 1000 }), '₱1,000 off');
+  const v = accountView({ phone: '09170000100', customers: [{ id: 'c1', name: 'Marco', coupons: [{ id: 'k1', kind: 'amount', value: 100, note: 'Sorry for the wait' }, { id: 'k2', kind: 'amount', value: 50, used: true }] }], appts: [], sales: [], info: { services: [], shop: {} }, today: '2026-11-21' });
+  assert.deepEqual(v.coupons, [{ id: 'k1', label: '₱100 off', note: 'Sorry for the wait', expires: '' }]);
+});

@@ -4,7 +4,7 @@ import { db, demo, demoBar, resetDemo, login, logout, resetPassword, onAuth, upl
 import { buildXlsx, xlDate, xlTime, colName } from './xlsx.js';
 import { qrSvg } from './qr.js';
 import { drawBanner, bannerBlob } from './banner.js';
-import { withOption, lateLimit, hasDeposit, bdaySelects, cleanBday, fmtBday, bdayDays, BDAY_TITLE, esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, DEFAULT_POLICY, lateFine, lateRateOf, shiftStartOf, roleOf, ACCESS, CLOCK_START, startMs, canServe, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE, defaultFaq, cleanCode } from './shared.js';
+import { withOption, lateLimit, hasDeposit, bdaySelects, cleanBday, fmtBday, bdayDays, BDAY_TITLE, esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, DEFAULT_POLICY, lateFine, lateRateOf, shiftStartOf, roleOf, ACCESS, CLOCK_START, couponLive, couponLabel, startMs, canServe, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE, defaultFaq, cleanCode } from './shared.js';
 
 // ---------- constants ----------
 const METHODS = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer'];
@@ -37,7 +37,7 @@ const S = {
   clientQ: '', clientSort: 'recent', stockFilter: 'all', showArchived: false, pos: null, busy: false, uploading: ''
 };
 const unsubs = [];
-// Who sees what: the owner everything; the front desk Schedule, Checkout and Clients; staff only their own day and pay.
+// Who sees what: the owner everything; the receptionist Schedule, Checkout and Clients; staff only their own day and pay.
 // Owner pages show a lock screen on other sign-ins (and on the owner's own shared device when locked): the owner PIN opens them until someone taps Lock or signs out.
 const OWNER_TABS = ['overview', 'money', 'team', 'stock', 'website', 'setup', 'activity'];
 const DESK_TABS = ['schedule', 'checkout', 'clients'], STAFF_TABS = ['me', 'mypay'];
@@ -131,6 +131,7 @@ const ICONS = {
   site: '<path d="M3 9l7-6 7 6v8H3z"/><path d="M8 17v-5h4v5"/>',
   website: '<rect x="2.5" y="3.5" width="15" height="13" rx="2"/><circle cx="7" cy="8" r="1.6"/><path d="M3 15l4.5-4.5 3 3L13 11l4.5 4.5"/>',
   out: '<path d="M8 4H4v12h4M12 6l4 4-4 4M16 10H8"/>',
+  filter: '<path d="M3 5h14M6 10h8M8.5 15h3"/>',
   lock: '<rect x="4" y="9" width="12" height="8" rx="2"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/>',
   activity: '<path d="M3 10h3l2-5 4 10 2-5h3"/>',
   me: '<circle cx="10" cy="10" r="7.5"/><path d="M10 5.5V10l3 2"/>',
@@ -168,6 +169,7 @@ function render() {
   const tab = route(), all = COLS.every(c => S.loaded[c]);
   S.enter = S.canAdmin && (tab !== S.lastTab || (all && !S.wasLoaded)); S.lastTab = tab; if (all) S.wasLoaded = true;
   if (S.enter || !$('#app').firstElementChild) $('#app').innerHTML = view(); else morph($('#app'), view());
+  applyPaging();
   if (id && !$('#modal').contains(a)) { const n = document.getElementById(id); if (n && n !== document.activeElement) { n.focus({ preventScroll: true }); try { if (s != null) n.setSelectionRange(s, e); } catch (_) {} } }
   if (CP.input && !document.body.contains(CP.input)) cpClose();
 }
@@ -195,7 +197,7 @@ function loginView() {
     <img class="logo-hero" src="${LOGO_LG}" alt="${esc(info().shop.name)}" width="180" height="180"><h1 style="font:400 28px/1.1 var(--f-slab);text-align:center">Staff sign in</h1>
     ${field('Email', `<input id="l-email" name="email" type="email" autocomplete="username" required>`, 'l-email')}
     ${field('Password', `<input id="l-pass" name="pass" type="password" autocomplete="current-password" required>`, 'l-pass')}
-    ${demo ? `<div class="hint stack" style="gap:8px"><span>Demo: any password works. Sign in as</span><div class="row">${[['owner@demo.realbarbers', 'Owner'], ['alex@demo.realbarbers', 'Front desk (Alex)'], ['lyndon@demo.realbarbers', 'Barber (Lyndon)']].map(([e, l]) => `<button type="button" class="btn btn-sm" data-act="demoAs" data-email="${e}">${l}</button>`).join('')}</div></div>` : ''}${S.loginErr ? `<p class="err" role="alert">${esc(S.loginErr)}</p>` : ''}${S.loginMsg ? `<p class="hint">${esc(S.loginMsg)}</p>` : ''}
+    ${demo ? `<div class="hint stack" style="gap:8px"><span>Demo: any password works. Sign in as</span><div class="row">${[['alex@demo.realbarbers', 'Owner (Alex)'], ['airyl@demo.realbarbers', 'Receptionist (Airyl)'], ['lyndon@demo.realbarbers', 'Barber (Lyndon)']].map(([e, l]) => `<button type="button" class="btn btn-sm" data-act="demoAs" data-email="${e}">${l}</button>`).join('')}</div></div>` : ''}${S.loginErr ? `<p class="err" role="alert">${esc(S.loginErr)}</p>` : ''}${S.loginMsg ? `<p class="hint">${esc(S.loginMsg)}</p>` : ''}
     <button class="btn btn-primary btn-lg" type="submit" ${S.loginBusy ? 'disabled' : ''}>${S.loginBusy ? 'Signing in…' : 'Sign in'}</button>
     <button type="button" class="btn btn-ghost btn-sm" data-act="forgot">Forgot password?</button>
   </form></div>`;
@@ -442,7 +444,7 @@ function vOverview() {
   <div class="grid2">
     <section class="panel"><div class="panel-h"><h2>Sales, last 14 days</h2><a class="btn btn-sm btn-ghost" href="#money">Full report</a></div>${barChart(bk, [{ name: 'Sales', values: vals, cls: 's1' }])}</section>
     <section class="panel"><div class="panel-h"><h2>Today’s chairs</h2><a class="btn btn-sm btn-ghost" href="#schedule">Schedule</a></div>
-      ${appts.filter(a => !['cancelled', 'expired'].includes(a.status)).length ? `<ul class="list">${appts.filter(a => !['cancelled', 'expired'].includes(a.status)).map(a => apptRow(a, true)).join('')}</ul>` : '<p class="empty">No bookings or walk-ins yet today.</p>'}</section>
+      ${appts.filter(a => !['cancelled', 'expired'].includes(a.status)).length ? `<ul class="list pg">${appts.filter(a => !['cancelled', 'expired'].includes(a.status)).map(a => apptRow(a, true)).join('')}</ul>` : '<p class="empty">No bookings or walk-ins yet today.</p>'}</section>
   </div>
   <div class="grid3">
     <section class="panel"><div class="panel-h"><h2>This month</h2></div>
@@ -524,11 +526,10 @@ function vSchedule() {
     </div>
     <div class="filters">
       <input type="search" id="sch-q" data-bind="schedQ" data-live value="${esc(S.schedQ)}" placeholder="Search name, phone or code" aria-label="Search this day">
-      <select id="sch-barber" data-bind="schedBarber" data-live aria-label="Filter by barber">${opt('', `All barbers (${base.length})`, !S.schedBarber)}${serviceStaff().map(b => { const n = base.filter(a => a.barberId === b.id).length; return opt(b.id, `${b.name}${n ? ` (${n})` : ''}`, b.id === S.schedBarber); }).join('')}${opt('__any', `Unassigned (${base.filter(a => !a.barberId).length})`, S.schedBarber === '__any')}</select>
-      <select id="sch-src" data-bind="schedSrc" data-live aria-label="Filter by how they booked">${[['', 'All bookings'], ['online', 'Online'], ['walkin', 'Walk-ins'], ['phone', 'Phone / in person']].map(([k, l]) => opt(k, l, k === S.schedSrc)).join('')}</select>
+      ${filterDD('sched', (S.schedBarber ? 1 : 0) + (S.schedSrc ? 1 : 0) + (S.schedStatus ? 1 : 0), `<div class="fdd-grid"><select id="sch-barber" data-bind="schedBarber" data-live aria-label="Filter by barber">${opt('', `All barbers (${base.length})`, !S.schedBarber)}${serviceStaff().map(b => { const n = base.filter(a => a.barberId === b.id).length; return opt(b.id, `${b.name}${n ? ` (${n})` : ''}`, b.id === S.schedBarber); }).join('')}${opt('__any', `Unassigned (${base.filter(a => !a.barberId).length})`, S.schedBarber === '__any')}</select>
+      <select id="sch-src" data-bind="schedSrc" data-live aria-label="Filter by how they booked">${[['', 'All bookings'], ['online', 'Online'], ['walkin', 'Walk-ins'], ['phone', 'Phone / in person']].map(([k, l]) => opt(k, l, k === S.schedSrc)).join('')}</select></div><p class="fdd-h">Status</p><div class="seg-chips" role="group" aria-label="Filter by status">${statusChips.map(([k, l, n]) => `<button type="button" class="fchip${k === 'late' || k === 'unpaid' || k === 'assign' ? ' warn' : ''}" data-act="schedStatus" data-v="${k}" aria-pressed="${k === S.schedStatus}">${esc(l)}<b>${n}</b></button>`).join('')}
+      ${expiredN ? `<label class="row small exp-toggle"><input type="checkbox" id="sch-exp" data-bind="showExpired" data-live ${S.showExpired ? 'checked' : ''}> Show ${expiredN} unpaid hold${expiredN > 1 ? 's' : ''}</label>` : ''}</div>`)}
     </div>
-    <div class="seg-chips" role="group" aria-label="Filter by status">${statusChips.map(([k, l, n]) => `<button type="button" class="fchip${k === 'late' || k === 'unpaid' || k === 'assign' ? ' warn' : ''}" data-act="schedStatus" data-v="${k}" aria-pressed="${k === S.schedStatus}">${esc(l)}<b>${n}</b></button>`).join('')}
-      ${expiredN ? `<label class="row small exp-toggle"><input type="checkbox" id="sch-exp" data-bind="showExpired" data-live ${S.showExpired ? 'checked' : ''}> Show ${expiredN} unpaid hold${expiredN > 1 ? 's' : ''}</label>` : ''}</div>
     ${anyFilter ? `<p class="filter-note">Showing <b>${appts.length}</b> of ${base.length} · <button type="button" class="link-btn" data-act="schedClear">Clear filters</button></p>` : ''}
     ${appts.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Time</th><th>Client</th><th>Services</th><th>Barber</th><th>Source</th><th>Status</th><th></th></tr></thead><tbody>${appts.map(a => apptRow(a)).join('')}</tbody></table></div>`
       : anyFilter ? `<p class="empty">No visits match these filters. <button type="button" class="link-btn" data-act="schedClear">Clear filters</button></p>` : `<p class="empty">Nothing scheduled ${isToday ? 'today' : 'on this day'}. Online bookings appear here as soon as the deposit is paid.</p>`}
@@ -618,6 +619,7 @@ function vCheckout() {
         ${p.servedLate ? `<p class="hint"><b>Served late.</b> More than ${lateLimit(appt || {}, pol())} minutes late for a senior barber: the client pays the full price, and the down payment isn’t taken off (it’s kept, half to the barber).</p>` : ''}
         ${p.lateFee ? `<p class="hint"><b>Late fee.</b> More than ${lateLimit(appt || {}, pol())} minutes late for a senior barber: the down payment is kept (half goes to the barber) and the client pays the full price of the service for the barber’s time.</p>` : ''}
         ${appt && appt.refPhoto ? `<button type="button" class="btn btn-sm" data-act="viewRef" data-id="${esc(appt.id)}" style="justify-self:start">See the cut they want (photo)</button>` : ''}
+        ${cust && liveCoupons(cust).length ? `<div class="hint cp-hint"><b>${esc(cust.name)} has ${liveCoupons(cust).length > 1 ? 'coupons' : 'a coupon'}:</b><div class="row">${liveCoupons(cust).map(cp => `<button type="button" class="btn btn-sm${p.couponId === cp.id ? ' btn-primary' : ''}" data-act="posCoupon" data-id="${esc(cp.id)}">${p.couponId === cp.id ? '✓ ' : 'Use '}${esc(cpLabel(cp))}</button>`).join('')}</div></div>` : ''}
         ${loyal}${posBday(p) !== null ? `<p class="hint"><b>Birthday ${bdayWhen(posBday(p))}.</b> ${esc(bdayPromoText())} Tap “Birthday promo” below.</p>` : ''}
         ${field('Barber', `<select id="pos-barber" data-bind="pos.barberId" data-live>${opt('', 'Choose barber', !p.barberId)}${serviceStaff().map(b => opt(b.id, `${b.name} · ${b.rate || 0}%`, b.id === p.barberId)).join('')}</select>`, 'pos-barber')}
         <div class="lines">${p.lines.length ? p.lines.map((l, i) => `<div class="line"><span class="nm">${esc(l.name)}</span>${l.kind === 'service' ? '<span class="qty"></span>' : `<span class="qty"><button type="button" data-act="posQty" data-i="${i}" data-d="-1" aria-label="One less">−</button><span>${l.qty}</span><button type="button" data-act="posQty" data-i="${i}" data-d="1" aria-label="One more">+</button></span>`}<span class="num">${money(l.price * l.qty)}</span><button type="button" class="icon-btn" data-act="posDel" data-i="${i}" aria-label="Remove ${esc(l.name)}">✕</button></div>`).join('') : '<p class="muted small" style="padding:10px 0">No items yet. Tap a service or product.</p>'}</div>
@@ -764,8 +766,10 @@ function vMoney() {
   const byCat = EXP_CATS.map(c => ({ label: c, value: sum(s.exps.filter(x => x.cat === c), x => x.amount) })).filter(x => x.value).sort((a, b) => b.value - a.value);
   const svcMap = {}; for (const x of s.sales) for (const l of (x.lines || [])) if (l.kind === 'service') { svcMap[l.name] = svcMap[l.name] || { n: 0, v: 0 }; svcMap[l.name].n += l.qty; svcMap[l.name].v += l.qty * l.price; }
   const top = Object.entries(svcMap).map(([k, v]) => ({ label: k, value: v.v, text: `${v.n} × · ${money(v.v)}` })).sort((a, b) => b.value - a.value).slice(0, 6);
-  const sales = [...s.sales].sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
-  const exps = [...s.exps].sort((a, b) => b.date.localeCompare(a.date));
+  const allSales = [...s.sales].sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
+  const sales = allSales.filter(x => (!S.saleBarber || x.barberId === S.saleBarber) && (!S.saleMethod || (x.method || 'Cash') === S.saleMethod));
+  const allExps = [...s.exps].sort((a, b) => b.date.localeCompare(a.date)), expCats = [...new Set(allExps.map(e => e.cat))].sort();
+  const exps = allExps.filter(e => (!S.expCat || e.cat === S.expCat) && (!S.expMethod || e.method === S.expMethod));
   return `${pageHead(rangeLabel(r), 'Income & expenses', `<button class="btn" data-act="exportXlsx">${ICON_DL}Download Excel</button><button class="btn btn-ghost" data-act="exportCsv">CSV</button><button class="btn btn-primary" data-act="newExpense">+ Expense</button>`)}
   ${periodBar()}
   <section class="kpis">
@@ -790,11 +794,11 @@ function vMoney() {
     <div class="muted"><span>Of income, paid online as deposits</span><span>${money(s.deposits + s.keptAmt, 1)}</span></div>
     <div class="muted"><span>Tips collected for barbers</span><span>${money(s.tips, 1)}</span></div></div>
     <p class="muted small" style="margin-top:10px">PayMongo deducts its fees before paying out. Record them as a “Payment fees” expense from your PayMongo payout report.</p></section>
-  <section class="panel"><div class="panel-h"><h2>Expenses</h2><button class="btn btn-sm" data-act="newExpense">+ Expense</button></div>
+  <section class="panel"><div class="panel-h"><h2>Expenses</h2><div class="row">${filterDD('exp', (S.expCat ? 1 : 0) + (S.expMethod ? 1 : 0), `<div class="fdd-grid">${field('Category', `<select id="ex-cat" data-bind="expCat" data-live>${opt('', `All (${allExps.length})`, !S.expCat)}${expCats.map(c => opt(c, c, c === S.expCat)).join('')}</select>`, 'ex-cat')}${field('Paid by', `<select id="ex-m" data-bind="expMethod" data-live>${opt('', 'Any', !S.expMethod)}${METHODS.map(m => opt(m, m, m === S.expMethod)).join('')}</select>`, 'ex-m')}</div>`)}<button class="btn btn-sm" data-act="newExpense">+ Expense</button></div></div>
     ${exps.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Paid by</th><th class="r">Amount</th><th></th></tr></thead><tbody>
       ${exps.map(e => `<tr><td class="num nowrap">${shortDate(e.date)}</td><td>${esc(e.cat)}</td><td>${esc(e.desc || '')}</td><td>${esc(e.method || '')}</td><td class="r"><b>${money(e.amount, 1)}</b></td><td><div class="acts"><button class="btn btn-sm btn-ghost" data-act="editExpense" data-id="${esc(e.id)}">Edit</button><button class="btn btn-sm btn-danger" data-act="delExpense" data-id="${esc(e.id)}">Delete</button></div></td></tr>`).join('')}
     </tbody></table></div>` : '<p class="empty">No expenses in this period. Record rent, bills and supplies with “+ Expense”.</p>'}</section>
-  <section class="panel"><div class="panel-h"><h2>Sales</h2><span class="muted small">${sales.length} in this period</span></div>${salesTable(sales.slice(0, 100), sales.length > 100 ? `Showing the latest 100 of ${sales.length}. Export CSV for the full list.` : '')}</section>`;
+  <section class="panel"><div class="panel-h"><h2>Sales</h2><div class="row"><span class="muted small">${sales.length}${sales.length !== allSales.length ? ` of ${allSales.length}` : ''} in this period</span>${filterDD('sales', (S.saleBarber ? 1 : 0) + (S.saleMethod ? 1 : 0), `<div class="fdd-grid">${field('Barber', `<select id="sl-b" data-bind="saleBarber" data-live>${opt('', 'Everyone', !S.saleBarber)}${serviceStaff().map(b => opt(b.id, b.name, b.id === S.saleBarber)).join('')}</select>`, 'sl-b')}${field('Payment', `<select id="sl-m" data-bind="saleMethod" data-live>${opt('', 'Any', !S.saleMethod)}${METHODS.map(m => opt(m, m, m === S.saleMethod)).join('')}</select>`, 'sl-m')}</div>`)}</div></div>${salesTable(sales)}</section>`;
 }
 
 // ---------- tab: team ----------
@@ -861,7 +865,7 @@ function vTeam() {
   const pays = [...S.payouts].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20);
   return `${pageHead(rangeLabel(r), 'Staff', `<button class="btn btn-primary" data-act="newStaff">+ Staff member</button>`)}
   ${periodBar()}
-  <section class="panel"><div class="panel-h"><h2>Pay and commissions</h2><label class="row small"><input type="checkbox" id="t-arch" data-bind="showArchived" data-live ${S.showArchived ? 'checked' : ''}> Show former staff</label></div>
+  <section class="panel"><div class="panel-h"><h2>Pay and commissions</h2>${filterDD('pay', S.showArchived ? 1 : 0, `<label class="row small"><input type="checkbox" id="t-arch" data-bind="showArchived" data-live ${S.showArchived ? 'checked' : ''}> Show former staff</label>`)}</div>
     ${list.length ? `<div class="tbl-wrap"><table class="tbl pay-tbl"><thead><tr><th>Name</th><th class="r">Days</th><th class="r">Base pay</th><th class="r">Sales</th><th class="r">Commission</th><th class="r">Earned</th><th class="r">Owed now</th><th></th></tr></thead><tbody>
     ${list.map(b => { const P = payFor(b, r), owed = owedFor(b.id);
       return `<tr><td><div class="row" style="flex-wrap:nowrap">${av(b)}<div><b>${esc(b.name)}</b>${b.active === false ? ' <span class="muted small">(former)</span>' : ''}<div class="muted small nowrap">${esc(b.title || roleName(b))}${b.chair ? ' · Chair ' + esc(b.chair) : ''}</div><div class="pay-rule">${esc(payRule(b))}${b.productFee ? ' · product fee' : ''}</div></div></div></td>
@@ -883,6 +887,8 @@ function vClients() {
   let list = S.customers.map(c => ({ ...c, st: st[c.id] || { visits: 0, spent: 0, last: '', barbers: {} } }));
   if (q) list = list.filter(c => c.name.toLowerCase().includes(q) || normPhone(c.phone).includes(normPhone(q) || '§'));
   const sorts = { recent: (a, b) => (b.st.last || '').localeCompare(a.st.last || ''), spend: (a, b) => b.st.spent - a.st.spent, visits: (a, b) => b.st.visits - a.st.visits, name: (a, b) => a.name.localeCompare(b.name) };
+  const TAGS = { regular: c => c.st.visits >= (pol().regularVisits || 3), coupon: c => liveCoupons(c).length > 0, bday: c => { const n = bdayDays(c.birthday, today()); return n !== null && n >= 0 && n <= 14; }, lapsed: c => !!c.st.last && c.st.last < addDays(today(), -45), new: c => c.st.visits <= 1 };
+  if (S.clientTag && TAGS[S.clientTag]) list = list.filter(TAGS[S.clientTag]);
   list.sort(sorts[S.clientSort] || sorts.recent);
   const lapsed = S.customers.filter(c => st[c.id] && st[c.id].last && st[c.id].last < addDays(today(), -45)).length;
   const due = dueForTrim(st);
@@ -900,11 +906,11 @@ function vClients() {
       <td><div class="acts">${!sent && !c.noReminders && (c.phone || c.email) ? `<button class="btn btn-sm btn-primary" data-act="remind" data-id="${esc(c.id)}" data-last="${esc(last)}" ${S.reminding === c.id ? 'disabled' : ''}>${S.reminding === c.id ? 'Sending…' : 'Send reminder'}</button>` : ''}<button class="btn btn-sm btn-ghost" data-act="openClient" data-id="${esc(c.id)}">Open</button></div></td></tr>`; }).join('')}</tbody></table></div>` : '<p class="empty">Nobody is due right now.</p>'}</section>` : ''}
   <section class="panel">
     <div class="toolbar" style="margin-bottom:12px"><input type="search" id="c-q" data-bind="clientQ" data-live value="${esc(S.clientQ)}" placeholder="Search name or phone" aria-label="Search clients">
-      <select id="c-sort" data-bind="clientSort" data-live style="width:auto" aria-label="Sort">${[['recent', 'Last visit'], ['spend', 'Top spenders'], ['visits', 'Most visits'], ['name', 'Name']].map(([k, l]) => opt(k, 'Sort: ' + l, k === S.clientSort)).join('')}</select></div>
+      ${filterDD('clients', (S.clientTag ? 1 : 0) + (S.clientSort && S.clientSort !== 'recent' ? 1 : 0), `<div class="fdd-grid">${field('Show', `<select id="c-tag" data-bind="clientTag" data-live>${[['', 'All clients'], ['regular', 'Regulars'], ['coupon', 'Has a coupon'], ['bday', 'Birthday in the next 2 weeks'], ['lapsed', 'No visit in 45+ days'], ['new', 'New (0–1 visits)']].map(([k, l]) => opt(k, l, k === (S.clientTag || ''))).join('')}</select>`, 'c-tag')}${field('Sort by', `<select id="c-sort" data-bind="clientSort" data-live>${[['recent', 'Last visit'], ['spend', 'Top spenders'], ['visits', 'Most visits'], ['name', 'Name']].map(([k, l]) => opt(k, l, k === S.clientSort)).join('')}</select>`, 'c-sort')}</div>`)}</div>
     ${list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Client</th><th class="r">Visits</th><th class="r">Spent</th><th>Last visit</th>${N ? `<th>Loyalty (every ${N})</th>` : ''}<th>Usual barber</th></tr></thead><tbody>
-      ${list.map(c => { const prog = c.st.visits % (N || 1); return `<tr class="click" data-act="openClient" data-id="${esc(c.id)}" tabindex="0"><td><b>${esc(c.name)}</b>${c.st.visits >= (pol().regularVisits || 3) ? ' ' + chip({ kind: 'good', icon: '★', label: 'Regular' }) : ''}<div class="muted small">${esc(c.phone || 'No phone')}</div></td><td class="r">${c.st.visits}</td><td class="r">${money(c.st.spent)}</td><td class="num">${c.st.last ? fmtDate(c.st.last) : '<span class="muted">—</span>'}</td>
+      ${list.map(c => { const prog = c.st.visits % (N || 1); return `<tr class="click" data-act="openClient" data-id="${esc(c.id)}" tabindex="0"><td><b>${esc(c.name)}</b>${c.st.visits >= (pol().regularVisits || 3) ? ' ' + chip({ kind: 'good', icon: '★', label: 'Regular' }) : ''}${liveCoupons(c).length ? ' ' + chip({ kind: 'info', icon: '%', label: 'Coupon' }) : ''}<div class="muted small">${esc(c.phone || 'No phone')}</div></td><td class="r">${c.st.visits}</td><td class="r">${money(c.st.spent)}</td><td class="num">${c.st.last ? fmtDate(c.st.last) : '<span class="muted">—</span>'}</td>
         ${N ? `<td><span class="meter" aria-label="${prog} of ${N} visits">${N <= 12 ? Array.from({ length: N }, (_, i) => `<i class="${i < prog ? 'on' : ''}"></i>`).join('') : `${prog}/${N}`}</span></td>` : ''}<td>${esc(usualBarber(c.st))}</td></tr>`; }).join('')}
-    </tbody></table></div>` : `<p class="empty">${q ? 'No client matches that search.' : 'No clients yet. They’re added at checkout, or use “+ Client”.'}</p>`}
+    </tbody></table></div>` : `<p class="empty">${q || S.clientTag ? 'No client matches that search or filter.' : 'No clients yet. They’re added at checkout, or use “+ Client”.'}</p>`}
   </section>`;
 }
 
@@ -920,7 +926,7 @@ function dueForTrim(st) {
 function stockChip(i) { return i.stock <= 0 ? chip({ kind: 'bad', icon: '✕', label: 'Out' }) : i.stock <= i.reorder ? chip({ kind: 'warn', icon: '!', label: 'Low' }) : chip({ kind: 'good', icon: '✓', label: 'OK' }); }
 function vStock() {
   const all = [...S.inventory].sort((a, b) => (a.cat || '').localeCompare(b.cat || '') || a.name.localeCompare(b.name));
-  const f = S.stockFilter, list = all.filter(i => f === 'all' || (f === 'low' ? i.stock <= i.reorder : i.cat === f));
+  const f = S.stockFilter, sq = (S.stockQ || '').trim().toLowerCase(), list = all.filter(i => (f === 'all' || (f === 'low' ? i.stock <= i.reorder : i.cat === f)) && (!sq || i.name.toLowerCase().includes(sq)));
   const low = all.filter(i => i.stock <= i.reorder).length;
   return `${pageHead(`${all.length} items`, 'Inventory', `<button class="btn btn-primary" data-act="newItem">+ Item</button>`)}
   <section class="kpis">
@@ -929,7 +935,7 @@ function vStock() {
     ${kpi('Retail value on shelf', money(sum(all.filter(i => i.cat === 'Retail'), i => Math.max(0, i.stock) * (i.price || 0))))}
   </section>
   <section class="panel">
-    <div class="toolbar" style="margin-bottom:12px"><div class="seg" role="group" aria-label="Filter">${[['all', 'All'], ['Retail', 'Retail'], ['Supply', 'Shop supplies'], ['low', 'Low stock']].map(([k, l]) => `<button type="button" data-act="stockFilter" data-v="${k}" aria-pressed="${f === k}">${l}</button>`).join('')}</div></div>
+    <div class="toolbar" style="margin-bottom:12px"><input type="search" id="st-q" data-bind="stockQ" data-live value="${esc(S.stockQ || '')}" placeholder="Search items" aria-label="Search items">${filterDD('stock', f !== 'all' ? 1 : 0, `<div class="seg seg-col" role="group" aria-label="Show">${[['all', 'All items'], ['Retail', 'Retail (sold to clients)'], ['Supply', 'Shop supplies'], ['low', 'Low or out of stock']].map(([k, l]) => `<button type="button" data-act="stockFilter" data-v="${k}" aria-pressed="${f === k}">${l}</button>`).join('')}</div>`)}</div>
     ${list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Item</th><th>Type</th><th class="r">In stock</th><th class="r">Reorder at</th><th class="r">Cost</th><th class="r">Price</th><th>Status</th><th></th></tr></thead><tbody>
       ${list.map(i => `<tr><td><b>${esc(i.name)}</b><div class="stockbar" aria-hidden="true"><i style="width:${Math.min(100, Math.max(0, i.stock) / Math.max(1, (i.reorder || 1) * 3) * 100).toFixed(0)}%"></i></div></td><td>${i.cat === 'Retail' ? 'Retail' : 'Shop supply'}</td><td class="r"><b>${i.stock}</b> <span class="muted small">${esc(i.unit || '')}</span></td><td class="r">${i.reorder}</td><td class="r">${money(i.cost || 0)}</td><td class="r">${i.cat === 'Retail' ? money(i.price || 0) : '—'}</td><td>${stockChip(i)}</td>
         <td><div class="acts"><button class="btn btn-sm" data-act="adjust" data-id="${esc(i.id)}" data-dir="in">Receive</button><button class="btn btn-sm" data-act="adjust" data-id="${esc(i.id)}" data-dir="out">Use</button><button class="btn btn-sm btn-ghost" data-act="editItem" data-id="${esc(i.id)}">Edit</button></div></td></tr>`).join('')}
@@ -1305,7 +1311,7 @@ const MODAL = { stack: [], cur: null, hist: false, skipPop: false, hash: '' };
 function drawModal() {
   const { title, body, wide } = MODAL.cur, m = $('#modal'), back = MODAL.stack.length ? MODAL.stack[MODAL.stack.length - 1].title : '';
   m.innerHTML = `<div class="scrim" data-act="scrim"><div class="modal${wide ? ' wide' : ''}" role="dialog" aria-modal="true" aria-labelledby="mt"><div class="modal-h"><button type="button" class="back-btn" data-act="modalBack" aria-label="${back ? 'Back to ' + esc(back) : 'Back'}">${icon('back')}<span>Back</span></button><h2 id="mt">${esc(title)}</h2><button type="button" class="icon-btn" data-act="closeModal" aria-label="Close">✕</button></div><div class="modal-b">${body}</div></div></div>`;
-  m.hidden = false;
+  m.hidden = false; applyPaging();
   const sf = m.querySelector('form[data-form=staff]'); if (sf) payFormSync(sf);
   setTimeout(() => { const f = m.querySelector('.modal-b input:not([type=checkbox]),.modal-b select,.modal-b textarea'); if (f) f.focus(); }, 30);
 }
@@ -1441,6 +1447,7 @@ function clientModal(c) {
     ${bdayField(x.birthday)}
     ${field('Notes', `<textarea id="m-cnotes" name="notes" rows="3" placeholder="Usual cut, guard number, preferences">${esc(x.notes || '')}</textarea>`, 'm-cnotes')}
     <label class="row small"><input type="checkbox" name="noReminders" ${x.noReminders ? 'checked' : ''}> Don’t send this client “time for a trim” texts</label>
+    ${couponFields(c)}
     <p class="err" id="m-err" hidden></p>${mFoot(c ? 'Save changes' : 'Add client', c ? `<button type="button" class="btn btn-danger" data-act="delClient" data-id="${esc(x.id)}" style="margin-right:auto">Delete</button>` : '')}</form>`);
 }
 function clientDrawer(c) {
@@ -1454,7 +1461,8 @@ function clientDrawer(c) {
     ${N ? `<p class="hint">${(st.visits + 1) % N === 0 ? `<b>Next visit is free</b> (visit #${st.visits + 1}).` : `${N - ((st.visits + 1) % N)} more visit${N - ((st.visits + 1) % N) === 1 ? '' : 's'} after the next one to a free cut.`}</p>` : ''}
     ${next ? `<p class="note">Next booking: <b>${fmtDate(next.date)} at ${fmtTime(next.time)}</b> with ${esc(staffName(next.barberId))}</p>` : ''}
     ${c.notes ? `<div class="note">${esc(c.notes)}</div>` : ''}
-    <div><p class="eyebrow" style="margin-bottom:6px">Visit history</p>${hist.length ? `<ul class="list">${hist.slice(0, 15).map(s => `<li><span class="t">${shortDate(s.date)}</span><span class="grow"><span>${esc((s.lines || []).map(l => l.name).join(', '))}</span><span class="sub" style="display:block">${esc(staffName(s.barberId))} · ${esc(s.method)}</span></span><b class="num">${money(s.total)}</b></li>`).join('')}</ul>` : '<p class="empty">No visits recorded yet.</p>'}</div>
+    ${liveCoupons(c).length ? `<p class="hint"><b>Coupon${liveCoupons(c).length > 1 ? 's' : ''} ready:</b> ${liveCoupons(c).map(cp => esc(cpLabel(cp)) + (cp.note ? ` <span class="muted">(${esc(cp.note)})</span>` : '')).join(', ')}. Used at checkout.</p>` : ''}
+    <div><p class="eyebrow" style="margin-bottom:6px">Visit history</p>${hist.length ? `<ul class="list pg">${hist.map(s => `<li><span class="t">${shortDate(s.date)}</span><span class="grow"><span>${esc((s.lines || []).map(l => l.name).join(', '))}</span><span class="sub" style="display:block">${esc(staffName(s.barberId))} · ${esc(s.method)}</span></span><b class="num">${money(s.total)}</b></li>`).join('')}</ul>` : '<p class="empty">No visits recorded yet.</p>'}</div>
     <div class="modal-f"><button type="button" class="btn" data-act="editClient" data-id="${esc(c.id)}">Edit client</button><button type="button" class="btn btn-primary" data-act="checkoutClient" data-id="${esc(c.id)}">Start checkout</button></div>
   </div>`, true);
 }
@@ -1694,7 +1702,7 @@ const ACT = {
       const sale = {
         date: today(), time: nowHM(), at: Date.now(), customerId, name: p.name.trim() || 'Walk-in', phone: p.phone.trim(), phoneKey: phoneKey(p.phone), barberId: p.barberId,
         lines: p.lines.map(l => ({ ...l, price: Number(l.price) || 0 })), svcTotal: T.svc, prodTotal: T.prod, discount: T.disc, discountNote: T.disc ? (p.discountNote || '') : '',
-        tip: T.tip, total: T.total, depositCredit: T.deposit, method: p.method, cash: p.method === 'Cash' ? num(p.cash) : 0, apptId: p.apptId || '', rate, commission, productFees, rtoken, ...(orNo ? { orNo } : {}), ...(p.lateFee ? { lateFee: true } : {}), ...(p.servedLate ? { servedLate: true } : {})
+        tip: T.tip, total: T.total, depositCredit: T.deposit, ...(p.couponId && T.disc ? { couponId: p.couponId } : {}), method: p.method, cash: p.method === 'Cash' ? num(p.cash) : 0, apptId: p.apptId || '', rate, commission, productFees, rtoken, ...(orNo ? { orNo } : {}), ...(p.lateFee ? { lateFee: true } : {}), ...(p.servedLate ? { servedLate: true } : {})
       };
       if (!await put('sales', id, sale)) return;
       for (const l of p.lines.filter(x => x.kind === 'product')) {
@@ -1703,6 +1711,7 @@ const ACT = {
       }
       if (p.apptId && p.lateFee) { const la = S.appointments.find(x => x.id === p.apptId) || {}; await patch('appointments', p.apptId, { status: 'noshow', lateFeeSale: id, saleId: id, customerId: customerId || '', receipt: { id, t: rtoken }, ...(la.deposit && la.deposit.status === 'paid' ? { deposit: { ...la.deposit, status: 'kept' } } : {}) }); }
       else if (p.apptId) { const sa = S.appointments.find(x => x.id === p.apptId) || {}; await patch('appointments', p.apptId, { status: 'done', saleId: id, customerId: customerId || '', receipt: { id, t: rtoken }, ...(p.servedLate ? { servedLate: true, ...(sa.deposit && sa.deposit.status === 'paid' ? { deposit: { ...sa.deposit, status: 'kept' } } : {}) } : {}) }); }
+      if (p.couponId && p.couponCust && T.disc) { const cc = S.customers.find(x => x.id === p.couponCust); if (cc) await patch('customers', cc.id, { coupons: (cc.coupons || []).map(x => x.id === p.couponId ? { ...x, used: true, usedAt: Date.now(), saleId: id } : x) }); }
       logAct('sale', `Rang up ${money(sale.total, 1)} for ${sale.name} · ${staffName(sale.barberId)} · ${sale.method}${sale.discount ? ` · ${money(sale.discount)} discount${sale.discountNote ? ' (' + sale.discountNote + ')' : ''}` : ''}${sale.orNo ? ' · ' + sale.orNo : ''}${sale.servedLate ? ' · served late' : ''}${sale.lateFee ? ' · late fee' : ''}`, { amount: sale.total, ref: id });
       S.pos = blankPos();
       toast(`Sale saved · ${money(sale.total, 1)}`); receiptModal({ id, ...sale }, true);
@@ -2012,7 +2021,7 @@ function navTabs() {
   const boss = isBoss();
   return TABS.filter(t => !STAFF_TABS.includes(t[0])).map(([id, l]) => [id, l, !boss && OWNER_TABS.includes(id)]);
 }
-const ROLE_LABEL = { owner: 'Owner', desk: 'Front desk', staff: 'Staff' };
+const ROLE_LABEL = { owner: 'Owner', desk: 'Receptionist', staff: 'Staff' };
 const meName = () => (S.me && S.me.name) || (S.user && S.user.email) || '';
 function whoChip() { return `<div class="who-chip"><b>${esc(meName())}</b><small>${ROLE_LABEL[myRole()]}${S.lockOn ? ' · this device is locked' : ''}</small></div>`; }
 function elevBanner() {
@@ -2074,10 +2083,10 @@ function vActivity() {
   ${periodBar()}
   <section class="panel">
     <div class="filters"><input type="search" id="ac-q" data-bind="actQ" data-live value="${esc(S.actQ || '')}" placeholder="Search, e.g. void, 399, Marco" aria-label="Search the log">
-      <select id="ac-who" data-bind="actWho" data-live aria-label="Person">${opt('', `Everyone (${people.length})`, !S.actWho)}${people.map(p => opt(p, p, p === S.actWho)).join('')}</select>
-      <select id="ac-kind" data-bind="actKind" data-live aria-label="Type">${opt('', 'Everything', !S.actKind)}${kinds.map(k => opt(Object.keys(ACT_KINDS).find(x => ACT_KINDS[x] === k), k, S.actKind && ACT_KINDS[S.actKind] === k)).join('')}</select></div>
-    ${list.length ? days.map(d => `<h3 class="dc-h">${d === today() ? 'Today' : fmtDate(d, true)}</h3><ul class="list act-list">${list.filter(a => ymd(new Date(a.at)) === d).map(a => { const t = new Date(a.at);
-      return `<li class="act-${esc(a.kind)}"><span class="act-time tnum">${fmtTime(`${pad(t.getHours())}:${pad(t.getMinutes())}`)}</span><div class="grow"><b>${esc(a.who || 'Someone')}</b> <span class="muted small">${esc(ROLE_LABEL[a.role] || (a.role === 'system' ? 'System' : ''))}</span><div class="sub">${esc(a.text)}</div></div>${['void', 'pin'].includes(a.kind) || /wrong pin|deleted|voided|short/i.test(a.text) ? chip({ kind: 'warn', icon: '!', label: ACT_KINDS[a.kind] || 'Check' }) : ''}</li>`; }).join('')}</ul>`).join('')
+      ${filterDD('act', (S.actWho ? 1 : 0) + (S.actKind ? 1 : 0), `<div class="fdd-grid"><select id="ac-who" data-bind="actWho" data-live aria-label="Person">${opt('', `Everyone (${people.length})`, !S.actWho)}${people.map(p => opt(p, p, p === S.actWho)).join('')}</select>
+      <select id="ac-kind" data-bind="actKind" data-live aria-label="Type">${opt('', 'Everything', !S.actKind)}${kinds.map(k => opt(Object.keys(ACT_KINDS).find(x => ACT_KINDS[x] === k), k, S.actKind && ACT_KINDS[S.actKind] === k)).join('')}</select></div>`)}</div>
+    ${list.length ? `<ul class="list act-list pg">${list.map((a, k) => { const t = new Date(a.at), d = ymd(t), first = k === 0 || ymd(new Date(list[k - 1].at)) !== d;
+      return `<li class="act-${esc(a.kind)}"><span class="act-time tnum"><b class="act-day">${d === today() ? 'Today' : shortDate(d)}</b>${fmtTime(`${pad(t.getHours())}:${pad(t.getMinutes())}`)}</span><div class="grow"><b>${esc(a.who || 'Someone')}</b> <span class="muted small">${esc(ROLE_LABEL[a.role] || (a.role === 'system' ? 'System' : ''))}</span><div class="sub">${esc(a.text)}</div></div>${['void', 'pin'].includes(a.kind) || /wrong pin|deleted|voided|short/i.test(a.text) ? chip({ kind: 'warn', icon: '!', label: ACT_KINDS[a.kind] || 'Check' }) : ''}</li>`; }).join('')}</ul>`
       : `<p class="empty">${all.length ? 'Nothing matches these filters.' : 'Nothing recorded in this period yet. Sales, voids, refunds, payouts, price and pay changes, time in/out and the owner PIN all show here.'}</p>`}
     <p class="muted small" style="margin-top:12px">Kept for 90 days on this screen. Entries can’t be edited or deleted, not even by the owner.</p></section>`;
 }
@@ -2094,12 +2103,12 @@ function clockLine(t) {
   return `In ${fmtTime(t.inHM)}${t.outHM ? ` · out ${fmtTime(t.outHM)}` : ''}${t.lateMin ? ` · ${t.lateMin} min late${t.waived ? ' (excused)' : t.fine ? ` −${money(t.fine)}` : ''}` : ''}`;
 }
 function timePanel(list, r) {
-  const ids = new Set(list.map(b => b.id)), recs = S.timeclock.filter(t => inR(t.date, r) && ids.has(t.staffId)).sort((a, b) => b.date.localeCompare(a.date) || (a.inHM || '').localeCompare(b.inHM || ''));
+  const ids = new Set(list.map(b => b.id)), recs = S.timeclock.filter(t => inR(t.date, r) && ids.has(t.staffId) && (!S.timeWho || t.staffId === S.timeWho) && (!S.timeLate || t.lateMin > 0)).sort((a, b) => b.date.localeCompare(a.date) || (a.inHM || '').localeCompare(b.inHM || ''));
   const late = recs.filter(t => t.lateMin > 0), fines = round2(sum(late.filter(t => !t.waived), t => t.fine || 0));
   const open = recs.filter(t => !t.out && t.date < today());
-  return `<section class="panel"><div class="panel-h"><h2>Time in and out</h2><div class="row"><button class="btn btn-sm" data-act="clockQr">Time clock QR</button><button class="btn btn-sm btn-primary" data-act="newTime">+ Add time</button></div></div>
+  return `<section class="panel"><div class="panel-h"><h2>Time in and out</h2><div class="row">${filterDD('time', (S.timeWho ? 1 : 0) + (S.timeLate ? 1 : 0), `<div class="fdd-grid">${field('Person', `<select id="tm-who" data-bind="timeWho" data-live>${opt('', 'Everyone', !S.timeWho)}${list.map(b => opt(b.id, b.name, b.id === S.timeWho)).join('')}</select>`, 'tm-who')}</div><label class="row small"><input type="checkbox" id="tm-late" data-bind="timeLate" data-live ${S.timeLate ? 'checked' : ''}> Late only</label>`)}<button class="btn btn-sm" data-act="clockQr">Time clock QR</button><button class="btn btn-sm btn-primary" data-act="newTime">+ Add time</button></div></div>
     <div class="kpis kpis-sm"><div class="kpi"><small>Times in</small><b>${recs.length}</b></div><div class="kpi"><small>Late</small><b>${late.length}</b></div><div class="kpi"><small>Late deductions</small><b>${money(fines)}</b></div><div class="kpi"><small>Forgot to time out</small><b class="${open.length ? 'down' : ''}">${open.length}</b></div></div>
-    ${recs.length ? `<div class="tbl-wrap" style="max-height:440px;overflow:auto"><table class="tbl"><thead><tr><th>Date</th><th>Name</th><th>In</th><th>Out</th><th class="r">Hours</th><th>Late</th><th class="r">Deduction</th><th></th></tr></thead><tbody>${recs.map(t => { const b = staffById(t.staffId);
+    ${recs.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Name</th><th>In</th><th>Out</th><th class="r">Hours</th><th>Late</th><th class="r">Deduction</th><th></th></tr></thead><tbody>${recs.map(t => { const b = staffById(t.staffId);
       return `<tr><td class="nowrap">${fmtDate(t.date)}</td><td><b>${esc(b ? b.name : 'Former staff')}</b></td><td class="nowrap tnum">${fmtTime(t.inHM)}${t.away ? ` ${chip({ kind: 'warn', icon: '!', label: `${t.inDist} m away` })}` : ''}</td><td class="nowrap tnum">${t.outHM ? fmtTime(t.outHM) : t.date < today() ? chip({ kind: 'warn', icon: '?', label: 'No time out' }) : '<span class="muted">—</span>'}</td>
         <td class="r">${hrs(hoursOf(t))}</td><td>${t.lateMin ? chip({ kind: t.waived ? 'mute' : 'bad', icon: '◷', label: `${t.lateMin} min` }) : '<span class="muted small">On time</span>'}</td><td class="r">${t.fine ? (t.waived ? `<s class="muted">${money(t.fine)}</s> <span class="muted small">excused</span>` : `<b>−${money(t.fine)}</b>`) : ''}</td>
         <td><div class="acts"><button class="btn btn-sm btn-ghost" data-act="editTime" data-id="${esc(t.id)}">Edit</button></div></td></tr>`; }).join('')}</tbody></table></div>`
@@ -2170,16 +2179,16 @@ function vMyPay() {
   const r = periodRange(S.period), P = payFor(b, r), owed = owedFor(b.id);
   const recs = S.timeclock.filter(t => inR(t.date, r)).sort((x, y) => y.date.localeCompare(x.date));
   const sales = P.x.slice().sort((x, y) => (y.date + (y.time || '')).localeCompare(x.date + (x.time || '')));
-  const pays = S.payouts.slice().sort((x, y) => y.date.localeCompare(x.date)).slice(0, 10);
+  const pays = S.payouts.slice().sort((x, y) => y.date.localeCompare(x.date));
   return `${pageHead(rangeLabel(r), 'My pay', '')}
   ${periodBar()}
   <div class="kpis kpis-sm"><div class="kpi"><small>Days in</small><b>${P.days}</b></div><div class="kpi"><small>${P.t === 'monthly' ? 'Salary' : P.t === 'quota' ? 'Daily minimum top-ups' : 'Daily pay'}</small><b>${money(P.base)}</b></div><div class="kpi"><small>Commission</small><b>${money(P.comm)}</b></div><div class="kpi"><small>Tips</small><b>${money(P.tips)}</b></div>${P.fines ? `<div class="kpi"><small>Late deductions</small><b class="down">−${money(P.fines)}</b></div>` : ''}<div class="kpi"><small>Earned</small><b>${money(P.total)}</b></div><div class="kpi"><small>Owed to you now</small><b>${money(owed)}</b></div></div>
   <section class="panel"><div class="panel-h"><h2>How you’re paid</h2></div><p>${esc(payRule(b))}.</p><p class="muted small">${esc(payExample(b))}${lateRateOf(b) ? ` Late (after ${fmtTime(shiftStartOf(b, pol()))}): ${money(lateRateOf(b))} for each started 15 minutes.` : ''}</p></section>
   <section class="panel"><div class="panel-h"><h2>Your clients</h2><span class="muted small">${sales.length} · ${money(P.svc)} in services</span></div>
-    ${sales.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Client</th><th>Services</th><th class="r">Commission</th><th class="r">Tip</th></tr></thead><tbody>${sales.slice(0, S.allMine ? 400 : 25).map(x => `<tr><td class="nowrap">${shortDate(x.date)} <span class="muted small">${x.time ? fmtTime(x.time) : ''}</span></td><td>${esc(x.name || 'Walk-in')}</td><td class="muted small">${esc((x.lines || []).filter(l => l.kind === 'service').map(l => l.name).join(', '))}</td><td class="r">${money(x.commission || 0)}</td><td class="r">${x.tip ? money(x.tip) : ''}</td></tr>`).join('')}</tbody></table></div>${sales.length > 25 && !S.allMine ? `<button class="btn btn-sm" data-act="allMine" style="margin-top:10px">Show all ${sales.length}</button>` : ''}` : '<p class="empty">No clients in this period.</p>'}</section>
+    ${sales.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Client</th><th>Services</th><th class="r">Commission</th><th class="r">Tip</th></tr></thead><tbody>${sales.map(x => `<tr><td class="nowrap">${shortDate(x.date)} <span class="muted small">${x.time ? fmtTime(x.time) : ''}</span></td><td>${esc(x.name || 'Walk-in')}</td><td class="muted small">${esc((x.lines || []).filter(l => l.kind === 'service').map(l => l.name).join(', '))}</td><td class="r">${money(x.commission || 0)}</td><td class="r">${x.tip ? money(x.tip) : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">No clients in this period.</p>'}</section>
   <div class="grid2e">
-  <section class="panel"><div class="panel-h"><h2>Time in and out</h2></div>${recs.length ? `<ul class="list">${recs.map(t => `<li><span class="grow"><b>${fmtDate(t.date)}</b><span class="sub" style="display:block">${esc(clockLine(t))}</span></span></li>`).join('')}</ul>` : '<p class="empty">No times in this period.</p>'}</section>
-  <section class="panel"><div class="panel-h"><h2>Paid to you</h2></div>${pays.length ? `<ul class="list">${pays.map(p => `<li><span class="grow"><b>${fmtDate(p.date)}</b>${p.note ? `<span class="sub" style="display:block">${esc(p.note)}</span>` : ''}</span><b>${money(p.amount, 1)}</b></li>`).join('')}</ul>` : '<p class="empty">No payouts yet.</p>'}</section></div>`;
+  <section class="panel"><div class="panel-h"><h2>Time in and out</h2></div>${recs.length ? `<ul class="list pg">${recs.map(t => `<li><span class="grow"><b>${fmtDate(t.date)}</b><span class="sub" style="display:block">${esc(clockLine(t))}</span></span></li>`).join('')}</ul>` : '<p class="empty">No times in this period.</p>'}</section>
+  <section class="panel"><div class="panel-h"><h2>Paid to you</h2></div>${pays.length ? `<ul class="list pg">${pays.map(p => `<li><span class="grow"><b>${fmtDate(p.date)}</b>${p.note ? `<span class="sub" style="display:block">${esc(p.note)}</span>` : ''}</span><b>${money(p.amount, 1)}</b></li>`).join('')}</ul>` : '<p class="empty">No payouts yet.</p>'}</section></div>`;
 }
 
 // ================= CLOSING THE DAY =================
@@ -2236,14 +2245,14 @@ function closeDayModal(d = today()) {
 function pinPanel() {
   if (S.pinSet === undefined) { S.pinSet = null; db.doc('private/pin').get().then(d => { S.pinSet = d.exists; schedule(); }).catch(() => { S.pinSet = false; }); }
   return `<section class="panel"><div class="panel-h"><h2>Owner PIN</h2>${S.pinSet ? chip({ kind: 'good', icon: '✓', label: 'Set' }) : S.pinSet === false ? chip({ kind: 'warn', icon: '!', label: 'Not set' }) : ''}</div>
-    <p class="muted small" style="max-width:72ch">The front desk needs the owner PIN to void a sale, mark a refund, delete a client or a visit, or open owner pages. It opens them until someone taps Lock or signs out and goes in the activity log. 5 wrong tries lock it for 15 minutes.</p>
+    <p class="muted small" style="max-width:72ch">The receptionist needs the owner PIN to void a sale, mark a refund, delete a client or a visit, or open owner pages. It opens them until someone taps Lock or signs out and goes in the activity log. 5 wrong tries lock it for 15 minutes.</p>
     <form class="stack" data-form="setpin"><div class="fgrid three">${field(S.pinSet ? 'New 4-digit PIN' : '4-digit PIN', `<input id="pn-a" name="a" type="password" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" autocomplete="new-password" required>`, 'pn-a')}${field('Type it again', `<input id="pn-b" name="b" type="password" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" autocomplete="new-password" required>`, 'pn-b')}<div class="field" style="align-self:end"><button class="btn btn-primary" type="submit">${S.pinSet ? 'Change PIN' : 'Set PIN'}</button></div></div><p class="err" id="pn-err" hidden></p></form>
     ${myRole() === 'owner' ? `<label class="consent"><input type="checkbox" id="pn-lock" data-change="lockDevice" ${S.lockOn ? 'checked' : ''}><span><b>Lock owner pages on this device.</b> For a shared phone or tablet signed in as the owner: income, staff pay, settings and voids ask for the PIN. Only this device is locked.</span></label>` : ''}</section>`;
 }
 function signinsPanel() {
   const withLogin = staffAll().filter(b => b.login);
   return `<section class="panel"><div class="panel-h"><h2>Who can use this dashboard</h2><a class="btn btn-sm btn-ghost" href="#team">Staff</a></div>
-    <p class="muted small" style="max-width:72ch">Give each person their own sign-in in <b>Staff → Edit → Sign-in</b>. <b>Front desk</b>: bookings, walk-ins, checkout, clients and the cash count, but no income pages, pay or settings. <b>Own schedule and pay</b>: barbers see their own clients, time in/out and pay, nothing else.</p>
+    <p class="muted small" style="max-width:72ch">Give each person their own sign-in in <b>Staff → Edit → Sign-in</b>. <b>Receptionist</b>: bookings, walk-ins, checkout, clients and the cash count, but no income pages, pay or settings. <b>Own schedule and pay</b>: barbers see their own clients, time in/out and pay, nothing else.</p>
     ${withLogin.length ? `<ul class="list">${withLogin.map(b => `<li>${av(b)}<div class="grow"><b>${esc(b.name)}</b><div class="sub">${esc(b.login.email)} · ${esc(ACCESS[b.login.role] || '')}</div></div><button class="btn btn-sm btn-ghost" data-act="editStaff" data-id="${esc(b.id)}">Edit</button></li>`).join('')}</ul>` : '<p class="empty">No staff sign-ins yet. Only the owner can sign in.</p>'}</section>`;
 }
 function loginFields(b) {
@@ -2338,6 +2347,133 @@ setInterval(() => {
   if (S.elevUntil <= Date.now()) { S.elevUntil = 0; if (myRole() !== 'owner') stopBossWatches(); toast('Owner pages locked'); render(); return; }
 }, 1000);
 
+// ================= TABLES: PAGES, FILTER DROPDOWNS, DRAG TO SCROLL =================
+// Every table (and lists marked .pg) shows one page at a time instead of a long scroll. It runs after each
+// render: rows outside the page are hidden and a pager is added under the table. The page resets when the
+// number of rows changes (a new search or filter).
+const PG = {};
+const pgSize = () => { try { const v = +localStorage.getItem('rb-pgsize'); if (v) return v; } catch (_) {} return innerWidth < 640 ? 10 : 15; };
+function pagerHTML(key, page, pages, from, to, total) {
+  const nums = [], add = n => nums.push(n);
+  for (let n = 0; n < pages; n++) if (n === 0 || n === pages - 1 || Math.abs(n - page) <= 1) add(n); else if (nums[nums.length - 1] !== '…') add('…');
+  return `<span class="pg-info">${from}–${to} of ${total}</span><div class="pg-btns">
+    <button type="button" class="pg-b" data-act="pgGo" data-k="${esc(key)}" data-p="${page - 1}" ${page === 0 ? 'disabled' : ''} aria-label="Previous page">‹</button>
+    ${nums.map(n => n === '…' ? '<span class="pg-gap">…</span>' : `<button type="button" class="pg-b${n === page ? ' on' : ''}" data-act="pgGo" data-k="${esc(key)}" data-p="${n}" ${n === page ? 'aria-current="page"' : ''}>${n + 1}</button>`).join('')}
+    <button type="button" class="pg-b" data-act="pgGo" data-k="${esc(key)}" data-p="${page + 1}" ${page >= pages - 1 ? 'disabled' : ''} aria-label="Next page">›</button></div>
+    <label class="pg-size">Rows <select data-change="pgSize" aria-label="Rows per page">${[10, 15, 25, 50].map(n => `<option ${n === pgSize() ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`;
+}
+function applyPaging() {
+  const size = pgSize(), tab = route();
+  document.querySelectorAll('#app table.tbl, #modal table.tbl, #app ul.pg, #modal ul.pg').forEach((t, i) => {
+    if (t.closest('[data-nopage]')) return;
+    const isList = t.tagName === 'UL', rows = isList ? [...t.children] : [...(t.tBodies[0] ? t.tBodies[0].rows : [])];
+    const host = isList ? t : (t.closest('.tbl-wrap') || t);
+    const old = host.nextElementSibling && host.nextElementSibling.classList.contains('pager') ? host.nextElementSibling : null;
+    if (rows.length <= size) { rows.forEach(r => { r.hidden = false; }); if (old) old.remove(); return; }
+    const panel = t.closest('.panel, .modal');
+    const key = t.dataset.pg || `${t.closest('#modal') ? 'm' : tab}:${(panel && panel.querySelector('h2, h3, .eyebrow') || {}).textContent || ''}:${i}`;
+    const st = PG[key] || (PG[key] = { page: 0, n: rows.length });
+    if (st.n !== rows.length) { st.page = 0; st.n = rows.length; }
+    const pages = Math.ceil(rows.length / size); st.page = Math.min(Math.max(0, st.page), pages - 1);
+    const a = st.page * size, b = Math.min(rows.length, a + size);
+    rows.forEach((r, k) => { r.hidden = k < a || k >= b; });
+    const html = pagerHTML(key, st.page, pages, a + 1, b, rows.length);
+    if (old) { if (old.dataset.h !== html) { old.innerHTML = html; old.dataset.h = html; } }
+    else { const d = document.createElement('div'); d.className = 'pager'; d.innerHTML = html; d.dataset.h = html; host.after(d); }
+  });
+  document.querySelectorAll('.tbl-wrap').forEach(w => w.classList.toggle('can-drag', w.scrollWidth > w.clientWidth + 4));
+}
+// Filters live in a dropdown button; it stays open while you change them
+const DD = {};
+function filterDD(key, active, body) {
+  return `<details class="fdd" data-dd="${esc(key)}" ${DD[key] ? 'open' : ''}><summary class="btn btn-sm fdd-btn">${icon('filter')}<span>Filters</span>${active ? `<span class="fdd-n">${active}</span>` : ''}</summary>
+    <div class="fdd-pop">${body}${active ? `<button type="button" class="link-btn small" data-act="ddClear" data-k="${esc(key)}">Clear filters</button>` : ''}</div></details>`;
+}
+const DD_CLEAR = {
+  sched: () => { S.schedBarber = ''; S.schedSrc = ''; S.schedStatus = ''; },
+  clients: () => { S.clientSort = 'recent'; S.clientTag = ''; },
+  act: () => { S.actWho = ''; S.actKind = ''; },
+  sales: () => { S.saleBarber = ''; S.saleMethod = ''; },
+  exp: () => { S.expCat = ''; S.expMethod = ''; },
+  stock: () => { S.stockFilter = 'all'; },
+  time: () => { S.timeWho = ''; S.timeLate = false; },
+  pay: () => { S.showArchived = false; }
+};
+document.addEventListener('toggle', e => { const d = e.target; if (d.matches && d.matches('details.fdd')) DD[d.dataset.dd] = d.open; }, true);
+document.addEventListener('click', e => { if (e.target.closest('details.fdd')) return; document.querySelectorAll('details.fdd[open]').forEach(d => { d.open = false; DD[d.dataset.dd] = false; }); });
+// Drag a wide table sideways with the mouse (phones and trackpads already scroll it)
+{
+  let drag = null;
+  document.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    const w = e.target.closest('.tbl-wrap, .daystrip'); if (!w || w.scrollWidth <= w.clientWidth + 4) return;
+    if (e.target.closest('button, a, input, select, textarea, label, summary')) return;
+    drag = { w, x: e.clientX, left: w.scrollLeft, moved: false };
+  });
+  document.addEventListener('pointermove', e => {
+    if (!drag) return; const dx = e.clientX - drag.x;
+    if (!drag.moved && Math.abs(dx) > 5) { drag.moved = true; drag.w.classList.add('dragging'); }
+    if (drag.moved) { drag.w.scrollLeft = drag.left - dx; e.preventDefault(); }
+  });
+  const end = () => { if (!drag) return; const d = drag; drag = null; d.w.classList.remove('dragging'); if (d.moved) { const stop = ev => { ev.stopPropagation(); ev.preventDefault(); }; document.addEventListener('click', stop, { capture: true, once: true }); setTimeout(() => document.removeEventListener('click', stop, { capture: true }), 50); } };
+  document.addEventListener('pointerup', end); document.addEventListener('pointercancel', end);
+}
+
+// ================= CLIENT COUPONS =================
+const cpLabel = cp => couponLabel(cp, services(), cur());
+const liveCoupons = c => ((c && c.coupons) || []).filter(cp => couponLive(cp, today()));
+function couponAmount(cp, T, p) {
+  if (cp.kind === 'percent') return round2(T.sub * Math.min(100, Number(cp.value) || 0) / 100);
+  if (cp.kind === 'service') { const l = p.lines.find(x => x.kind === 'service' && x.ref === cp.svcId); return l ? Number(l.price) || 0 : 0; }
+  return Math.min(T.sub, Number(cp.value) || 0);
+}
+function couponRows(c) {
+  const list = [...(c.coupons || [])].sort((a, b) => (b.at || 0) - (a.at || 0));
+  if (!list.length) return '<p class="muted small">No coupons yet.</p>';
+  return `<ul class="list cp-list">${list.map(cp => { const live = couponLive(cp, today()), exp = cp.expires && cp.expires < today();
+    return `<li><span class="cp-tag${live ? '' : ' off'}">${esc(cpLabel(cp))}</span><span class="grow"><span class="sub" style="display:block">${esc(cp.note || 'No note')}${cp.expires ? ` · until ${shortDate(cp.expires)}` : ''}</span></span>
+      ${cp.used ? chip({ kind: 'mute', icon: '✓', label: `Used ${cp.usedAt ? shortDate(ymd(new Date(cp.usedAt))) : ''}` }) : exp ? chip({ kind: 'mute', icon: '–', label: 'Expired' }) : chip({ kind: 'good', icon: '●', label: 'Ready' })}
+      ${cp.used ? '' : `<button type="button" class="btn btn-sm btn-ghost" data-act="delCoupon" data-c="${esc(c.id)}" data-id="${esc(cp.id)}">Remove</button>`}</li>`; }).join('')}</ul>`;
+}
+function couponFields(c) {
+  if (!c) return '';
+  return `<fieldset class="field cp-set"><legend>Coupons</legend>${couponRows(c)}
+    <div class="fgrid three">${field('Type', `<select id="m-cpkind" data-change="cpKind">${opt('amount', `${cur()} amount off`, true)}${opt('percent', 'Percent off')}${opt('service', 'Free service')}</select>`, 'm-cpkind')}
+      <div id="cp-v">${field(`Amount (${cur()})`, '<input id="m-cpval" inputmode="decimal" placeholder="e.g. 100">', 'm-cpval')}</div>
+      ${field('Valid until (optional)', `<input id="m-cpexp" type="date" min="${today()}">`, 'm-cpexp')}</div>
+    ${field('Reason (the client sees it)', '<input id="m-cpnote" maxlength="80" placeholder="e.g. Sorry for the long wait, Thank you for referring a friend">', 'm-cpnote')}
+    <div class="row"><button type="button" class="btn btn-sm btn-primary" data-act="giveCoupon" data-id="${esc(c.id)}">Give coupon</button><span class="muted small">Used once, at checkout. It shows on their “My visits” page.</span></div></fieldset>`;
+}
+
+Object.assign(ACT, {
+  pgGo(el) { const st = PG[el.dataset.k]; if (!st) return; st.page = +el.dataset.p; applyPaging(); const pg = el.closest('.pager'), host = pg && pg.previousElementSibling; if (host && host.getBoundingClientRect().top < 0) host.scrollIntoView({ block: 'start', behavior: 'smooth' }); },
+  ddClear(el) { (DD_CLEAR[el.dataset.k] || (() => {}))(); render(); },
+  async giveCoupon(el) {
+    const c = S.customers.find(x => x.id === el.dataset.id); if (!c) return;
+    const kind = $('#m-cpkind').value, note = $('#m-cpnote').value.trim(), expires = $('#m-cpexp').value || '';
+    const raw = kind === 'service' ? $('#m-cpsvc').value : $('#m-cpval').value, value = kind === 'service' ? 0 : num(raw);
+    if (kind !== 'service' && !(value > 0)) { toast('Enter how much the coupon is worth.', 'bad'); $('#m-cpval')?.focus(); return; }
+    if (kind === 'percent' && value > 100) { toast('A percent coupon can’t be more than 100%.', 'bad'); return; }
+    const cp = { id: 'cp' + Date.now().toString(36), kind, value: round2(value), ...(kind === 'service' ? { svcId: raw } : {}), note, expires, at: Date.now(), by: meName(), used: false };
+    if (await patch('customers', c.id, { coupons: [...(c.coupons || []), cp] })) { logAct('client', `Gave ${c.name} a coupon: ${cpLabel(cp)}${note ? ` (${note})` : ''}${expires ? `, until ${fmtDate(expires)}` : ''}`); toast(`Coupon given to ${c.name}`); setTimeout(() => { const n = S.customers.find(x => x.id === c.id); if (n && MODAL.cur) clientModal(n); }, 250); }
+  },
+  async delCoupon(el) {
+    if (!armed(el)) return; const c = S.customers.find(x => x.id === el.dataset.c); if (!c) return; const cp = (c.coupons || []).find(x => x.id === el.dataset.id);
+    if (await patch('customers', c.id, { coupons: (c.coupons || []).filter(x => x.id !== el.dataset.id) })) { logAct('client', `Removed ${c.name}'s coupon: ${cp ? cpLabel(cp) : ''}`); toast('Coupon removed'); setTimeout(() => { const n = S.customers.find(x => x.id === c.id); if (n && MODAL.cur) clientModal(n); }, 250); }
+  },
+  posCoupon(el) {
+    const p = S.pos, c = matchCustomer(p.name, p.phone), cp = c && liveCoupons(c).find(x => x.id === el.dataset.id); if (!cp) return;
+    if (cp.kind === 'service') { const sv = svcById(cp.svcId); if (sv && !p.lines.some(l => l.kind === 'service' && l.ref === sv.id)) p.lines.push({ kind: 'service', ref: sv.id, name: sv.name, price: Number(sv.price) || 0, qty: 1 }); }
+    const amt = couponAmount(cp, posTotals(p), p);
+    p.discount = String(amt); p.discountNote = `Coupon: ${cpLabel(cp)}${cp.note ? ' (' + cp.note + ')' : ''}`; p.couponId = cp.id; p.couponCust = c.id;
+    render();
+  }
+});
+Object.assign(CHG, {
+  pgSize(el) { try { localStorage.setItem('rb-pgsize', el.value); } catch (_) {} Object.values(PG).forEach(st => { st.page = 0; }); applyPaging(); },
+  cpKind(el) { const v = el.value, box = $('#cp-v'); if (!box) return;
+    box.innerHTML = v === 'service' ? field('Service', `<select id="m-cpsvc">${services().filter(sv => sv.active !== false).map(sv => opt(sv.id, `${sv.name} (${money(sv.price)})`)).join('')}</select>`, 'm-cpsvc') : field(v === 'percent' ? 'Percent off' : `Amount (${cur()})`, `<input id="m-cpval" inputmode="decimal" placeholder="${v === 'percent' ? 'e.g. 20' : 'e.g. 100'}">`, 'm-cpval'); }
+});
 // ================= EVENTS =================
 function setPath(path, val) { const k = path.split('.'); let o = S; for (let i = 0; i < k.length - 1; i++) { o = o[k[i]] = o[k[i]] || {}; } o[k[k.length - 1]] = val; }
 document.addEventListener('click', e => {

@@ -8,7 +8,7 @@ import {
 
 // The saved demo is keyed by a fingerprint of the starter data, so changing the menu or team
 // (or a browser briefly mixing old and new files) never leaves stale sample data behind.
-const SEED_REV = 26; // bump when seed() itself changes
+const SEED_REV = 28; // bump when seed() itself changes
 const fingerprint = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const KEY = `rb-demo-${SEED_REV}-${fingerprint(JSON.stringify([STARTER, STARTER_STAFF]))}`, USER_KEY = 'rb-demo-user';
 try { Object.keys(localStorage).filter(k => k.startsWith('rb-demo-') && k !== KEY && k !== USER_KEY).forEach(k => localStorage.removeItem(k)); } catch (_) {}
@@ -41,16 +41,16 @@ function seed() {
   // sample leave: Mac unpaid two days last week, Vince paid leave next week (the website hides those days for him)
   m.set('leaves/l1', { staffId: 'mac', from: day(-6), to: day(-5), paid: false, note: 'Family emergency', at: Date.now() });
   m.set('leaves/l2', { staffId: 'vince', from: day(5), to: day(6), paid: true, note: 'Vacation', at: Date.now() });
-  // demo sign-ins: the owner, the front desk (Alex) and two barbers who see only their own day and pay
-  m.set('admins/demo', { role: 'owner', name: 'Owner', email: 'owner@demo.realbarbers' });
-  [['alex', 'desk'], ['lyndon', 'staff'], ['vince', 'staff']].forEach(([id, role]) => { const email = `${id}@demo.realbarbers`; m.set('admins/u_' + id, { role, staffId: id, name: STARTER_STAFF.find(b => b.id === id).name, email }); });
-  STARTER_STAFF.forEach(({ id, ...b }) => { const a = ['alex', 'lyndon', 'vince'].includes(id) ? { login: { uid: 'u_' + id, email: `${id}@demo.realbarbers`, role: id === 'alex' ? 'desk' : 'staff' } } : {}; m.set('staff/' + id, { ...b, since: day(-40), ...a }); });
+  // demo sign-ins: Alex (owner), Airyl (receptionist) and two barbers who see only their own day and pay
+  const LOGINS = { alex: ['demo', 'owner'], airyl: ['u_airyl', 'desk'], lyndon: ['u_lyndon', 'staff'], vince: ['u_vince', 'staff'] };
+  Object.entries(LOGINS).forEach(([id, [uid, role]]) => m.set('admins/' + uid, { role, staffId: id, name: STARTER_STAFF.find(b => b.id === id).name, email: `${id}@demo.realbarbers` }));
+  STARTER_STAFF.forEach(({ id, ...b }) => { const L = LOGINS[id], a = L ? { login: { uid: L[0], email: `${id}@demo.realbarbers`, role: L[1] } } : {}; m.set('staff/' + id, { ...b, since: day(-40), ...a }); });
   m.set('private/pin', { pin: '1234' }); // demo only: the real PIN is stored hashed by the server
   m.set('private/clock', { key: 'demo-clock' });
   // a few sample activity-log entries (the real log fills itself as people use the dashboard)
-  [[-1, '09:12', 'u_alex', 'Alex', 'desk', 'sale', 'Rang up ₱399 for Carlo Mendoza · Reymart · GCash'], [-1, '11:40', 'u_alex', 'Alex', 'desk', 'pin', 'Owner PIN entered: void a sale'], [-1, '11:41', 'u_alex', 'Alex', 'desk', 'void', 'Voided a ₱299 sale for a walk-in (11:20 AM, Mac, Cash)'],
-    [-1, '15:05', 'demo', 'Owner', 'owner', 'money', 'Added expense: Supplies – blades and talc ₱850 (Cash)'], [-1, '20:32', 'u_alex', 'Alex', 'desk', 'close', 'Cash count: counted ₱8,650, expected ₱8,700 (short ₱50)'],
-    [-2, '18:10', 'demo', 'Owner', 'owner', 'staff', 'Changed Jay\'s pay: ₱500 a day minimum, or 35% → ₱500 a day minimum, or 40%'], [-2, '19:00', 'demo', 'Owner', 'owner', 'clock', 'Changed Renz\'s time: excused ₱15 late deduction (traffic, accident on Sumulong)']]
+  [[-1, '09:12', 'u_airyl', 'Airyl', 'desk', 'sale', 'Rang up ₱399 for Carlo Mendoza · Reymart · GCash'], [-1, '11:40', 'u_airyl', 'Airyl', 'desk', 'pin', 'Owner PIN entered: void a sale'], [-1, '11:41', 'u_airyl', 'Airyl', 'desk', 'void', 'Voided a ₱299 sale for a walk-in (11:20 AM, Mac, Cash)'],
+    [-1, '15:05', 'demo', 'Alex', 'owner', 'money', 'Added expense: Supplies – blades and talc ₱850 (Cash)'], [-1, '20:32', 'u_airyl', 'Airyl', 'desk', 'close', 'Cash count: counted ₱8,650, expected ₱8,700 (short ₱50)'],
+    [-2, '18:10', 'demo', 'Alex', 'owner', 'staff', 'Changed Jay\'s pay: ₱500 a day minimum, or 35% → ₱500 a day minimum, or 40%'], [-2, '19:00', 'demo', 'Alex', 'owner', 'clock', 'Changed Renz\'s time: excused ₱15 late deduction (traffic, accident on Sumulong)']]
     .forEach(([n, hm, by, who, role, kind, text], i) => m.set('activity/s' + i, { at: startMs(day(n), hm), by, who, role, kind, text, sample: true }));
   // time clock: the last 12 days (and this morning), mostly on time, a few late
   { const now = phNow(), pol0 = policyOf(STARTER);
@@ -69,6 +69,9 @@ function seed() {
   const names = ['Marco Reyes', 'Jericho Santos', 'Carlo Mendoza', 'Rafael Cruz', 'Joshua Villanueva', 'Kevin Ramos', 'Miguel Torres', 'Andrea Cruz', 'Bea Lim', 'Dennis Aquino'];
   const bd = n => day(n).slice(5); // sample birthdays: today, in 4 days, in 10 days
   names.forEach((n, i) => m.set(`customers/c${i}`, { name: n, phone: `09170000${String(100 + i)}`, phoneKey: `09170000${String(100 + i)}`, email: '', notes: i === 0 ? '#2 sides, scissor top' : '', createdAt: Date.now() - (90 - i * 7) * 864e5, ...({ 0: { birthday: bd(0) }, 3: { birthday: bd(4) }, 8: { birthday: bd(10) } }[i] || {}) }));
+  // sample coupons: Marco has one ready, Jericho used one last week
+  m.set('customers/c0', { ...m.get('customers/c0'), coupons: [{ id: 'cpdemo1', kind: 'amount', value: 100, note: 'Sorry for the long wait last visit', expires: day(30), at: Date.now() - 3 * 864e5, by: 'Alex', used: false }] });
+  m.set('customers/c1', { ...m.get('customers/c1'), coupons: [{ id: 'cpdemo2', kind: 'percent', value: 20, note: 'Thank you for referring a friend', expires: '', at: Date.now() - 12 * 864e5, by: 'Airyl', used: true, usedAt: Date.now() - 6 * 864e5 }] });
   const RATE = Object.fromEntries(STARTER_STAFF.map(b => [b.id, b.rate])), SB = Object.fromEntries(STARTER_STAFF.map(b => [b.id, b]));
   const COMM = (b, s) => commissionFor(SB[b], [{ kind: 'service', ref: s.id, price: s.price, qty: 1 }], 0, id => svc.find(x => x.id === id)).commission;
   let n = 0; const earned = {}; // barber -> day -> commission + tips, for the seeded weekly payouts
@@ -513,9 +516,9 @@ export async function call(name, data) {
 // ---------- sign-in (demo owner is signed in by default) ----------
 const authFns = new Set();
 let user = null;
-// Demo: any password works. An email of one of the demo sign-ins (alex@, lyndon@, vince@demo.realbarbers, or one
+// Demo: any password works. An email of one of the demo sign-ins (alex@ owner, airyl@ receptionist, lyndon@, vince@demo.realbarbers, or one
 // the owner adds in Staff → Edit → Sign-in) signs in as that person; any other email is the owner.
-const demoUser = email => { const e = String(email || '').trim().toLowerCase(), hit = [...store].find(([k, v]) => k.startsWith('admins/') && v.email && v.email === e); return hit ? { uid: hit[0].slice(7), email: e } : { uid: 'demo', email: e || 'owner@demo.realbarbers' }; };
+const demoUser = email => { const e = String(email || '').trim().toLowerCase(), hit = [...store].find(([k, v]) => k.startsWith('admins/') && v.email && v.email === e); return hit ? { uid: hit[0].slice(7), email: e } : { uid: 'demo', email: e || 'alex@demo.realbarbers' }; };
 try { const v = localStorage.getItem(USER_KEY); user = v === 'out' ? null : demoUser(v && v !== 'in' ? v : ''); } catch (_) { user = demoUser(''); }
 export function onAuth(fn) { authFns.add(fn); setTimeout(() => fn(user), 0); return () => authFns.delete(fn); }
 export async function login(email) { user = demoUser(email); try { localStorage.setItem(USER_KEY, user.email); } catch (_) {} authFns.forEach(f => f(user)); }

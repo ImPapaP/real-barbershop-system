@@ -19,7 +19,7 @@
 //   syncFacebookPhotos every 3 hours -> newest Facebook page photos into the website gallery
 //   syncFacebookNow    dashboard -> the same, right away
 //   staffLogin         owner -> create, change or remove a staff member's dashboard sign-in and access level
-//   setPin / pinUnlock / pinLock  owner PIN: unlock owner-only actions on a front-desk account until Lock or sign-out
+//   setPin / pinUnlock / pinLock  owner PIN: unlock owner-only actions on a receptionist or staff account until Lock or sign-out
 //   clockPunch         staff phone, after scanning the shop's time-clock QR -> time in / time out
 //   sendDaySummary     dashboard -> text the end-of-day summary to the owner
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';

@@ -205,11 +205,11 @@ Men first choose **Deluxe** or **Regular**. Only that level's haircuts are shown
 
 - **Who sees what.** Give each person a sign-in in **Staff → Edit → Sign-in**:
   - **Owner:** everything.
-  - **Front desk:** Schedule, walk-ins, bookings, Checkout, Clients and the cash count. No income pages, pay, inventory or settings.
+  - **Receptionist:** Schedule, walk-ins, bookings, Checkout, Clients and the cash count. No income pages, pay, inventory or settings.
   - **Own schedule and pay only (barbers and stylists):** **My day** (their clients today and the next 7 days, and their time in) and **My pay** (days in, commission, tips, late deductions, what's owed and past payouts). Nothing about anyone else.
   The Firestore rules enforce this, so it's not just hidden buttons.
-- **Owner PIN** (Shop setup → Owner PIN). The front desk needs it to void a sale, mark a down payment refunded, delete a client or a visit, or open owner pages. Typing it opens owner powers on that sign-in until someone taps **Lock** in the banner, signs out or reloads the page (with a 12-hour safety limit). The PIN is checked on the server and stored hashed. 5 wrong tries lock it for 15 minutes. On a shared phone or tablet signed in as the owner, tick **Lock owner pages on this device** so income, pay and settings ask for the PIN there too.
-- **Activity log** (owner only). Records who did what and when, for example "Alex · Front desk · Voided a ₱299 sale for a walk-in (11:20 AM, Mac, Cash)". It covers:
+- **Owner PIN** (Shop setup → Owner PIN). The receptionist needs it to void a sale, mark a down payment refunded, delete a client or a visit, or open owner pages. Typing it opens owner powers on that sign-in until someone taps **Lock** in the banner, signs out or reloads the page (with a 12-hour safety limit). The PIN is checked on the server and stored hashed. 5 wrong tries lock it for 15 minutes. On a shared phone or tablet signed in as the owner, tick **Lock owner pages on this device** so income, pay and settings ask for the PIN there too.
+- **Activity log** (owner only). Records who did what and when, for example "Airyl · Receptionist · Voided a ₱299 sale for a walk-in (11:20 AM, Mac, Cash)". It covers:
   - sales, voids and refunds
   - no-shows, cancelled and deleted visits, deleted clients
   - expenses and payouts
@@ -218,6 +218,19 @@ Men first choose **Deluxe** or **Regular**. Only that level's haircuts are shown
   - time in/out and time fixes
   - cash counts, the owner PIN (including wrong tries) and sign-ins
   Filter by person, type or a search. Nobody can edit or delete an entry, not even the owner.
+
+## Client coupons
+
+- **Giving one:** Clients → open a client → **Edit client** → **Coupons**. Pick the type (peso amount off, percent off, or a free service), an optional end date and a reason the client will see (for example "Sorry for the long wait"), then tap **Give coupon**.
+- **Where it shows:** the client gets a "Coupon" tag in the client list (Filters → Has a coupon), and the coupon appears on their **My visits** page.
+- **Using it:** at **Checkout**, when the client's name or number matches, their coupons show as buttons. Tap one to apply it. A free-service coupon adds the service and takes its price off. When the sale is saved, the coupon is marked used and can't be used again.
+- **Removing one:** tap **Remove** in Edit client. Giving, removing and using a coupon all go in the activity log.
+
+## Tables
+
+- **Pages:** long tables and lists show 15 rows at a time (10 on phones), with page buttons under them. "Rows" sets 10, 15, 25 or 50, remembered on that device. A new search or filter goes back to page 1.
+- **Filters:** search stays visible. The other filters sit in a **Filters** button, and the button shows how many are on. This covers Schedule, Clients, Inventory, Sales, Expenses, Time in and out, Pay and the Activity log. On phones the filters open from the bottom of the screen.
+- **Wide tables:** on a computer, click and drag a table left or right to see the rest. On phones and trackpads, swipe.
 
 ## Time in and time out
 
