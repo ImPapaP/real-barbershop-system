@@ -4,7 +4,7 @@ import { db, demo, demoBar, resetDemo, login, logout, resetPassword, onAuth, upl
 import { buildXlsx, xlDate, xlTime, colName } from './xlsx.js';
 import { qrSvg } from './qr.js';
 import { drawBanner, bannerBlob } from './banner.js';
-import { withOption, lateLimit, hasDeposit, bdaySelects, cleanBday, fmtBday, bdayDays, BDAY_TITLE, esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, DEFAULT_POLICY, lateFine, lateRateOf, shiftStartOf, roleOf, ACCESS, CLOCK_START, startMs, canServe, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE, defaultFaq, cleanCode } from './shared.js';
+import { withOption, lateLimit, hasDeposit, bdaySelects, cleanBday, fmtBday, bdayDays, BDAY_TITLE, esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, DEFAULT_POLICY, lateFine, lateRateOf, shiftStartOf, roleOf, ACCESS, CLOCK_START, fullAccess, startMs, canServe, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE, defaultFaq, cleanCode } from './shared.js';
 
 // ---------- constants ----------
 const METHODS = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer'];
@@ -37,7 +37,7 @@ const S = {
   clientQ: '', clientSort: 'recent', stockFilter: 'all', showArchived: false, pos: null, busy: false, uploading: ''
 };
 const unsubs = [];
-// Who sees what: the owner everything; the front desk Schedule, Checkout and Clients; staff only their own day and pay.
+// Who sees what: the owner and the receptionist everything; staff only their own day and pay.
 // Owner pages show a lock screen on other sign-ins (and on the owner's own shared device when locked): the owner PIN opens them until someone taps Lock or signs out.
 const OWNER_TABS = ['overview', 'money', 'team', 'stock', 'website', 'setup', 'activity'];
 const DESK_TABS = ['schedule', 'checkout', 'clients'], STAFF_TABS = ['me', 'mypay'];
@@ -195,7 +195,7 @@ function loginView() {
     <img class="logo-hero" src="${LOGO_LG}" alt="${esc(info().shop.name)}" width="180" height="180"><h1 style="font:400 28px/1.1 var(--f-slab);text-align:center">Staff sign in</h1>
     ${field('Email', `<input id="l-email" name="email" type="email" autocomplete="username" required>`, 'l-email')}
     ${field('Password', `<input id="l-pass" name="pass" type="password" autocomplete="current-password" required>`, 'l-pass')}
-    ${demo ? `<div class="hint stack" style="gap:8px"><span>Demo: any password works. Sign in as</span><div class="row">${[['owner@demo.realbarbers', 'Owner'], ['alex@demo.realbarbers', 'Front desk (Alex)'], ['lyndon@demo.realbarbers', 'Barber (Lyndon)']].map(([e, l]) => `<button type="button" class="btn btn-sm" data-act="demoAs" data-email="${e}">${l}</button>`).join('')}</div></div>` : ''}${S.loginErr ? `<p class="err" role="alert">${esc(S.loginErr)}</p>` : ''}${S.loginMsg ? `<p class="hint">${esc(S.loginMsg)}</p>` : ''}
+    ${demo ? `<div class="hint stack" style="gap:8px"><span>Demo: any password works. Sign in as</span><div class="row">${[['owner@demo.realbarbers', 'Owner'], ['alex@demo.realbarbers', 'Receptionist (Alex)'], ['lyndon@demo.realbarbers', 'Barber (Lyndon)']].map(([e, l]) => `<button type="button" class="btn btn-sm" data-act="demoAs" data-email="${e}">${l}</button>`).join('')}</div></div>` : ''}${S.loginErr ? `<p class="err" role="alert">${esc(S.loginErr)}</p>` : ''}${S.loginMsg ? `<p class="hint">${esc(S.loginMsg)}</p>` : ''}
     <button class="btn btn-primary btn-lg" type="submit" ${S.loginBusy ? 'disabled' : ''}>${S.loginBusy ? 'Signing in…' : 'Sign in'}</button>
     <button type="button" class="btn btn-ghost btn-sm" data-act="forgot">Forgot password?</button>
   </form></div>`;
@@ -2002,7 +2002,7 @@ const FORM = {
 // ================= ACCESS, OWNER PIN, ACTIVITY LOG =================
 // Roles come from admins/{uid}.role (Staff → Edit → Sign-in). firestore.rules enforces the same limits.
 function myRole() { return roleOf(S.me); }
-function isBoss() { return (myRole() === 'owner' && !S.lockOn) || (S.elevUntil || 0) > Date.now(); }
+function isBoss() { return (fullAccess(S.me) && !S.lockOn) || (S.elevUntil || 0) > Date.now(); }
 function allowedTabs() {
   if (myRole() === 'staff') return STAFF_TABS;
   return isBoss() ? TABS.map(t => t[0]).filter(t => !STAFF_TABS.includes(t)) : DESK_TABS;
@@ -2012,7 +2012,7 @@ function navTabs() {
   const boss = isBoss();
   return TABS.filter(t => !STAFF_TABS.includes(t[0])).map(([id, l]) => [id, l, !boss && OWNER_TABS.includes(id)]);
 }
-const ROLE_LABEL = { owner: 'Owner', desk: 'Front desk', staff: 'Staff' };
+const ROLE_LABEL = { owner: 'Owner', desk: 'Receptionist', staff: 'Staff' };
 const meName = () => (S.me && S.me.name) || (S.user && S.user.email) || '';
 function whoChip() { return `<div class="who-chip"><b>${esc(meName())}</b><small>${ROLE_LABEL[myRole()]}${S.lockOn ? ' · this device is locked' : ''}</small></div>`; }
 function elevBanner() {
@@ -2029,7 +2029,7 @@ function vLocked(tab) {
   const label = (TABS.find(t => t[0] === tab) || [, 'This page'])[1];
   return `<div class="center locked-page"><div class="panel stack" style="width:min(100%,380px);text-align:left">
     <div class="lock-big">${icon('lock')}</div><h1 style="font:400 26px/1.1 var(--f-slab)">${esc(label)} is for the owner</h1>
-    <p class="muted">Ask the owner to type their PIN. Owner pages and actions stay open on this ${myRole() === 'owner' ? 'locked device' : 'sign-in'} until someone taps Lock or signs out, and it’s noted in the activity log.</p>
+    <p class="muted">Ask the owner to type their PIN. Owner pages and actions stay open on this ${fullAccess(S.me) ? 'locked device' : 'sign-in'} until someone taps Lock or signs out, and it’s noted in the activity log.</p>
     ${pinForm('open ' + label, true)}</div></div>`;
 }
 function pinModal(why) {
@@ -2038,7 +2038,7 @@ function pinModal(why) {
 }
 function bossWatches() {
   if (bossUnsubs.length) return;
-  if (myRole() !== 'owner' && !((S.elevUntil || 0) > Date.now())) { S.payouts = []; S.loaded.payouts = true; return; }
+  if (!fullAccess(S.me) && !((S.elevUntil || 0) > Date.now())) { S.payouts = []; S.loaded.payouts = true; return; }
   const w = (key, q) => bossUnsubs.push(q.onSnapshot(snap => { S[key] = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.loaded[key] = true; schedule(); }, err => { console.error(key, err); S.loaded[key] = true; schedule(); }));
   w('payouts', db.collection('payouts'));
   w('activity', db.collection('activity').where('at', '>=', Date.now() - 90 * 864e5));
@@ -2236,14 +2236,14 @@ function closeDayModal(d = today()) {
 function pinPanel() {
   if (S.pinSet === undefined) { S.pinSet = null; db.doc('private/pin').get().then(d => { S.pinSet = d.exists; schedule(); }).catch(() => { S.pinSet = false; }); }
   return `<section class="panel"><div class="panel-h"><h2>Owner PIN</h2>${S.pinSet ? chip({ kind: 'good', icon: '✓', label: 'Set' }) : S.pinSet === false ? chip({ kind: 'warn', icon: '!', label: 'Not set' }) : ''}</div>
-    <p class="muted small" style="max-width:72ch">The front desk needs the owner PIN to void a sale, mark a refund, delete a client or a visit, or open owner pages. It opens them until someone taps Lock or signs out and goes in the activity log. 5 wrong tries lock it for 15 minutes.</p>
+    <p class="muted small" style="max-width:72ch">The owner and the receptionist can do everything without the PIN. The PIN is for a shared phone or tablet: tick the box below and income, staff pay, settings and voids ask for it on that device. Staff with "Own schedule and pay" can also use it to open owner pages when the owner is there. 5 wrong tries lock it for 15 minutes.</p>
     <form class="stack" data-form="setpin"><div class="fgrid three">${field(S.pinSet ? 'New 4-digit PIN' : '4-digit PIN', `<input id="pn-a" name="a" type="password" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" autocomplete="new-password" required>`, 'pn-a')}${field('Type it again', `<input id="pn-b" name="b" type="password" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" autocomplete="new-password" required>`, 'pn-b')}<div class="field" style="align-self:end"><button class="btn btn-primary" type="submit">${S.pinSet ? 'Change PIN' : 'Set PIN'}</button></div></div><p class="err" id="pn-err" hidden></p></form>
-    ${myRole() === 'owner' ? `<label class="consent"><input type="checkbox" id="pn-lock" data-change="lockDevice" ${S.lockOn ? 'checked' : ''}><span><b>Lock owner pages on this device.</b> For a shared phone or tablet signed in as the owner: income, staff pay, settings and voids ask for the PIN. Only this device is locked.</span></label>` : ''}</section>`;
+    ${fullAccess(S.me) ? `<label class="consent"><input type="checkbox" id="pn-lock" data-change="lockDevice" ${S.lockOn ? 'checked' : ''}><span><b>Lock owner pages on this device.</b> For a shared phone or tablet signed in as the owner: income, staff pay, settings and voids ask for the PIN. Only this device is locked.</span></label>` : ''}</section>`;
 }
 function signinsPanel() {
   const withLogin = staffAll().filter(b => b.login);
   return `<section class="panel"><div class="panel-h"><h2>Who can use this dashboard</h2><a class="btn btn-sm btn-ghost" href="#team">Staff</a></div>
-    <p class="muted small" style="max-width:72ch">Give each person their own sign-in in <b>Staff → Edit → Sign-in</b>. <b>Front desk</b>: bookings, walk-ins, checkout, clients and the cash count, but no income pages, pay or settings. <b>Own schedule and pay</b>: barbers see their own clients, time in/out and pay, nothing else.</p>
+    <p class="muted small" style="max-width:72ch">Give each person their own sign-in in <b>Staff → Edit → Sign-in</b>. <b>Receptionist</b>: everything, the same as the owner. <b>Own schedule and pay</b>: barbers see their own clients, time in/out and pay, nothing else.</p>
     ${withLogin.length ? `<ul class="list">${withLogin.map(b => `<li>${av(b)}<div class="grow"><b>${esc(b.name)}</b><div class="sub">${esc(b.login.email)} · ${esc(ACCESS[b.login.role] || '')}</div></div><button class="btn btn-sm btn-ghost" data-act="editStaff" data-id="${esc(b.id)}">Edit</button></li>`).join('')}</ul>` : '<p class="empty">No staff sign-ins yet. Only the owner can sign in.</p>'}</section>`;
 }
 function loginFields(b) {
@@ -2259,7 +2259,7 @@ function loginFields(b) {
 Object.assign(ACT, {
   demoAs(el) { const f = $('form[data-form="login"]'); if (f) { f.querySelector('#l-email').value = el.dataset.email; f.querySelector('#l-pass').value = 'demo'; f.requestSubmit(); } },
   allMine() { S.allMine = true; render(); },
-  lockNow() { S.elevUntil = 0; if (myRole() !== 'owner') stopBossWatches(); call('pinLock').catch(() => {}); toast('Owner pages locked'); render(); },
+  lockNow() { S.elevUntil = 0; if (!fullAccess(S.me)) stopBossWatches(); call('pinLock').catch(() => {}); toast('Owner pages locked'); render(); },
   clockQr() { clockModal(); },
   printClock() { printClockPoster(); },
   async newClockKey(el) { if (!armed(el)) return; S.clockKey = newToken(); if (await put('private', 'clock', { key: S.clockKey, at: Date.now() })) { logAct('clock', 'Made a new time clock QR code (the old one stopped working)'); toast('New code made. Print the new poster.'); clockModal(); } },
@@ -2335,7 +2335,7 @@ Object.assign(FORM, {
 Object.assign(TAB_VIEWS, { activity: vActivity, me: vMe, mypay: vMyPay });
 setInterval(() => {
   if (!S.elevUntil) return;
-  if (S.elevUntil <= Date.now()) { S.elevUntil = 0; if (myRole() !== 'owner') stopBossWatches(); toast('Owner pages locked'); render(); return; }
+  if (S.elevUntil <= Date.now()) { S.elevUntil = 0; if (!fullAccess(S.me)) stopBossWatches(); toast('Owner pages locked'); render(); return; }
 }, 1000);
 
 // ================= EVENTS =================
@@ -2412,7 +2412,7 @@ render();
     S.user = user; S.canAdmin = false;
     if (user) {
       try { const a = await db.doc(`admins/${user.uid}`).get(); S.canAdmin = a.exists; S.me = a.exists ? { uid: user.uid, ...a.data() } : null; } catch (_) { S.canAdmin = false; S.me = null; }
-      try { S.lockOn = myRole() === 'owner' && localStorage.getItem('rb-lock') === '1'; } catch (_) { S.lockOn = false; }
+      try { S.lockOn = fullAccess(S.me) && localStorage.getItem('rb-lock') === '1'; } catch (_) { S.lockOn = false; }
       S.elevUntil = 0; NAV.length = 0; trackNav();
       db.doc(`elevations/${user.uid}`).get().then(e => { if (e.exists) call('pinLock').catch(() => {}); }).catch(() => {}); // a reload locks owner pages again
       if (S.canAdmin) { startWatches(); try { const k = 'rb-in-' + user.uid; if (!sessionStorage.getItem(k)) { sessionStorage.setItem(k, '1'); logAct('signin', 'Signed in'); } } catch (_) {} }

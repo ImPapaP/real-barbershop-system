@@ -380,5 +380,7 @@ export function lateFine(inHM, startHM, rate) {
 export const lateRateOf = b => (b && b.lateFine != null && b.lateFine !== '') ? Math.max(0, Number(b.lateFine) || 0) : (b && (b.role || 'barber') === 'barber' ? ((b.tiers || []).includes('deluxe') ? 50 : 15) : 0);
 export const shiftStartOf = (b, pol) => (b && b.shiftStart) || (pol && pol.clockStart) || CLOCK_START;
 // Who can do what in the dashboard (admins/{uid}.role). A missing role means owner (accounts made before roles).
-export const ACCESS = { owner: 'Owner (everything)', desk: 'Front desk (bookings, checkout, clients)', staff: 'Own schedule and pay only' };
+
 export const roleOf = a => (a && ACCESS[a.role]) ? a.role : 'owner';
+export const ACCESS = { owner: 'Owner (everything)', desk: 'Receptionist (everything, same as the owner)', staff: 'Own schedule and pay only' };
+export const fullAccess = a => ['owner', 'desk'].includes(roleOf(a)); // the receptionist has the same access as the owner

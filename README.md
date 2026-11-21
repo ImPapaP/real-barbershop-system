@@ -205,11 +205,11 @@ Men first choose **Deluxe** or **Regular**. Only that level's haircuts are shown
 
 - **Who sees what.** Give each person a sign-in in **Staff → Edit → Sign-in**:
   - **Owner:** everything.
-  - **Front desk:** Schedule, walk-ins, bookings, Checkout, Clients and the cash count. No income pages, pay, inventory or settings.
+  - **Receptionist:** everything, the same as the owner (including staff pay, settings, voids and the activity log).
   - **Own schedule and pay only (barbers and stylists):** **My day** (their clients today and the next 7 days, and their time in) and **My pay** (days in, commission, tips, late deductions, what's owed and past payouts). Nothing about anyone else.
   The Firestore rules enforce this, so it's not just hidden buttons.
-- **Owner PIN** (Shop setup → Owner PIN). The front desk needs it to void a sale, mark a down payment refunded, delete a client or a visit, or open owner pages. Typing it opens owner powers on that sign-in until someone taps **Lock** in the banner, signs out or reloads the page (with a 12-hour safety limit). The PIN is checked on the server and stored hashed. 5 wrong tries lock it for 15 minutes. On a shared phone or tablet signed in as the owner, tick **Lock owner pages on this device** so income, pay and settings ask for the PIN there too.
-- **Activity log** (owner only). Records who did what and when, for example "Alex · Front desk · Voided a ₱299 sale for a walk-in (11:20 AM, Mac, Cash)". It covers:
+- **Owner PIN** (Shop setup → Owner PIN). The owner and receptionist don't need it. It's for a shared phone or tablet: tick **Lock owner pages on this device** and income, pay, settings and voids ask for the PIN there. Typing it opens them until someone taps **Lock**, signs out or reloads (12-hour safety limit). The PIN is checked on the server and stored hashed. 5 wrong tries lock it for 15 minutes.
+- **Activity log** (owner and receptionist). Records who did what and when, for example "Alex · Receptionist · Voided a ₱299 sale for a walk-in (11:20 AM, Mac, Cash)". It covers:
   - sales, voids and refunds
   - no-shows, cancelled and deleted visits, deleted clients
   - expenses and payouts
