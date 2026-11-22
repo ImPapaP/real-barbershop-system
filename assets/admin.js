@@ -9,7 +9,7 @@ import { withOption, lateLimit, hasDeposit, bdaySelects, cleanBday, fmtBday, bda
 // ---------- constants ----------
 const METHODS = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer'];
 const EXP_CATS = ['Rent', 'Electricity', 'Water', 'Internet', 'Supplies', 'Stock purchase', 'Wages', 'Maintenance', 'Marketing', 'Permits & taxes', 'Payment fees', 'Other'];
-const TABS = [['overview', 'Overview'], ['schedule', 'Schedule'], ['checkout', 'Checkout'], ['money', 'Income & expenses'], ['team', 'Staff'], ['clients', 'Clients'], ['stock', 'Inventory'], ['website', 'Website'], ['setup', 'Shop setup'], ['activity', 'Activity log'], ['me', 'My day'], ['mypay', 'My pay']];
+const TABS = [['overview', 'Overview'], ['schedule', 'Schedule'], ['checkout', 'Checkout'], ['money', 'Income & expenses'], ['team', 'Staff'], ['clients', 'Clients'], ['stock', 'Inventory'], ['website', 'Website'], ['setup', 'Shop setup'], ['payroll', 'Payroll'], ['reports', 'Reports'], ['activity', 'Activity log'], ['me', 'My day'], ['mypay', 'My pay']];
 const APPT = {
   pending_payment: { label: 'Awaiting deposit', kind: 'warn', icon: '◷' },
   booked: { label: 'Booked', kind: 'info', icon: '◷' },
@@ -31,7 +31,7 @@ const METHOD_NAMES = { gcash: 'GCash', paymaya: 'Maya', card: 'Card', qrph: 'QR 
 const S = {
   ready: false, user: null, canAdmin: false, loginErr: '', loginBusy: false, loginMsg: '',
   info: null, infoMissing: false, slow: false,
-  staff: [], appointments: [], sales: [], expenses: [], customers: [], inventory: [], payouts: [], waitlist: [], attendance: [], promos: [], closings: [], leaves: [], timeclock: [], activity: [], loaded: {}, me: null, elevUntil: 0, lockOn: false, reminding: '',
+  staff: [], appointments: [], sales: [], expenses: [], customers: [], inventory: [], payouts: [], waitlist: [], attendance: [], promos: [], closings: [], leaves: [], timeclock: [], activity: [], payslips: [], advances: [], cutoff: '', loaded: {}, me: null, elevUntil: 0, lockOn: false, reminding: '',
   proofImgs: {}, cutImgs: {}, refImgs: {},
   schedDate: '', schedBarber: '', schedQ: '', schedStatus: '', schedSrc: '', showExpired: false, period: 'month', from: '', to: '',
   clientQ: '', clientSort: 'recent', stockFilter: 'all', showArchived: false, pos: null, busy: false, uploading: ''
@@ -39,7 +39,7 @@ const S = {
 const unsubs = [];
 // Who sees what: the owner everything; the receptionist Schedule, Checkout and Clients; staff only their own day and pay.
 // Owner pages show a lock screen on other sign-ins (and on the owner's own shared device when locked): the owner PIN opens them until someone taps Lock or signs out.
-const OWNER_TABS = ['overview', 'money', 'team', 'stock', 'website', 'setup', 'activity'];
+const OWNER_TABS = ['overview', 'money', 'team', 'payroll', 'reports', 'stock', 'website', 'setup', 'activity'];
 const DESK_TABS = ['schedule', 'checkout', 'clients'], STAFF_TABS = ['me', 'mypay'];
 const OWNER_ACTS = { voidSale: 'void a sale', markRefunded: 'mark a down payment as refunded', delClient: 'delete a client', delAppt: 'delete a visit' };
 const bossUnsubs = [];
@@ -132,6 +132,8 @@ const ICONS = {
   website: '<rect x="2.5" y="3.5" width="15" height="13" rx="2"/><circle cx="7" cy="8" r="1.6"/><path d="M3 15l4.5-4.5 3 3L13 11l4.5 4.5"/>',
   out: '<path d="M8 4H4v12h4M12 6l4 4-4 4M16 10H8"/>',
   filter: '<path d="M3 5h14M6 10h8M8.5 15h3"/>',
+  payroll: '<path d="M5 2.5h10v15l-2-1.3-2 1.3-2-1.3-2 1.3-2-1.3z"/><path d="M7.5 7h5M7.5 10h5M7.5 13h3"/>',
+  reports: '<path d="M3 17h14M5.5 14V9M10 14V4.5M14.5 14v-7"/>',
   lock: '<rect x="4" y="9" width="12" height="8" rx="2"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/>',
   activity: '<path d="M3 10h3l2-5 4 10 2-5h3"/>',
   me: '<circle cx="10" cy="10" r="7.5"/><path d="M10 5.5V10l3 2"/>',
@@ -406,11 +408,11 @@ function apptRow(a, compact) {
     + (owesLateFee(a) ? `<button class="btn btn-sm btn-primary" data-act="servedLate" data-id="${esc(a.id)}" title="They came more than ${lateLimit(a, pol())} min late and got their service: full price, down payment kept">Served late</button><button class="btn btn-sm" data-act="lateFee" data-id="${esc(a.id)}" title="They didn’t come or weren’t served: charge the service as a late fee">No-show: late fee</button>` : '');
   const actions = `${giveAway}${canCheckout ? `<button class="btn btn-sm btn-primary" data-act="checkoutAppt" data-id="${esc(a.id)}">Checkout</button>` : ''}${a.status === 'done' && a.saleId ? `<button class="btn btn-sm" data-act="showSale" data-id="${esc(a.saleId)}">Receipt</button>` : ''}`;
   const flag = a.conflict && ['booked', 'pending_payment'].includes(a.status) ? ' ' + chip({ kind: 'bad', icon: '!', label: 'Overlaps another booking' }) : '';
-  if (compact) return `<li>${a.barberId ? av(staffById(a.barberId)) : ''}<span class="t">${a.source === 'walk-in' ? `#${esc(a.queueNo || '')}` : fmtTime(a.time)}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${lateChip(a)}${bdayChip(a)}${refChip(a)}<div class="sub">${esc(svcNames(a.serviceIds, a.options))} · ${needsBarber(a) ? '<b class="needs-b">Any barber, assign one</b>' : esc(staffName(a.barberId))}</div></div>${chip(APPT[a.status] || APPT.booked)}</li>`;
+  if (compact) return `<li>${a.barberId ? av(staffById(a.barberId)) : ''}<span class="t">${a.source === 'walk-in' ? `#${esc(a.queueNo || '')}` : fmtTime(a.time)}</span><div class="grow"><b>${esc(a.name || 'Walk-in')}</b>${lateChip(a)}${bdayChip(a)}${refChip(a)}${riskChip(a)}<div class="sub">${esc(svcNames(a.serviceIds, a.options))} · ${needsBarber(a) ? '<b class="needs-b">Any barber, assign one</b>' : esc(staffName(a.barberId))}</div></div>${chip(APPT[a.status] || APPT.booked)}</li>`;
   const choices = STATUS_CHOICES.includes(a.status) ? STATUS_CHOICES : [a.status, ...STATUS_CHOICES];
   return `<tr>
     <td class="num nowrap"><b>${a.source === 'walk-in' ? `Walk-in #${esc(a.queueNo || '')}` : fmtTime(a.time)}</b>${a.source === 'walk-in' ? `<div class="muted small">arrived ${fmtTime(a.time)}</div>` : ''}</td>
-    <td><b>${esc(a.name || 'Walk-in')}</b>${a.code ? ` <span class="muted small">${esc(a.code)}</span>` : ''}${lateChip(a)}${bdayChip(a)}${refChip(a)}${a.promo ? ' ' + chip({ kind: 'info', icon: '%', label: `${a.promo.code} −${money(a.promo.off)}` }) : ''}${a.phone ? `<div class="muted small">${esc(a.phone)}</div>` : ''}</td>
+    <td><b>${esc(a.name || 'Walk-in')}</b>${a.code ? ` <span class="muted small">${esc(a.code)}</span>` : ''}${lateChip(a)}${bdayChip(a)}${refChip(a)}${riskChip(a)}${a.promo ? ' ' + chip({ kind: 'info', icon: '%', label: `${a.promo.code} −${money(a.promo.off)}` }) : ''}${a.phone ? `<div class="muted small">${esc(a.phone)}</div>` : ''}</td>
     <td>${esc(svcNames(a.serviceIds, a.options))}${a.notes ? `<div class="muted small">${esc(a.notes)}</div>` : ''}${flag}</td>
     <td>${needsBarber(a) ? `<div class="assign"><span class="chip chip-warn"><b aria-hidden="true">?</b>Any barber</span>${assignSelect(a)}</div>` : esc(staffName(a.barberId))}</td>
     <td><span class="muted small">${a.source === 'online' ? 'Online' : a.source === 'walk-in' ? 'Walk-in' : 'Phone / in person'}</span><div>${depositChip(a)}</div></td>
@@ -443,6 +445,8 @@ function vOverview() {
   </section>
   <div class="grid2">
     <section class="panel"><div class="panel-h"><h2>Sales, last 14 days</h2><a class="btn btn-sm btn-ghost" href="#money">Full report</a></div>${barChart(bk, [{ name: 'Sales', values: vals, cls: 's1' }])}</section>
+    ${(() => { const risky = S.appointments.filter(a => a.date >= today() && a.date <= addDays(today(), 2) && !a.confirmed && riskOf(a)).sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time));
+      return risky.length ? `<section class="panel risk-panel"><div class="panel-h"><h2>Text to confirm</h2><span class="muted small">Next 3 days</span></div><ul class="list">${risky.map(a => { const R0 = riskOf(a); return `<li>${av(staffById(a.barberId))}<span class="t">${a.date === today() ? fmtTime(a.time) : DAYS[parseYmd(a.date).getDay()] + ' ' + fmtTime(a.time)}</span><div class="grow"><b>${esc(a.name)}</b><div class="sub">Missed ${R0.ns} of ${R0.n} bookings${a.confirmAsked ? ' · text sent' : ''}</div></div><button class="btn btn-sm" data-act="confirmText" data-id="${esc(a.id)}">Text</button></li>`; }).join('')}</ul></section>` : ''; })()}
     <section class="panel"><div class="panel-h"><h2>Today’s chairs</h2><a class="btn btn-sm btn-ghost" href="#schedule">Schedule</a></div>
       ${appts.filter(a => !['cancelled', 'expired'].includes(a.status)).length ? `<ul class="list pg">${appts.filter(a => !['cancelled', 'expired'].includes(a.status)).map(a => apptRow(a, true)).join('')}</ul>` : '<p class="empty">No bookings or walk-ins yet today.</p>'}</section>
   </div>
@@ -858,7 +862,8 @@ function payRulesPanel(list, r) {
       <td class="r"><b>${money(P.pay)}</b><div class="muted small">${parts.length ? esc(parts.join(' + ')) : 'Nothing yet'}</div></td></tr>`; }).join('')}
     </tbody></table></div></section>`;
 }
-function owedFor(id) { const b = staffById(id); const earned = b ? payFor(b, [payStart(b), today()]).total : 0; const paid = sum(S.payouts.filter(p => p.barberId === id), p => p.amount); return round2(earned - paid); }
+// owed = earned − payouts − cash advances given + advances already taken back on paid payslips
+function owedFor(id) { const b = staffById(id); const earned = b ? payFor(b, [payStart(b), today()]).total : 0; const paid = sum(S.payouts.filter(p => p.barberId === id), p => p.amount); const adv = sum(S.advances.filter(a => a.staffId === id), a => a.amount), back = sum(S.payslips.filter(p => p.staffId === id), p => sum(p.adv || [], x => x.amount)); return round2(earned - paid - adv + back); }
 function vTeam() {
   const r = periodRange(S.period), s = summary(r);
   const list = staffAll().filter(b => S.showArchived || b.active !== false).sort((a, b) => (a.chair || 99) - (b.chair || 99));
@@ -948,7 +953,7 @@ function vStock() {
 // ---------- backups ----------
 // Download everything now (a JSON file that holds every record, and an Excel file of clients, sales and bookings).
 // The server also saves a copy every Sunday at 3 AM (see weeklyBackup); the last one shows here.
-const BACKUP_COLS = ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts', 'waitlist', 'attendance', 'promos', 'closings', 'leaves', 'timeclock', 'activity'];
+const BACKUP_COLS = ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts', 'waitlist', 'attendance', 'promos', 'closings', 'leaves', 'timeclock', 'activity', 'payslips', 'advances'];
 function backupPanel() {
   if (S.backupInfo === undefined) { S.backupInfo = null; db.doc('private/backup').get().then(d => { S.backupInfo = d.exists ? d.data() : false; schedule(); }).catch(() => { S.backupInfo = false; }); }
   const b = S.backupInfo;
@@ -2051,6 +2056,8 @@ function bossWatches() {
   const w = (key, q) => bossUnsubs.push(q.onSnapshot(snap => { S[key] = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.loaded[key] = true; schedule(); }, err => { console.error(key, err); S.loaded[key] = true; schedule(); }));
   w('payouts', db.collection('payouts'));
   w('activity', db.collection('activity').where('at', '>=', Date.now() - 90 * 864e5));
+  w('payslips', db.collection('payslips'));
+  w('advances', db.collection('advances'));
 }
 function stopBossWatches() { while (bossUnsubs.length) { try { bossUnsubs.pop()(); } catch (_) {} } }
 // Staff see only their own records (the queries match firestore.rules)
@@ -2065,6 +2072,8 @@ function startOwnWatches() {
   watchCol('attendance', db.collection('attendance').where('barberId', '==', id));
   watchCol('leaves', db.collection('leaves').where('staffId', '==', id));
   watchCol('timeclock', db.collection('timeclock').where('staffId', '==', id));
+  watchCol('payslips', db.collection('payslips').where('staffId', '==', id));
+  watchCol('advances', db.collection('advances').where('staffId', '==', id));
 }
 // Activity log: who did what and when (owner reads it in Activity log; nobody can edit or delete entries)
 function logAct(kind, text, extra = {}) {
@@ -2183,6 +2192,10 @@ function vMyPay() {
   return `${pageHead(rangeLabel(r), 'My pay', '')}
   ${periodBar()}
   <div class="kpis kpis-sm"><div class="kpi"><small>Days in</small><b>${P.days}</b></div><div class="kpi"><small>${P.t === 'monthly' ? 'Salary' : P.t === 'quota' ? 'Daily minimum top-ups' : 'Daily pay'}</small><b>${money(P.base)}</b></div><div class="kpi"><small>Commission</small><b>${money(P.comm)}</b></div><div class="kpi"><small>Tips</small><b>${money(P.tips)}</b></div>${P.fines ? `<div class="kpi"><small>Late deductions</small><b class="down">−${money(P.fines)}</b></div>` : ''}<div class="kpi"><small>Earned</small><b>${money(P.total)}</b></div><div class="kpi"><small>Owed to you now</small><b>${money(owed)}</b></div></div>
+  ${(() => { const mine = S.payslips.slice().sort((a, b) => b.cutoff.localeCompare(a.cutoff)), cur0 = cutoffOf(today()), prev = cutoffShift(cur0, -1), advLeft = round2(sum(S.advances, a => a.amount) - sum(S.payslips, p => sum(p.adv || [], x => x.amount)));
+    return `<section class="panel"><div class="panel-h"><h2>Payslips</h2>${advLeft > 0 ? `<span class="muted small">Cash advance still to pay back: <b>${money(advLeft)}</b></span>` : ''}</div><ul class="list pg">
+      ${mine.some(x => x.cutoff === prev) ? '' : `<li><span class="grow"><b>${esc(cutoffLabel(prev))}</b><span class="sub" style="display:block">Not paid yet · preview</span></span><b>${money(payslip(b, prev).net)}</b><button class="btn btn-sm" data-act="viewSlip" data-id="${esc(b.id)}" data-c="${prev}">View</button></li>`}
+      ${mine.map(x => `<li><span class="grow"><b>${esc(cutoffLabel(x.cutoff))}</b><span class="sub" style="display:block">Paid ${fmtDate(x.paidOn)}</span></span><b>${money(x.net)}</b><button class="btn btn-sm" data-act="viewSlip" data-id="${esc(b.id)}" data-c="${x.cutoff}">View</button></li>`).join('')}</ul></section>`; })()}
   <section class="panel"><div class="panel-h"><h2>How you’re paid</h2></div><p>${esc(payRule(b))}.</p><p class="muted small">${esc(payExample(b))}${lateRateOf(b) ? ` Late (after ${fmtTime(shiftStartOf(b, pol()))}): ${money(lateRateOf(b))} for each started 15 minutes.` : ''}</p></section>
   <section class="panel"><div class="panel-h"><h2>Your clients</h2><span class="muted small">${sales.length} · ${money(P.svc)} in services</span></div>
     ${sales.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Client</th><th>Services</th><th class="r">Commission</th><th class="r">Tip</th></tr></thead><tbody>${sales.map(x => `<tr><td class="nowrap">${shortDate(x.date)} <span class="muted small">${x.time ? fmtTime(x.time) : ''}</span></td><td>${esc(x.name || 'Walk-in')}</td><td class="muted small">${esc((x.lines || []).filter(l => l.kind === 'service').map(l => l.name).join(', '))}</td><td class="r">${money(x.commission || 0)}</td><td class="r">${x.tip ? money(x.tip) : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">No clients in this period.</p>'}</section>
@@ -2474,6 +2487,310 @@ Object.assign(CHG, {
   cpKind(el) { const v = el.value, box = $('#cp-v'); if (!box) return;
     box.innerHTML = v === 'service' ? field('Service', `<select id="m-cpsvc">${services().filter(sv => sv.active !== false).map(sv => opt(sv.id, `${sv.name} (${money(sv.price)})`)).join('')}</select>`, 'm-cpsvc') : field(v === 'percent' ? 'Percent off' : `Amount (${cur()})`, `<input id="m-cpval" inputmode="decimal" placeholder="${v === 'percent' ? 'e.g. 20' : 'e.g. 100'}">`, 'm-cpval'); }
 });
+// ================= PAYROLL, PAYSLIPS, CASH ADVANCES =================
+// Cutoffs: the 1st–15th and the 16th–end of month. A payslip is worked out live from the pay rules until the
+// owner marks it paid; then it's saved (payslips/{cutoff}_{staffId}) with a payout for the net amount.
+// Cash advances (vale): advances/{id} { staffId, amount, date, parts, start (cutoff), note }. Each payslip from
+// the start cutoff takes back amount ÷ parts (catching up if a cutoff was skipped) until it's all back.
+const cutoffOf = d => `${d.slice(0, 7)}-${+d.slice(8, 10) <= 15 ? 1 : 2}`;
+function cutoffRange(c) { const ym = c.slice(0, 7), half = c.slice(8); const [y, m] = ym.split('-').map(Number), last = new Date(y, m, 0).getDate(); return half === '1' ? [`${ym}-01`, `${ym}-15`] : [`${ym}-16`, `${ym}-${pad(last)}`]; }
+const cutoffLabel = c => { const [a, b] = cutoffRange(c); return `${MONTHS[+a.slice(5, 7) - 1]} ${+a.slice(8)}–${+b.slice(8)}, ${a.slice(0, 4)}`; };
+function cutoffShift(c, n) { let [y, m] = c.slice(0, 7).split('-').map(Number), h = +c.slice(8); let k = (y * 12 + m - 1) * 2 + (h - 1) + n; return `${Math.floor(k / 24)}-${pad(Math.floor(k / 2) % 12 + 1)}-${k % 2 + 1}`; }
+const cutoffIdx = c => { const [y, m] = c.slice(0, 7).split('-').map(Number); return (y * 12 + m - 1) * 2 + (+c.slice(8) - 1); };
+const slipFor = (c, id) => S.payslips.find(p => p.id === `${c}_${id}`);
+// how much of each advance this cutoff takes back
+function advanceDue(staffId, c) {
+  const paidSlips = S.payslips.filter(p => p.staffId === staffId && p.cutoff !== c);
+  return S.advances.filter(a => a.staffId === staffId && cutoffIdx(a.start) <= cutoffIdx(c)).map(a => {
+    const back = round2(sum(paidSlips, p => ((p.adv || []).find(x => x.id === a.id) || {}).amount || 0)), left = round2(a.amount - back);
+    const parts = Math.max(1, +a.parts || 1), per = round2(a.amount / parts), dueSoFar = Math.min(a.amount, round2(per * (cutoffIdx(c) - cutoffIdx(a.start) + 1)));
+    const amount = round2(Math.max(0, Math.min(left, dueSoFar - back)));
+    return { id: a.id, amount, left, a };
+  }).filter(x => x.amount > 0);
+}
+function leaveCount(b, r) { const ds = daysIn(r); let paid = 0, unpaid = 0; ds.forEach(d => { const lv = leaveOn(b, d); if (lv) lv.paid ? paid++ : unpaid++; }); return { paid, unpaid }; }
+// the payslip: a saved one, or worked out now
+function payslip(b, c) {
+  const saved = slipFor(c, b.id); if (saved) return saved;
+  const r = cutoffRange(c), P = payFor(b, r), lv = leaveCount(b, r), adv = advanceDue(b.id, c);
+  const gross = round2(P.base + P.comm + P.dep + P.tips), advTotal = round2(sum(adv, x => x.amount));
+  return { id: `${c}_${b.id}`, cutoff: c, staffId: b.id, name: b.name, title: b.title || roleName(b), payType: P.t, rule: payRule(b), from: r[0], to: r[1],
+    days: P.days, daily: P.daily, base: P.base, topUps: P.topUps || 0, svc: round2(P.svc), rate: Number(b.rate) || 0, comm: P.comm, dep: P.dep, tips: round2(P.tips), clients: P.x.length,
+    paidLeave: lv.paid, unpaidLeave: lv.unpaid, lates: P.lates || 0, fines: P.fines || 0, adv: adv.map(x => ({ id: x.id, amount: x.amount, note: x.a.note || '', left: round2(x.left - x.amount) })),
+    gross, net: round2(gross - (P.fines || 0) - advTotal), draft: true };
+}
+function vPayroll() {
+  const c = S.cutoff || (S.cutoff = cutoffShift(cutoffOf(today()), -1)); // default: the last cutoff that has ended
+  const list = staffAll().filter(b => b.active !== false || slipFor(c, b.id)).sort((a, b) => (a.chair || 99) - (b.chair || 99));
+  const slips = list.map(b => [b, payslip(b, c)]), r = cutoffRange(c), ended = r[1] < today();
+  const tot = k => round2(sum(slips, ([, s]) => s[k] || 0)), paidN = slips.filter(([, s]) => !s.draft).length;
+  const opts = Array.from({ length: 12 }, (_, i) => cutoffShift(cutoffOf(today()), -i));
+  return `${pageHead(cutoffLabel(c), 'Payroll', `<div class="row"><button class="btn" data-act="cutPrev" aria-label="Earlier cutoff">‹</button><select id="pr-cut" data-change="cutPick" aria-label="Cutoff" style="width:auto">${opts.map(o => opt(o, cutoffLabel(o), o === c)).join('')}${opts.includes(c) ? '' : opt(c, cutoffLabel(c), true)}</select><button class="btn" data-act="cutNext" aria-label="Later cutoff" ${c >= cutoffOf(today()) ? 'disabled' : ''}>›</button></div>`)}
+  ${ended ? '' : `<div class="banner">${icon('cal')} This cutoff isn’t over yet (ends ${fmtDate(r[1])}). The numbers keep changing until then.</div>`}
+  <div class="kpis"><div class="kpi"><span class="k">Gross pay</span><span class="v">${money(tot('gross'))}</span></div><div class="kpi"><span class="k">Late deductions</span><span class="v">−${money(tot('fines'))}</span></div><div class="kpi"><span class="k">Cash advances taken back</span><span class="v">−${money(round2(sum(slips, ([, s]) => sum(s.adv || [], x => x.amount))))}</span></div><div class="kpi"><span class="k">Net to pay</span><span class="v">${money(tot('net'))}</span><span class="d">${paidN} of ${slips.length} paid</span></div></div>
+  <section class="panel"><div class="panel-h"><h2>Payslips</h2><div class="row">${paidN < slips.length && ended ? `<button class="btn btn-sm btn-primary" data-act="payAll">Mark all paid</button>` : ''}<button class="btn btn-sm" data-act="exportPayroll">Export Excel</button></div></div>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th class="r">Days</th><th class="r">Base pay</th><th class="r">Commission</th><th class="r">Tips</th><th class="r">Leave</th><th class="r">Late</th><th class="r">Vale</th><th class="r">Net pay</th><th>Status</th><th></th></tr></thead><tbody>
+    ${slips.map(([b, s]) => { const advT = round2(sum(s.adv || [], x => x.amount));
+      return `<tr><td><div class="row" style="flex-wrap:nowrap">${av(b)}<div><b>${esc(b.name)}</b><div class="muted small">${esc(s.title || '')}</div></div></div></td><td class="r">${s.days}</td>
+      <td class="r">${money(s.base)}${s.payType === 'quota' && s.topUps ? `<div class="muted small">top-up ${s.topUps} day${s.topUps > 1 ? 's' : ''}</div>` : ''}</td><td class="r">${money(s.comm)}${s.dep ? `<div class="muted small">+ ${money(s.dep)} kept DP</div>` : ''}</td><td class="r">${s.tips ? money(s.tips) : '—'}</td>
+      <td class="r small">${s.paidLeave ? `${s.paidLeave} paid` : ''}${s.paidLeave && s.unpaidLeave ? '<br>' : ''}${s.unpaidLeave ? `${s.unpaidLeave} unpaid` : ''}${!s.paidLeave && !s.unpaidLeave ? '—' : ''}</td>
+      <td class="r">${s.fines ? `−${money(s.fines)}` : '—'}</td><td class="r">${advT ? `−${money(advT)}` : '—'}</td><td class="r"><b>${money(s.net)}</b></td>
+      <td>${s.draft ? chip({ kind: ended ? 'warn' : 'mute', icon: ended ? '!' : '…', label: ended ? 'Not paid' : 'Running' }) : chip({ kind: 'good', icon: '✓', label: `Paid ${shortDate(s.paidOn)}` })}</td>
+      <td><div class="acts"><button class="btn btn-sm btn-ghost" data-act="viewSlip" data-id="${esc(b.id)}">Payslip</button>${s.draft ? (ended ? `<button class="btn btn-sm btn-primary" data-act="paySlip" data-id="${esc(b.id)}">Mark paid</button>` : '') : `<button class="btn btn-sm btn-ghost" data-act="unpaySlip" data-id="${esc(b.id)}">Undo</button>`}</div></td></tr>`; }).join('')}
+    </tbody></table></div>
+    <p class="muted small" style="margin-top:10px">Net pay = base pay + commission + their half of kept down payments + tips − late deductions − cash advance taken back. Marking a payslip paid saves it (it won’t change after that), records the payout, and the staff member sees it in My pay.</p></section>
+  ${advancesPanel()}`;
+}
+function advancesPanel() {
+  const list = [...S.advances].sort((a, b) => b.date.localeCompare(a.date));
+  const backOf = a => round2(sum(S.payslips.filter(p => p.staffId === a.staffId), p => ((p.adv || []).find(x => x.id === a.id) || {}).amount || 0));
+  return `<section class="panel"><div class="panel-h"><h2>Cash advances (vale)</h2><button class="btn btn-sm btn-primary" data-act="newAdvance">+ Cash advance</button></div>
+    ${list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Name</th><th class="r">Amount</th><th>Taken back</th><th class="r">Still owed</th><th>Note</th><th></th></tr></thead><tbody>${list.map(a => { const back = backOf(a), left = round2(a.amount - back), parts = Math.max(1, +a.parts || 1);
+      return `<tr><td class="nowrap">${fmtDate(a.date)}</td><td><b>${esc(staffName(a.staffId))}</b></td><td class="r">${money(a.amount)}</td>
+        <td class="small">${parts === 1 ? 'All on the next payslip' : `${money(round2(a.amount / parts))} × ${parts} payslips`}<div class="muted">from ${esc(cutoffLabel(a.start))}</div><div class="meter-line"><i style="width:${Math.min(100, back / a.amount * 100).toFixed(0)}%"></i></div></td>
+        <td class="r">${left > 0 ? `<b>${money(left)}</b>` : chip({ kind: 'good', icon: '✓', label: 'Paid back' })}</td><td class="muted small">${esc(a.note || '')}</td>
+        <td><div class="acts">${back ? '' : `<button class="btn btn-sm btn-ghost" data-act="delAdvance" data-id="${esc(a.id)}">Delete</button>`}</div></td></tr>`; }).join('')}</tbody></table></div>`
+      : '<p class="empty">No cash advances. Record one when a staff member borrows against their pay; it comes off their next payslip(s) automatically.</p>'}</section>`;
+}
+function advanceModal() {
+  const c0 = cutoffOf(today());
+  openModal('Cash advance (vale)', `<form class="stack" data-form="advance">
+    <div class="fgrid">${field('Staff member', `<select id="m-avstaff" name="staffId" required>${activeStaff().map(b => opt(b.id, b.name)).join('')}</select>`, 'm-avstaff')}${field(`Amount (${cur()})`, '<input id="m-avamt" name="amount" inputmode="decimal" required placeholder="e.g. 1000">', 'm-avamt')}</div>
+    <div class="fgrid">${field('Date given', `<input id="m-avdate" name="date" type="date" value="${today()}" max="${today()}">`, 'm-avdate')}${field('Take it back', `<select id="m-avparts" name="parts">${[[1, 'All on the next payslip'], [2, 'Over 2 payslips'], [3, 'Over 3 payslips'], [4, 'Over 4 payslips'], [6, 'Over 6 payslips']].map(([v, l]) => opt(v, l, v === 1)).join('')}</select>`, 'm-avparts')}</div>
+    ${field('Starting with the payslip for', `<select id="m-avstart" name="start">${[0, 1, 2].map(n => cutoffShift(c0, n)).map((c, i) => opt(c, cutoffLabel(c) + (i === 0 ? ' (this cutoff)' : ''), i === 0)).join('')}</select>`, 'm-avstart')}
+    ${field('Note', '<input id="m-avnote" name="note" maxlength="100" placeholder="e.g. Tuition, cash from the drawer">', 'm-avnote')}
+    <p class="err" id="m-err" hidden></p>${mFoot('Save advance')}</form>`);
+}
+function slipHTML(s) {
+  const sh = info().shop, row = (l, v, cls = '') => `<div class="ps-row ${cls}"><span>${l}</span><b>${v}</b></div>`;
+  const advT = round2(sum(s.adv || [], x => x.amount));
+  const baseLabel = s.payType === 'monthly' ? `Salary (${s.days} day${s.days === 1 ? '' : 's'})` : s.payType === 'quota' ? `Daily minimum top-ups (${s.topUps || 0} day${s.topUps === 1 ? '' : 's'})` : `Daily pay (${s.days} × ${money(s.daily || 0)})`;
+  return `<div class="payslip" id="payslip">
+    <div class="ps-head"><div><b class="ps-shop">${esc(sh.name)}</b><div class="ps-sub">${esc(sh.address || '')}</div></div><div class="ps-tag">PAYSLIP</div></div>
+    <div class="ps-meta"><div><span>Employee</span><b>${esc(s.name)}</b><small>${esc(s.title || '')}</small></div><div><span>Pay period</span><b>${esc(cutoffLabel(s.cutoff))}</b><small>${s.draft ? 'Not paid yet' : `Paid ${fmtDate(s.paidOn)}${s.method ? ' · ' + esc(s.method) : ''}`}</small></div></div>
+    <p class="ps-rule">${esc(s.rule || '')}</p>
+    <div class="ps-sec"><h4>Earnings</h4>${row(baseLabel, money(s.base))}${row(`Commission (${s.rate}% of ${money(s.svc)} services · ${s.clients} client${s.clients === 1 ? '' : 's'})`, money(s.comm))}${s.dep ? row('Share of kept down payments', money(s.dep)) : ''}${row('Tips', money(s.tips))}${row('Gross pay', money(s.gross), 'tot')}</div>
+    <div class="ps-sec"><h4>Deductions</h4>${row(`Late (${s.lates || 0} time${s.lates === 1 ? '' : 's'})`, s.fines ? '−' + money(s.fines) : money(0))}${(s.adv || []).length ? s.adv.map(x => row(`Cash advance${x.note ? ' · ' + esc(x.note) : ''}${x.left > 0 ? ` (${money(x.left)} left)` : ' (paid off)'}`, '−' + money(x.amount))).join('') : row('Cash advance', money(0))}${row('Total deductions', '−' + money(round2((s.fines || 0) + advT)), 'tot')}</div>
+    <div class="ps-sec ps-att"><h4>Attendance</h4>${row('Days in', s.days)}${row('Paid leave', `${s.paidLeave || 0} day${s.paidLeave === 1 ? '' : 's'}`)}${row('Unpaid leave', `${s.unpaidLeave || 0} day${s.unpaidLeave === 1 ? '' : 's'}`)}</div>
+    <div class="ps-net"><span>NET PAY</span><b>${money(s.net)}</b></div>
+    <p class="ps-foot">${s.draft ? 'Preview: this payslip can still change until it’s marked paid.' : `Ref ${esc(s.id)} · issued by ${esc(s.paidBy || '')}`}</p></div>`;
+}
+function slipModal(b, c) {
+  const s = payslip(b, c), mine = myRole() === 'staff';
+  openModal(`Payslip · ${b.name}`, `<div class="stack">${slipHTML(s)}
+    <div class="modal-f"><button type="button" class="btn btn-ghost" data-act="slipImg" data-id="${esc(b.id)}" data-c="${esc(c)}">Save as image</button><button type="button" class="btn btn-ghost" data-act="slipPrint" data-id="${esc(b.id)}" data-c="${esc(c)}">Print / PDF</button>${!mine && s.draft && cutoffRange(c)[1] < today() ? `<button type="button" class="btn btn-primary" data-act="paySlip" data-id="${esc(b.id)}">Mark paid</button>` : ''}</div></div>`, true);
+}
+// Images of a payslip or a report: html-to-image (MIT, bundled in assets/vendor, loaded only when needed)
+let h2iP = null;
+const loadH2I = () => h2iP || (h2iP = new Promise((res, rej) => { const s = document.createElement('script'); s.src = new URL('../assets/vendor/html-to-image.js', location.href).href; s.onload = () => res(window.htmlToImage); s.onerror = () => { h2iP = null; rej(new Error('Couldn’t load the image tool.')); }; document.head.appendChild(s); }));
+async function nodeToPng(el, name) {
+  const h2i = await loadH2I(), bg = getComputedStyle(document.body).backgroundColor || '#fff';
+  const opts = { backgroundColor: bg, pixelRatio: 2, cacheBust: true };
+  let blob; try { blob = await h2i.toBlob(el, opts); } catch (_) { blob = await h2i.toBlob(el, { ...opts, skipFonts: true }); }
+  const file = new File([blob], name, { type: 'image/png' });
+  if (navigator.canShare && innerWidth < 760 && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); return; } catch (_) {} }
+  saveBlob(blob, name);
+}
+function printNode(el, title) {
+  const w = window.open('', '_blank'); if (!w) { toast('Allow pop-ups to print.', 'bad'); return; }
+  const css = [...document.querySelectorAll('link[rel=stylesheet]')].map(l => `<link rel="stylesheet" href="${l.href}">`).join('');
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>${css}<style>body{background:#fff;padding:24px}.payslip{margin:0 auto;box-shadow:none}@page{size:A5;margin:10mm}</style></head><body>${el.outerHTML}<script>window.onload=()=>setTimeout(()=>window.print(),400)<\/script></body></html>`);
+  w.document.close();
+}
+// ================= NO-SHOW RISK =================
+// From each client's past bookings (not walk-ins): how many they missed. Shown on upcoming bookings so the shop
+// can text them to confirm first. Two or more misses and 30%+ of bookings = high; any miss and 20%+ = medium.
+const clientKey = x => x.customerId || phoneKey(x.phone || '') || '';
+function riskOf(a) {
+  if (!a || a.source === 'walk-in' || !['booked', 'pending_payment'].includes(a.status) || a.date < today()) return null;
+  const k = clientKey(a); if (!k) return null;
+  const past = S.appointments.filter(x => x.id !== a.id && x.source !== 'walk-in' && x.date < today() && ['done', 'noshow'].includes(x.status) && clientKey(x) === k);
+  const ns = past.filter(x => x.status === 'noshow').length, n = past.length; if (!ns) return null;
+  const rate = ns / n, level = ns >= 2 && rate >= 0.3 ? 'high' : rate >= 0.2 ? 'medium' : null;
+  return level ? { ns, n, rate, level } : null;
+}
+function riskChip(a) {
+  const R = riskOf(a); if (!R) return '';
+  if (a.confirmed) return ' ' + chip({ kind: 'good', icon: '✓', label: 'Confirmed by text' });
+  return ` <span class="risk risk-${R.level}" title="Missed ${R.ns} of their last ${R.n} bookings">${R.level === 'high' ? 'High' : 'Some'} no-show risk · missed ${R.ns} of ${R.n}</span><button type="button" class="btn btn-sm btn-ghost risk-btn" data-act="confirmText" data-id="${esc(a.id)}">Text to confirm</button>`;
+}
+function confirmModal(a) {
+  const sh = info().shop, msg = `Hi ${String(a.name || '').split(' ')[0]}! This is ${sh.name}. Just confirming your booking ${a.date === today() ? 'today' : 'on ' + fmtDate(a.date)} at ${fmtTime(a.time)} with ${staffName(a.barberId)}. Reply YES to confirm, or let us know if you can’t make it. Thank you!`;
+  const R = riskOf(a) || { ns: 0, n: 0 };
+  openModal('Text to confirm', `<div class="stack"><p><b>${esc(a.name)}</b> missed ${R.ns} of their last ${R.n} bookings. Send a quick text before the visit; if they don’t answer, you can give the slot to a walk-in.</p>
+    <div class="field"><label for="cf-msg">Message</label><textarea id="cf-msg" rows="4">${esc(msg)}</textarea></div>
+    <p class="muted small">Number: <b>${esc(a.phone || 'none')}</b></p>
+    <div class="modal-f"><button type="button" class="btn btn-ghost" data-act="cfCopy">Copy message</button>${a.phone ? `<a class="btn" data-act="cfSms" data-id="${esc(a.id)}" href="sms:${esc(a.phone)}?body=${encodeURIComponent(msg)}">Open in Messages</a>` : ''}<button type="button" class="btn btn-primary" data-act="markConfirmed" data-id="${esc(a.id)}">They confirmed</button></div></div>`);
+}
+
+// ================= REPORTS =================
+const prevRange = r => { const n = Math.round((parseYmd(r[1]) - parseYmd(r[0])) / 864e5) + 1; return [addDays(r[0], -n), addDays(r[0], -1)]; };
+const salesIn = r => S.sales.filter(s => inR(s.date, r));
+function reportData(r) {
+  const sales = salesIn(r), firstSeen = new Map();
+  S.sales.forEach(s => { const k = clientKey(s); if (k && (!firstSeen.has(k) || s.date < firstSeen.get(k))) firstSeen.set(k, s.date); });
+  const keys = [...new Set(sales.map(clientKey).filter(Boolean))], returning = keys.filter(k => firstSeen.get(k) < r[0]).length;
+  const appts = S.appointments.filter(a => inR(a.date, r) && a.source !== 'walk-in' && ['done', 'noshow'].includes(a.status));
+  const ns = appts.filter(a => a.status === 'noshow').length;
+  return { sales, total: round2(sum(sales, netOf)), count: sales.length, avg: sales.length ? sum(sales, netOf) / sales.length : 0, keys: keys.length, returning, repeat: keys.length ? returning / keys.length : 0, appts, ns, nsRate: appts.length ? ns / appts.length : 0 };
+}
+const pct = v => `${Math.round(v * 100)}%`;
+function dPct(cur, prev, invert) {
+  if (!prev) return '<span class="d">no earlier data</span>';
+  const p = (cur - prev) / prev * 100, good = invert ? p <= 0 : p >= 0;
+  return `<span class="d"><span class="${good ? 'up' : 'down'}">${p >= 0 ? '▲' : '▼'} ${Math.abs(p).toFixed(0)}%</span> vs before</span>`;
+}
+function heatmap(cells, max, hours) {
+  const dows = [1, 2, 3, 4, 5, 6, 0];
+  return `<div class="tbl-wrap"><div class="heat" style="--cols:${hours.length}"><span></span>${hours.map(h => `<span class="hh">${h % 12 || 12}${h < 12 ? 'a' : 'p'}</span>`).join('')}
+    ${dows.map(d => `<span class="hd">${DAYS[d]}</span>${hours.map(h => { const v = cells[d][h] || 0, k = max ? v / max : 0; return `<span class="hc" style="--k:${k.toFixed(2)}" data-tip="${esc(`${DAYS_LONG[d]} ${fmtTime(pad(h) + ':00')}\nabout ${v.toFixed(1)} client${v === 1 ? '' : 's'}`)}">${v >= 0.5 ? v.toFixed(v < 10 ? 1 : 0) : ''}</span>`; }).join('')}`).join('')}</div></div>
+    <div class="heat-key"><span>Quiet</span><i></i><span>Busy</span></div>`;
+}
+// average clients per hour by weekday, over the range
+function hourCells(sales, r) {
+  const occ = Array(7).fill(0); daysIn(r).forEach(d => occ[parseYmd(d).getDay()]++);
+  const cells = Array.from({ length: 7 }, () => ({}));
+  sales.forEach(s => { if (!s.time) return; const d = parseYmd(s.date).getDay(), h = +s.time.slice(0, 2); cells[d][h] = (cells[d][h] || 0) + 1; });
+  cells.forEach((c, d) => Object.keys(c).forEach(h => { c[h] = occ[d] ? c[h] / occ[d] : 0; }));
+  return cells;
+}
+const shopHours = () => { const hs = info().hours || []; let a = 24, b = 0; hs.forEach(x => { if (x && !x.closed && x.open) { a = Math.min(a, +x.open.slice(0, 2)); b = Math.max(b, +String(x.close || '20:00').slice(0, 2)); } }); if (a >= b) { a = 9; b = 20; } return Array.from({ length: b - a }, (_, i) => a + i); };
+function exportBtns(key) { return `<div class="row exp-btns"><button type="button" class="btn btn-sm btn-ghost" data-act="repCsv" data-k="${key}">CSV</button><button type="button" class="btn btn-sm btn-ghost" data-act="repImg" data-k="${key}">Image</button></div>`; }
+const REP = {}; // CSV rows per section, filled while drawing
+function vReports() {
+  const r = periodRange(S.period), pr = prevRange(r), D = reportData(r), P = reportData(pr);
+  // barbers
+  const barbers = serviceStaff().map(b => { const x = D.sales.filter(s => s.barberId === b.id), keys = [...new Set(x.map(clientKey).filter(Boolean))];
+    const fs = new Map(); S.sales.forEach(s => { if (s.barberId === b.id) { const k = clientKey(s); if (k && (!fs.has(k) || s.date < fs.get(k))) fs.set(k, s.date); } });
+    const ap = D.appts.filter(a => a.barberId === b.id), ns = ap.filter(a => a.status === 'noshow').length, rated = S.appointments.filter(a => a.barberId === b.id && a.rating && inR(a.date, r));
+    return { b, clients: x.length, sales: round2(sum(x, s => (s.svcTotal || 0) - (s.discount || 0))), avg: x.length ? sum(x, netOf) / x.length : 0, repeat: keys.length ? keys.filter(k => fs.get(k) < r[0]).length / keys.length : 0, ns, booked: ap.length, stars: rated.length ? sum(rated, a => a.rating.stars) / rated.length : 0 }; })
+    .filter(x => x.clients || x.booked).sort((a, b) => b.sales - a.sales);
+  REP.barbers = [['Barber', 'Clients', 'Service sales', 'Average ticket', 'Returning clients %', 'Bookings', 'No-shows', 'No-show %', 'Average stars'], ...barbers.map(x => [x.b.name, x.clients, x.sales, round2(x.avg), Math.round(x.repeat * 100), x.booked, x.ns, x.booked ? Math.round(x.ns / x.booked * 100) : 0, x.stars ? +x.stars.toFixed(1) : ''])];
+  // services
+  const svcMap = new Map(); D.sales.forEach(s => (s.lines || []).filter(l => l.kind === 'service').forEach(l => { const o = svcMap.get(l.name) || { n: 0, rev: 0 }; o.n += Number(l.qty) || 1; o.rev += (Number(l.price) || 0) * (Number(l.qty) || 1); svcMap.set(l.name, o); }));
+  const svcs = [...svcMap].map(([name, o]) => ({ name, ...o })).sort((a, b) => b.rev - a.rev);
+  REP.services = [['Service', 'Times done', 'Revenue'], ...svcs.map(x => [x.name, x.n, round2(x.rev)])];
+  // busiest
+  const hours = shopHours(), cells = hourCells(D.sales, r), max = Math.max(0.0001, ...cells.flatMap(c => Object.values(c)));
+  const dayTot = [1, 2, 3, 4, 5, 6, 0].map(d => ({ d, v: sum(Object.values(cells[d]), x => x) }));
+  REP.hours = [['Day', ...hours.map(h => fmtTime(pad(h) + ':00'))], ...[1, 2, 3, 4, 5, 6, 0].map(d => [DAYS_LONG[d], ...hours.map(h => +(cells[d][h] || 0).toFixed(2))])];
+  // month vs last month
+  const ym = today().slice(0, 7), lm = addDays(ym + '-01', -1).slice(0, 7), dim = new Date(+lm.slice(0, 4), +lm.slice(5, 7), 0).getDate();
+  const byDom = m => { const a = Array(31).fill(0); S.sales.forEach(s => { if (s.date.slice(0, 7) === m) a[+s.date.slice(8) - 1] += netOf(s); }); return a.map(round2); };
+  const cm = byDom(ym), pm = byDom(lm), dToday = +today().slice(8), bk = Array.from({ length: 31 }, (_, i) => ({ key: i, label: String(i + 1), tip: `Day ${i + 1}`, match: () => false }));
+  const cmTo = round2(sum(cm.slice(0, dToday), x => x)), pmTo = round2(sum(pm.slice(0, dToday), x => x));
+  REP.month = [['Day of month', `This month (${ym})`, `Last month (${lm})`], ...bk.map((b, i) => [i + 1, cm[i], i < dim ? pm[i] : ''])];
+  // discounts
+  const grp = new Map(); D.sales.filter(s => (s.discount || 0) > 0).forEach(s => { const k = String(s.discountNote || 'Other discount').split(/[:(]/)[0].trim() || 'Other discount'; const o = grp.get(k) || { n: 0, amt: 0, sales: 0 }; o.n++; o.amt += s.discount; o.sales += netOf(s); grp.set(k, o); });
+  const disc = [...grp].map(([k, o]) => ({ k, ...o })).sort((a, b) => b.amt - a.amt), couponsGiven = S.customers.flatMap(c => c.coupons || []).filter(cp => inR(ymd(new Date(cp.at || 0)), r)).length;
+  REP.discounts = [['Discount', 'Times used', 'Total discount', 'Sales with it'], ...disc.map(x => [x.k, x.n, round2(x.amt), round2(x.sales)])];
+  return `${pageHead(rangeLabel(r), 'Reports', '')}
+  ${periodBar()}
+  <div class="kpis">${kpi('Sales', money(D.total), dPct(D.total, P.total))}${kpi('Clients served', D.count, dPct(D.count, P.count))}${kpi('Average ticket', money(D.avg), dPct(D.avg, P.avg))}${kpi('Returning clients', pct(D.repeat), `<span class="d">${D.returning} of ${D.keys} known clients came before</span>`)}${kpi('No-show rate', pct(D.nsRate), `<span class="d">${D.ns} of ${D.appts.length} bookings · before: ${pct(P.nsRate)}</span>`)}</div>
+  ${forecastPanel()}
+  <section class="panel rep" data-rep="month"><div class="panel-h"><h2>This month vs last month</h2>${exportBtns('month')}</div>
+    <p class="muted small">Days 1–${dToday}: <b>${money(cmTo)}</b> this month vs <b>${money(pmTo)}</b> last month ${dPct(cmTo, pmTo)}</p>
+    ${barChart(bk, [{ name: 'This month', cls: 's1', values: cm }, { name: 'Last month', cls: 's2', values: pm }])}</section>
+  <div class="grid2e">
+  <section class="panel rep" data-rep="barbers"><div class="panel-h"><h2>Best barbers</h2>${exportBtns('barbers')}</div>${hbars(barbers.slice(0, 8).map(x => ({ label: x.b.name, value: x.sales, tip: `${money(x.sales)} · ${x.clients} clients` })))}</section>
+  <section class="panel rep" data-rep="services"><div class="panel-h"><h2>Best services</h2>${exportBtns('services')}</div>${hbars(svcs.slice(0, 8).map(x => ({ label: x.name, value: x.rev, tip: `${money(x.rev)} · done ${x.n}×` })))}</section></div>
+  <section class="panel"><div class="panel-h"><h2>Barbers: returning clients and no-shows</h2></div>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Barber</th><th class="r">Clients</th><th class="r">Service sales</th><th class="r">Avg ticket</th><th class="r">Returning</th><th class="r">No-show rate</th><th class="r">Stars</th></tr></thead><tbody>
+    ${barbers.map(x => `<tr><td><div class="row" style="flex-wrap:nowrap">${av(x.b)}<b>${esc(x.b.name)}</b></div></td><td class="r">${x.clients}</td><td class="r">${money(x.sales)}</td><td class="r">${money(x.avg)}</td><td class="r">${pct(x.repeat)}</td><td class="r">${x.booked ? `${pct(x.ns / x.booked)} <span class="muted small">(${x.ns}/${x.booked})</span>` : '—'}</td><td class="r">${x.stars ? '★ ' + x.stars.toFixed(1) : '—'}</td></tr>`).join('')}</tbody></table></div></section>
+  <section class="panel rep" data-rep="hours"><div class="panel-h"><h2>Busiest hours and days</h2>${exportBtns('hours')}</div>
+    <p class="muted small">Average clients started each hour. Busiest day: <b>${DAYS_LONG[dayTot.slice().sort((a, b) => b.v - a.v)[0].d]}</b>. Quietest: <b>${DAYS_LONG[dayTot.slice().sort((a, b) => a.v - b.v)[0].d]}</b>.</p>${heatmap(cells, max, hours)}</section>
+  <section class="panel rep" data-rep="discounts"><div class="panel-h"><h2>Coupons, promos and discounts</h2>${exportBtns('discounts')}</div>
+    <p class="muted small">${couponsGiven} coupon${couponsGiven === 1 ? '' : 's'} given to clients in this period · ${D.sales.filter(s => s.couponId).length} used at checkout.</p>
+    ${disc.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Discount</th><th class="r">Times used</th><th class="r">Total discount</th><th class="r">Sales with it</th></tr></thead><tbody>${disc.map(x => `<tr><td><b>${esc(x.k)}</b></td><td class="r">${x.n}</td><td class="r">${money(x.amt)}</td><td class="r">${money(x.sales)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">No discounts in this period.</p>'}</section>`;
+}
+
+// ================= FORECAST =================
+// Same-weekday average over the last 8 weeks, times the recent trend (last 4 weeks ÷ the 4 before, kept between
+// 0.8 and 1.25). Capacity = barbers working that day × 1 client an hour. 80%+ of capacity = busy, 30% or less = slow.
+function forecastModel(asOf = today()) {
+  const from = addDays(asOf, -56), win = S.sales.filter(s => s.date >= from && s.date < asOf);
+  const a4 = sum(win.filter(s => s.date >= addDays(asOf, -28)), netOf), b4 = sum(win.filter(s => s.date < addDays(asOf, -28)), netOf);
+  const trend = b4 > 0 ? Math.min(1.25, Math.max(0.8, a4 / b4)) : 1;
+  const occ = Array(7).fill(0); for (let i = 1; i <= 56; i++) occ[parseYmd(addDays(asOf, -i)).getDay()]++;
+  const cnt = Array(7).fill(0), rev = Array(7).fill(0), cells = Array.from({ length: 7 }, () => ({}));
+  const barberSale = s => { const b = staffById(s.barberId); return !b || (b.role || 'barber') === 'barber'; };
+  win.forEach(s => { const d = parseYmd(s.date).getDay(); cnt[d]++; rev[d] += netOf(s); if (s.time && barberSale(s)) { const h = +s.time.slice(0, 2); cells[d][h] = (cells[d][h] || 0) + 1; } });
+  cells.forEach((c, d) => Object.keys(c).forEach(h => { c[h] = occ[d] ? c[h] / occ[d] * trend : 0; }));
+  return { trend, cells, clients: cnt.map((n, d) => occ[d] ? n / occ[d] * trend : 0), sales: rev.map((v, d) => occ[d] ? v / occ[d] * trend : 0), weeks: 8 };
+}
+const workingOn = d => serviceStaff().filter(b => b.active !== false && (b.role || 'barber') === 'barber' && (b.days || [0, 1, 2, 3, 4, 5, 6]).includes(parseYmd(d).getDay()) && !leaveOn(b, d)); // barbers: haircuts are most of the demand
+function runs(hours, test) { const out = []; let st = null; hours.forEach((h, i) => { if (test(h)) { if (st === null) st = h; } else if (st !== null) { out.push([st, hours[i - 1] + 1]); st = null; } }); if (st !== null) out.push([st, hours[hours.length - 1] + 1]); return out; }
+const hrLabel = (a, b) => { const f = h => `${h % 12 || 12}${h < 12 ? ' AM' : ' PM'}`; return `${f(a).replace(/ (AM|PM)$/, (a < 12) === (b < 12) ? '' : ' $1')}–${f(b)}`; };
+function forecastPanel() {
+  const M = forecastModel(), hours = shopHours(), days = Array.from({ length: 7 }, (_, i) => addDays(today(), i));
+  const tips = [];
+  const rows = days.map(d => { const dow = parseYmd(d).getDay(), cap = workingOn(d).length || 1, c = M.cells[dow];
+    const busy = runs(hours, h => (c[h] || 0) / cap >= 0.8), slow = runs(hours, h => (c[h] || 0) / cap <= 0.3).filter(([a, b]) => b - a >= 2 && b - a <= 4);
+    const booked = S.appointments.filter(a => a.date === d && !['cancelled', 'expired', 'noshow'].includes(a.status)).length;
+    busy.forEach(([a, b]) => tips.push({ kind: 'busy', d, text: `<b>${DAYS_LONG[dow]} ${hrLabel(a, b)}</b> is usually full: about ${(sum(hours.filter(h => h >= a && h < b), h => c[h] || 0) / (b - a)).toFixed(1)} clients an hour for ${cap} barber${cap === 1 ? '' : 's'}. Add a barber, or avoid giving a day off then.` }));
+    if (dow >= 1 && dow <= 4) slow.slice(0, 1).forEach(([a, b]) => tips.push({ kind: 'slow', d, text: `<b>${DAYS_LONG[dow]} ${hrLabel(a, b)}</b> is usually slow. A good time for a promo, breaks or training.` }));
+    return { d, dow, cap, clients: M.clients[dow], sales: M.sales[dow], booked, busy };
+  });
+  // how close the forecast has been: the last 14 days, each forecast only from data before that day
+  const back = Array.from({ length: 14 }, (_, i) => addDays(today(), -(i + 1))).map(d => { const m = forecastModel(d), act = S.sales.filter(s => s.date === d).length, f = m.clients[parseYmd(d).getDay()]; return act ? Math.abs(f - act) / act : null; }).filter(v => v !== null);
+  const mape = back.length ? sum(back, x => x) / back.length : null;
+  REP.forecast = [['Date', 'Expected clients', 'Expected sales', 'Booked so far', 'Barbers working', 'Busy hours'], ...rows.map(x => [x.d, +x.clients.toFixed(1), round2(x.sales), x.booked, x.cap, x.busy.map(([a, b]) => hrLabel(a, b)).join(', ')])];
+  return `<section class="panel rep" data-rep="forecast"><div class="panel-h"><h2>Next 7 days forecast</h2>${exportBtns('forecast')}</div>
+    ${tips.length ? `<ul class="fc-tips">${tips.sort((x, y) => (x.kind === 'busy' ? 0 : 1) - (y.kind === 'busy' ? 0 : 1)).slice(0, 6).map(t => `<li class="fc-${t.kind}"><span>${t.kind === 'busy' ? '▲' : '▽'}</span><div>${t.text}</div></li>`).join('')}</ul>` : '<p class="muted">No busy or slow stretches expected this week.</p>'}
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Day</th><th class="r">Expected clients</th><th class="r">Expected sales</th><th class="r">Booked so far</th><th class="r">Barbers</th><th>Busy hours</th></tr></thead><tbody>
+    ${rows.map(x => `<tr><td class="nowrap"><b>${x.d === today() ? 'Today' : DAYS[x.dow] + ' ' + shortDate(x.d)}</b></td><td class="r">${Math.round(x.clients * 0.85)}–${Math.round(x.clients * 1.15)}</td><td class="r">${money(Math.round(x.sales / 100) * 100)}</td><td class="r">${x.booked}</td><td class="r">${x.cap}</td><td class="small">${x.busy.length ? x.busy.map(([a, b]) => hrLabel(a, b)).join(', ') : '<span class="muted">—</span>'}</td></tr>`).join('')}</tbody></table></div>
+    <p class="muted small" style="margin-top:10px">How it works: the average for the same weekday over the last ${M.weeks} weeks, adjusted for the recent trend (${M.trend >= 1 ? '+' : ''}${Math.round((M.trend - 1) * 100)}% vs the 4 weeks before). Busy = 80%+ of what the barbers working that day can take (one client an hour each).${mape !== null ? ` Over the last 14 days it was off by about <b>${Math.round(mape * 100)}%</b> on average.` : ''}</p></section>`;
+}
+Object.assign(ACT, {
+  cutPrev() { S.cutoff = cutoffShift(S.cutoff, -1); render(); },
+  cutNext() { S.cutoff = cutoffShift(S.cutoff, 1); render(); },
+  viewSlip(el) { const b = staffById(el.dataset.id); if (b) slipModal(b, el.dataset.c || S.cutoff); },
+  async paySlip(el) {
+    const b = staffById(el.dataset.id), c = S.cutoff; if (!b) return;
+    const s = payslip(b, c); if (!s.draft) return;
+    const rec = { ...s, draft: false, paidOn: today(), paidAt: Date.now(), paidBy: meName(), method: 'Cash' }; delete rec.id;
+    if (await put('payslips', `${c}_${b.id}`, rec)) {
+      await put('payouts', `ps_${c}_${b.id}`, { barberId: b.id, amount: rec.net, date: today(), note: `Payslip ${cutoffLabel(c)}`, payslip: `${c}_${b.id}`, createdAt: Date.now() });
+      logAct('money', `Paid ${b.name}'s payslip for ${cutoffLabel(c)}: ${money(rec.net, 1)} net${rec.fines ? `, −${money(rec.fines)} late` : ''}${(rec.adv || []).length ? `, −${money(sum(rec.adv, x => x.amount))} cash advance` : ''}`);
+      if (MODAL.cur) closeModal(); toast(`${b.name}: payslip marked paid`);
+    }
+  },
+  async payAll(el) {
+    if (!armed(el)) return; const c = S.cutoff; let n = 0;
+    for (const b of staffAll().filter(x => x.active !== false)) { const s = payslip(b, c); if (!s.draft) continue; const rec = { ...s, draft: false, paidOn: today(), paidAt: Date.now(), paidBy: meName(), method: 'Cash' }; delete rec.id;
+      if (await put('payslips', `${c}_${b.id}`, rec)) { await put('payouts', `ps_${c}_${b.id}`, { barberId: b.id, amount: rec.net, date: today(), note: `Payslip ${cutoffLabel(c)}`, payslip: `${c}_${b.id}`, createdAt: Date.now() }); n++; } }
+    logAct('money', `Marked ${n} payslips paid for ${cutoffLabel(c)}`); toast(`${n} payslip${n === 1 ? '' : 's'} marked paid`);
+  },
+  async unpaySlip(el) {
+    if (!armed(el)) return; const b = staffById(el.dataset.id), c = S.cutoff, id = `${c}_${b.id}`;
+    if (await del('payslips', id)) { await del('payouts', `ps_${id}`); logAct('money', `Undid ${b.name}'s paid payslip for ${cutoffLabel(c)}`); toast('Payslip back to not paid'); }
+  },
+  async slipImg(el) { const n = $('#payslip'); if (!n) return; el.disabled = true; try { await nodeToPng(n, `payslip-${el.dataset.c}-${el.dataset.id}.png`); } catch (e) { toast(e.message || 'Couldn’t make the image.', 'bad'); } el.disabled = false; },
+  slipPrint(el) { const n = $('#payslip'); if (n) printNode(n, `Payslip ${el.dataset.id} ${el.dataset.c}`); },
+  exportPayroll() {
+    const c = S.cutoff, rows = [['Name', 'Days', 'Base pay', 'Commission', 'Kept down payments', 'Tips', 'Paid leave days', 'Unpaid leave days', 'Late deductions', 'Cash advance', 'Gross', 'Net pay', 'Status']];
+    staffAll().filter(b => b.active !== false || slipFor(c, b.id)).forEach(b => { const s = payslip(b, c); rows.push([b.name, s.days, s.base, s.comm, s.dep, s.tips, s.paidLeave, s.unpaidLeave, s.fines, round2(sum(s.adv || [], x => x.amount)), s.gross, s.net, s.draft ? 'Not paid' : 'Paid ' + s.paidOn]); });
+    saveBlob(buildXlsx([{ name: 'Payroll', cols: [18, 7, 11, 11, 12, 9, 10, 10, 11, 11, 11, 11, 14], rows, freeze: 'A2' }]), `payroll-${c}.xlsx`);
+  },
+  newAdvance() { advanceModal(); },
+  async delAdvance(el) { if (!armed(el)) return; const a = S.advances.find(x => x.id === el.dataset.id); if (a && await del('advances', a.id)) { logAct('money', `Deleted ${staffName(a.staffId)}'s ${money(a.amount)} cash advance`); toast('Cash advance deleted'); } },
+  confirmText(el) { const a = S.appointments.find(x => x.id === el.dataset.id); if (a) confirmModal(a); },
+  async cfCopy() { const t = $('#cf-msg'); try { await navigator.clipboard.writeText(t.value); toast('Message copied'); } catch (_) { t.select(); } },
+  cfSms(el) { const a = S.appointments.find(x => x.id === el.dataset.id); if (a) { patch('appointments', a.id, { confirmAsked: Date.now() }); logAct('visit', `Texted ${a.name} to confirm their booking (${fmtDate(a.date)} ${fmtTime(a.time)})`); } },
+  async markConfirmed(el) { const a = S.appointments.find(x => x.id === el.dataset.id); if (a && await patch('appointments', a.id, { confirmed: Date.now() })) { logAct('visit', `${a.name} confirmed their booking (${fmtDate(a.date)} ${fmtTime(a.time)})`); closeModal(); toast('Marked as confirmed'); } },
+  repCsv(el) { const rows = REP[el.dataset.k]; if (!rows) return; const csv = rows.map(r => r.map(v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(',')).join('\n'); saveBlob(new Blob(['﻿' + csv], { type: 'text/csv' }), `${el.dataset.k}-${periodRange(S.period).join('_')}.csv`); },
+  async repImg(el) { const p = el.closest('.rep'); if (!p) return; el.disabled = true; p.classList.add('snap'); try { await nodeToPng(p, `${el.dataset.k}-${today()}.png`); } catch (e) { toast(e.message || 'Couldn’t make the image.', 'bad'); } p.classList.remove('snap'); el.disabled = false; }
+});
+Object.assign(CHG, { cutPick(el) { S.cutoff = el.value; render(); } });
+Object.assign(FORM, {
+  async advance(f) {
+    const fd = new FormData(f), staffId = String(fd.get('staffId') || ''), amt = num(fd.get('amount'));
+    if (!staffById(staffId)) return modalErr(f, 'Pick the staff member.'); if (!(amt > 0)) return modalErr(f, 'Enter the amount.');
+    const rec = { staffId, amount: round2(amt), date: String(fd.get('date') || today()), parts: Math.max(1, +fd.get('parts') || 1), start: String(fd.get('start') || cutoffOf(today())), note: String(fd.get('note') || '').trim(), at: Date.now(), by: meName() };
+    if (await put('advances', newId(), rec)) { logAct('money', `Gave ${staffName(staffId)} a ${money(rec.amount)} cash advance${rec.parts > 1 ? ` (taken back over ${rec.parts} payslips)` : ''}${rec.note ? ` · ${rec.note}` : ''}`); closeModal(); toast('Cash advance saved'); }
+  }
+});
+Object.assign(TAB_VIEWS, { payroll: vPayroll, reports: vReports });
 // ================= EVENTS =================
 function setPath(path, val) { const k = path.split('.'); let o = S; for (let i = 0; i < k.length - 1; i++) { o = o[k[i]] = o[k[i]] || {}; } o[k[k.length - 1]] = val; }
 document.addEventListener('click', e => {

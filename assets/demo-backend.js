@@ -8,7 +8,7 @@ import {
 
 // The saved demo is keyed by a fingerprint of the starter data, so changing the menu or team
 // (or a browser briefly mixing old and new files) never leaves stale sample data behind.
-const SEED_REV = 28; // bump when seed() itself changes
+const SEED_REV = 31; // bump when seed() itself changes
 const fingerprint = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const KEY = `rb-demo-${SEED_REV}-${fingerprint(JSON.stringify([STARTER, STARTER_STAFF]))}`, USER_KEY = 'rb-demo-user';
 try { Object.keys(localStorage).filter(k => k.startsWith('rb-demo-') && k !== KEY && k !== USER_KEY).forEach(k => localStorage.removeItem(k)); } catch (_) {}
@@ -44,7 +44,7 @@ function seed() {
   // demo sign-ins: Alex (owner), Airyl (receptionist) and two barbers who see only their own day and pay
   const LOGINS = { alex: ['demo', 'owner'], airyl: ['u_airyl', 'desk'], lyndon: ['u_lyndon', 'staff'], vince: ['u_vince', 'staff'] };
   Object.entries(LOGINS).forEach(([id, [uid, role]]) => m.set('admins/' + uid, { role, staffId: id, name: STARTER_STAFF.find(b => b.id === id).name, email: `${id}@demo.realbarbers` }));
-  STARTER_STAFF.forEach(({ id, ...b }) => { const L = LOGINS[id], a = L ? { login: { uid: L[0], email: `${id}@demo.realbarbers`, role: L[1] } } : {}; m.set('staff/' + id, { ...b, since: day(-40), ...a }); });
+  STARTER_STAFF.forEach(({ id, ...b }) => { const L = LOGINS[id], a = L ? { login: { uid: L[0], email: `${id}@demo.realbarbers`, role: L[1] } } : {}; m.set('staff/' + id, { ...b, since: day(-65), ...a }); });
   m.set('private/pin', { pin: '1234' }); // demo only: the real PIN is stored hashed by the server
   m.set('private/clock', { key: 'demo-clock' });
   // a few sample activity-log entries (the real log fills itself as people use the dashboard)
@@ -75,8 +75,12 @@ function seed() {
   const RATE = Object.fromEntries(STARTER_STAFF.map(b => [b.id, b.rate])), SB = Object.fromEntries(STARTER_STAFF.map(b => [b.id, b]));
   const COMM = (b, s) => commissionFor(SB[b], [{ kind: 'service', ref: s.id, price: s.price, qty: 1 }], 0, id => svc.find(x => x.id === id)).commission;
   let n = 0; const earned = {}; // barber -> day -> commission + tips, for the seeded weekly payouts
-  for (let i = -40; i <= -1; i++) {
-    const d = day(i), cnt = 26 + Math.floor(rnd() * 12); // a busy 10-chair day
+  for (let i = -62; i <= -1; i++) {
+    const d = day(i), dw = new Date(d + 'T00:00:00').getDay(), wkend = dw === 0 || dw === 6;
+    const cnt = wkend ? 70 + Math.floor(rnd() * 14) : dw === 5 ? 48 + Math.floor(rnd() * 10) : 24 + Math.floor(rnd() * 10); // weekends are packed, weekdays quieter
+    // busier afternoons, and on weekends 2–7 PM is the rush
+    const HW = wkend ? [1, 2, 3, 4, 4, 9, 12, 14, 14, 12, 5] : dw === 5 ? [1, 2, 3, 4, 4, 5, 6, 8, 9, 8, 5] : [3, 4, 5, 6, 5, 4, 4, 5, 6, 5, 3];
+    const hourPick = () => { let t = rnd() * HW.reduce((x, y) => x + y, 0); for (let h = 0; h < HW.length; h++) { t -= HW[h]; if (t <= 0) return 9 + h; } return 18; };
     for (let k = 0; k < cnt; k++) {
       const forHer = rnd() < 0.18, regular = rnd() < 0.5, s = forHer ? pick(her) : regular ? pick(him.filter(x => x.tier === 'regular')) : (rnd() < 0.6 ? svc[0] : pick(him.filter(x => x.tier === 'deluxe')));
       const b = forHer ? 'dave' : s.tier === 'regular' ? pick(['ed', 'renz', 'jay', 'vince', 'mac']) : pick(['reymart', 'lyndon', 'rod', 'angelo']);
@@ -85,7 +89,7 @@ function seed() {
       const prod = null; // product prices aren't set yet
       const lines = [{ kind: 'service', ref: s.id, name: s.name, price: s.price, qty: 1 }, ...(prod ? [prod] : [])];
       const pt = prod ? prod.price : 0;
-      m.set(`sales/x${n++}`, { date: d, time: `${String(9 + Math.floor(rnd() * 10)).padStart(2, '0')}:${rnd() < 0.5 ? '00' : '30'}`, at: Date.now() + i * 864e5,
+      m.set(`sales/x${n++}`, { date: d, time: `${String(hourPick()).padStart(2, '0')}:${rnd() < 0.5 ? '00' : '30'}`, at: Date.now() + i * 864e5,
         customerId: ci >= 0 ? `c${ci}` : '', name: ci >= 0 ? names[ci] : 'Walk-in', barberId: b, lines, svcTotal: s.price, prodTotal: pt, discount: 0, tip,
         total: s.price + pt + tip, depositCredit: dep, method: pick(['Cash', 'Cash', 'GCash', 'Maya']), rate: RATE[b], commission: COMM(b, s) });
       ((earned[b] = earned[b] || {})[i] = (earned[b][i] || 0) + COMM(b, s) + tip);
@@ -131,6 +135,14 @@ function seed() {
       email: '', customerId: `c${ci}`, code: 'DEMO' + (10 + i), token: 'demo' + i, notify: true, reminders: {},
       deposit: source === 'online' ? { amount: 200, status: 'paid', method: pick(['gcash', 'paymaya', 'card']) } : null, createdAt: Date.now() - 864e5 });
   });
+  // past bookings: most came, a few clients often don't (they get a no-show risk flag on their next booking)
+  { const hist = { 3: ['noshow', 'done', 'noshow', 'done'], 5: ['noshow', 'done', 'done', 'done'], 9: ['noshow', 'noshow', 'done'] };
+    for (let ci = 0; ci < 10; ci++) (hist[ci] || ['done', 'done', 'done']).forEach((st, k) => { const date = day(-7 * (k + 1) - (ci % 3)), time = `${10 + (ci % 8)}:00`;
+      m.set(`appointments/h${ci}_${k}`, { date, time, startAt: startMs(date, time), barberId: ['reymart', 'lyndon', 'renz', 'angelo', 'ed', 'rod', 'dave', 'dave', 'dave', 'mac'][ci], serviceIds: ['h1'], mins: 60, source: 'online', status: st, name: names[ci], phone: `09170000${100 + ci}`, email: '', customerId: `c${ci}`, code: `H${ci}${k}`, token: `h${ci}${k}`, deposit: { amount: 200, status: st === 'noshow' ? 'kept' : 'paid', method: 'gcash' }, createdAt: startMs(date, time) - 3 * 864e5 }); }); }
+  // cash advances (vale)
+  { const t = new Date(Date.now() + 8 * 3600e3), dd = t.getUTCDate(), ym = t.toISOString().slice(0, 7), cur = `${ym}-${dd <= 15 ? 1 : 2}`, prevC = dd <= 15 ? `${new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 0)).toISOString().slice(0, 7)}-2` : `${ym}-1`;
+    m.set('advances/v1', { staffId: 'jay', amount: 1000, date: day(-12), parts: 2, start: prevC, note: 'School fees', at: Date.now() - 12 * 864e5, by: 'Alex' });
+    m.set('advances/v2', { staffId: 'renz', amount: 500, date: day(-2), parts: 1, start: cur, note: 'Cash from the drawer', at: Date.now() - 2 * 864e5, by: 'Alex' }); }
   // promo codes, a GCash screenshot waiting for the owner to check, a rated visit and a late client
   m.set('promos/REAL10', { code: 'REAL10', kind: 'percent', value: 10, active: true, expires: '', maxUses: 0, uses: 3, note: 'Sample: 10% off for followers' });
   m.set('promos/WELCOME50', { code: 'WELCOME50', kind: 'amount', value: 50, active: true, expires: day(30), maxUses: 100, uses: 12, note: 'Sample: first visit' });
