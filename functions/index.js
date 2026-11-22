@@ -788,7 +788,7 @@ export const syncFacebookPhotos = onSchedule({ schedule: 'every 3 hours', timeZo
 // =============== weekly backup ===============
 // Every Sunday at 3 AM: all the shop's records (no photos) as one JSON file in Cloud Storage, backups/YYYY-MM-DD.json.
 // The last 12 are kept. Download them in the Firebase console → Storage → backups.
-const BACKUP_COLS = ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts', 'waitlist', 'attendance', 'promos', 'closings', 'leaves', 'timeclock', 'activity'];
+const BACKUP_COLS = ['staff', 'appointments', 'sales', 'expenses', 'customers', 'inventory', 'payouts', 'waitlist', 'attendance', 'promos', 'closings', 'leaves', 'timeclock', 'activity', 'payslips', 'advances'];
 export const weeklyBackup = onSchedule({ schedule: '0 3 * * 0', timeZone: 'Asia/Manila', timeoutSeconds: 540, memory: '512MiB' }, async () => {
   const out = { at: new Date().toISOString(), info: (await db.doc('public/info').get()).data() || null };
   for (const c of BACKUP_COLS) out[c] = (await db.collection(c).get()).docs.map(d => ({ id: d.id, ...d.data() }));

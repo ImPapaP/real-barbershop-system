@@ -1444,3 +1444,49 @@ input[data-cust][aria-expanded="true"]{background-image:url("data:image/svg+xml,
   .pay-tbl td:first-child{min-width:190px}
   .tbl .pay-rule,.tbl .muted.small{white-space:normal}
 }
+
+/* ---------- payroll and payslips ---------- */
+.payslip{width:min(100%,520px);margin:0 auto;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:22px;display:grid;gap:14px;font-size:14px}
+.ps-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:12px}
+.ps-shop{font:400 22px/1 var(--f-slab);letter-spacing:.01em}
+.ps-sub{color:var(--muted);font-size:12px;margin-top:4px}
+.ps-tag{font:800 13px/1 var(--f-display);letter-spacing:.18em;border:1.5px solid var(--ink);padding:6px 8px;border-radius:6px}
+.ps-meta{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.ps-meta span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.ps-meta b{display:block;font-size:15px}
+.ps-meta small{color:var(--muted)}
+.ps-rule{margin:0;color:var(--muted);font-size:12.5px}
+.ps-sec h4{margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+.ps-row{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px dashed var(--line)}
+.ps-row span{min-width:0}
+.ps-row b{white-space:nowrap;font-variant-numeric:tabular-nums}
+.ps-row.tot{border-bottom:0;font-weight:700}
+.ps-att .ps-row{border-bottom:0;padding:2px 0}
+.ps-net{display:flex;justify-content:space-between;align-items:center;background:var(--ink);color:var(--surface);border-radius:10px;padding:12px 14px}
+.ps-net span{font-weight:800;letter-spacing:.12em;font-size:13px}
+.ps-net b{font:800 26px/1 var(--f-display)}
+.ps-foot{margin:0;color:var(--muted);font-size:11.5px;text-align:center}
+.meter-line{height:5px;border-radius:9px;background:var(--surface-2);margin-top:5px;overflow:hidden;max-width:160px}
+.meter-line i{display:block;height:100%;background:var(--good)}
+/* ---------- reports, forecast, heat map ---------- */
+.exp-btns{gap:4px}
+.rep.snap .exp-btns{visibility:hidden}
+.heat{display:grid;grid-template-columns:44px repeat(var(--cols),minmax(34px,1fr));gap:3px;min-width:calc(44px + var(--cols) * 37px);font-size:11.5px}
+.heat .hh{text-align:center;color:var(--muted)}
+.heat .hd{color:var(--muted);font-weight:700;align-self:center}
+.heat .hc{height:30px;border-radius:6px;display:grid;place-items:center;font-weight:700;font-size:11px;background:color-mix(in srgb,var(--accent) calc(var(--k) * 100%),var(--surface-2));color:var(--ink)}
+.heat .hc[style*="--k:0.6"],.heat .hc[style*="--k:0.7"],.heat .hc[style*="--k:0.8"],.heat .hc[style*="--k:0.9"],.heat .hc[style*="--k:1.0"]{color:#fff}
+.heat-key{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--muted)}
+.heat-key i{width:120px;height:8px;border-radius:9px;background:linear-gradient(90deg,var(--surface-2),var(--accent))}
+.fc-tips{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:8px}
+.fc-tips li{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:10px;font-size:14px}
+.fc-tips li > span{font-weight:800}
+.fc-busy{background:color-mix(in srgb,var(--bad) 9%,var(--surface))}
+.fc-busy > span{color:var(--bad)}
+.fc-slow{background:color-mix(in srgb,var(--good) 10%,var(--surface))}
+.fc-slow > span{color:var(--good)}
+/* ---------- no-show risk ---------- */
+.risk{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;margin-left:4px;white-space:normal}
+.risk-high{background:color-mix(in srgb,var(--bad) 14%,var(--surface));color:var(--bad)}
+.risk-medium{background:color-mix(in srgb,var(--warn,#b7791f) 16%,var(--surface));color:var(--warn,#8a5a00)}
+.risk-btn{margin-left:4px;padding:2px 8px;min-height:26px;font-size:12px}

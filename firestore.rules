@@ -65,6 +65,8 @@ service cloud.firestore {
     // Owner only
     match /expenses/{id} { allow read: if front(); allow write: if boss(); }
     match /payouts/{id} { allow read: if boss() || own('barberId'); allow write: if boss(); }
+    match /payslips/{id} { allow read: if boss() || own('staffId'); allow write: if boss(); }
+    match /advances/{id} { allow read: if boss() || own('staffId'); allow write: if boss(); }
     match /private/{id} { allow read, write: if boss(); }
   }
 }

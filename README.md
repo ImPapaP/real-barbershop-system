@@ -219,6 +219,44 @@ Men first choose **Deluxe** or **Regular**. Only that level's haircuts are shown
   - cash counts, the owner PIN (including wrong tries) and sign-ins
   Filter by person, type or a search. Nobody can edit or delete an entry, not even the owner.
 
+## Payroll, payslips and cash advances (Payroll page, owner)
+
+- **Cutoffs.** Pay periods are the 1st–15th and the 16th to the end of the month. Payroll opens on the last cutoff that has ended. Use ‹ › or the list to change it.
+- **What each payslip shows:**
+  - base pay: daily pay, daily-minimum top-ups, or salary
+  - commission (rate × service sales), their half of kept down payments, and tips
+  - paid and unpaid leave days
+  - late deductions and cash advance taken back
+  - net pay
+  Until it's paid it's a preview that keeps up with new sales.
+- **Mark paid** saves the payslip, so it no longer changes, and records a payout for the net amount. **Mark all paid** does every one. **Undo** reopens it. Every step goes in the activity log.
+- **Sharing.** Payslip → **Save as image** (on a phone it opens the share sheet for Messenger) or **Print / PDF**. Staff see their payslips in **My pay**, including a preview of the latest one.
+- **Excel.** **Export Excel** downloads the whole cutoff.
+- **Cash advances (vale).** **+ Cash advance**: who, how much, and how to take it back (all on the next payslip, or over 2, 3, 4 or 6 payslips) and from which cutoff. Each payslip takes its share automatically, and catches up if a cutoff was skipped. The table shows what's been taken back and what's left. You can delete an advance only before anything has been taken back.
+- "Owed now" in the pay table counts advances too: earned − payouts − advances + what payslips already took back.
+
+## Reports (owner)
+
+Pick a period: today, this week, this month, a custom range and so on.
+- **Top numbers:** sales, clients served, average ticket, returning clients (known clients whose first visit was before the period) and no-show rate, each compared with the period before.
+- **Next 7 days forecast:**
+  - **Per day:** expected clients and sales, bookings so far, barbers working, and busy hours.
+  - **Tips:** for example "Saturday 3–7 PM is usually full: about 10 clients an hour for 8 barbers. Add a barber, or avoid giving a day off then" and "Monday 9 AM–1 PM is usually slow".
+  - **How it works:** the average for the same weekday over the last 8 weeks, times the recent trend (the last 4 weeks ÷ the 4 before, kept between −20% and +25%). Capacity is the barbers working that day × 1 client an hour, minus anyone on leave. 80%+ of capacity is busy; 30% or less (2–4 hours, Monday–Thursday) is slow.
+  - **Accuracy:** it shows how far off it was over the last 14 days. Each of those days is forecast using only the data from before it.
+- **This month vs last month:** sales for each day of the month, side by side.
+- **Barbers and services:** best barbers and best services, plus a barber table with clients, sales, average ticket, returning clients, no-show rate and stars.
+- **Busiest hours and days:** a heat map of the average clients started each hour of each weekday.
+- **Coupons, promos and discounts:** coupons given and used, and each kind of discount with how often it was used and how much it cost.
+- **Export:** every section has **CSV** (opens in Excel) and **Image** (a PNG of the chart).
+
+## No-show risk
+
+Each client's past bookings are counted (walk-ins aren't). Missing 2 or more and 30%+ of their bookings gives **High no-show risk**; any miss and 20%+ gives **Some**. The flag appears on their upcoming booking in Schedule and Overview. Overview also lists them under **Text to confirm** for the next 3 days.
+- **Text to confirm** opens a ready message ("Reply YES to confirm…") to copy or open in Messages.
+- **They confirmed** clears the flag.
+- If they don't reply, the slot can go to a walk-in.
+
 ## Client coupons
 
 - **Giving one:** Clients → open a client → **Edit client** → **Coupons**. Pick the type (peso amount off, percent off, or a free service), an optional end date and a reason the client will see (for example "Sorry for the long wait"), then tap **Give coupon**.
