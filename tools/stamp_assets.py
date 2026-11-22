@@ -27,7 +27,9 @@ for page in pages:
     html = page.read_text()
     pre = '../assets/' if page.parent.name == 'admin' else 'assets/'
     key = pre if pre.startswith('.') else './' + pre  # import map keys must look like URLs
-    imap = {'imports': {f'{key}{n}': f'{key}{n}?v={v}' for n, v in ver.items() if n.endswith('.js')}}
+    # the public pages don't mention the dashboard's own files, so its address isn't in their source
+    admin_only = {'admin.js', 'xlsx.js'} if page.parent.name != 'admin' else set()
+    imap = {'imports': {f'{key}{n}': f'{key}{n}?v={v}' for n, v in ver.items() if n.endswith('.js') and n not in admin_only}}
     block = f'<script type="importmap" id="asset-versions">{json.dumps(imap, separators=(",", ":"))}</script>\n'
     html = re.sub(r'<script type="importmap" id="asset-versions">.*?</script>\n', '', html, flags=re.S)
     # stylesheet and entry script get the version directly

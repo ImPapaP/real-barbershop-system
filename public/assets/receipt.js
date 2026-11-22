@@ -6,7 +6,7 @@ import { $, esc, STARTER, brand, BACK_IC, receiptHTML } from './shared.js';
 const qs = new URLSearchParams(location.search), id = qs.get('id') || '', t = qs.get('t') || '';
 let shop = { ...STARTER.shop };
 function page(inner) {
-  $('#app').innerHTML = `${demoBar ? demoBar('admin/') : ''}<header class="site-head"><div class="wrap head-in"><a class="wordmark" href="./">${brand(shop.wordmark || shop.name)}</a><nav class="site-nav"><a class="btn btn-accent btn-sm" href="./#book">Book again</a></nav></div></header>
+  $('#app').innerHTML = `${demoBar ? demoBar('') : ''}<header class="site-head"><div class="wrap head-in"><a class="wordmark" href="./">${brand(shop.wordmark || shop.name)}</a><nav class="site-nav"><a class="btn btn-accent btn-sm" href="./#book">Book again</a></nav></div></header>
   <main class="wrap rc-page"><a class="pop-back page-back-link" href="./" style="justify-self:start">${BACK_IC}<span>Back to the website</span></a>${inner}</main>`;
 }
 page('<p class="muted"><span class="spinner"></span> Loading your receipt…</p>');

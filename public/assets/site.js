@@ -112,7 +112,7 @@ function page() {
   const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shop.name + ' ' + shop.address)}`;
   const anim = S.painted ? '' : ' hero-anim';
   const gal = gallery(), revs = (I.reviews || []).slice(0, 6);
-  return `${demoBar('admin/')}
+  return `${demoBar('')}
   ${an.active && an.text ? `<div class="announce">${an.link ? `<a href="${esc(an.link)}" target="_blank" rel="noopener">${esc(an.text)} ${ic('arrow')}</a>` : `<span>${esc(an.text)}</span>`}</div>` : ''}
   <header class="site-head" id="site-head"><div class="wrap head-in">
     <a class="wordmark" href="#top" data-act="top" aria-label="${esc(shop.name)} home">${brand(shop.wordmark || shop.name)}</a>

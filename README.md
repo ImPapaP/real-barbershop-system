@@ -201,6 +201,10 @@ Men first choose **Deluxe** or **Regular**. Only that level's haircuts are shown
 - Change it in the dashboard: **Barbers → Edit → Men’s haircuts they do**, and **Shop setup → Services → Booking type / Haircut level**.
 - The booking functions check the same rules, so they can't be skipped.
 
+## Opening the dashboard
+
+The website has no link to the dashboard, and its address isn't in the public pages' code. Open it directly at **your-site/admin/** (on the preview: https://impapap.github.io/real-barbershop-system/admin/) and bookmark it. Search engines are told not to list it. It still needs a sign-in, so the hidden address isn't the only protection.
+
 ## Staff sign-ins, owner PIN and activity log
 
 - **Who sees what.** Give each person a sign-in in **Staff → Edit → Sign-in**:
