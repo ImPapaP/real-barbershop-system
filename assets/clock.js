@@ -10,7 +10,7 @@ const shop = () => S.info.shop || STARTER.shop;
 const m = n => money(n, shop().currency || '₱');
 
 function shell(inner) {
-  return `${demoBar ? demoBar('admin/#me') : ''}<header class="site-head"><div class="wrap head-in"><a class="wordmark" href="./">${brand(shop().wordmark || shop().name)}</a></div></header>
+  return `${demoBar ? demoBar('') : ''}<header class="site-head"><div class="wrap head-in"><a class="wordmark" href="./">${brand(shop().wordmark || shop().name)}</a></div></header>
   <main class="wrap acct clock-pg">${inner}</main>`;
 }
 function render() { $('#app').innerHTML = shell(body()); }

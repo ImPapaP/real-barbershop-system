@@ -11,7 +11,7 @@ const shop = () => S.info.shop || STARTER.shop;
 const m = n => money(n, shop().currency || '₱');
 
 function shell(inner) {
-  return `${demoBar ? demoBar('admin/') : ''}<header class="site-head"><div class="wrap head-in"><a class="wordmark" href="./">${brand(shop().wordmark || shop().name)}</a><nav class="site-nav"><a class="btn btn-accent btn-sm" href="./#book">Book now</a></nav></div></header>
+  return `${demoBar ? demoBar('') : ''}<header class="site-head"><div class="wrap head-in"><a class="wordmark" href="./">${brand(shop().wordmark || shop().name)}</a><nav class="site-nav"><a class="btn btn-accent btn-sm" href="./#book">Book now</a></nav></div></header>
   <main class="wrap acct"><a class="pop-back page-back-link" href="./">${BACK_IC}<span>Back to the website</span></a>${inner}</main>
   <footer class="site-foot"><div class="wrap"><span>${esc(shop().name)} · ${esc(shop().phone || '')}</span><span><a href="terms.html">Booking Terms</a> · <a href="privacy.html">Privacy Policy</a></span></div></footer>`;
 }
