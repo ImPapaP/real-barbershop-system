@@ -399,3 +399,18 @@ export function couponLabel(cp, services = [], cur = '₱') {
 // Shown on the two-step screen so the owner knows where the code went, without printing the whole address
 export const maskEmail = e => { const [u, d] = String(e || '').split('@'); if (!u || !d) return ''; return `${u.slice(0, 2)}${'•'.repeat(Math.max(1, Math.min(6, u.length - 2)))}@${d}`; };
 export const maskPhone = p => { const x = String(p || '').replace(/\D/g, ''); return x.length >= 7 ? `${x.slice(0, 4)} ••• ${x.slice(-4)}` : ''; };
+
+// System evaluation (evaluate.html → submitEvaluation): check and tidy one questionnaire before saving.
+// Statement ids look like "us2"; answers are 1–5. Returns { ok, rec } or { ok: false, why }.
+export const EVAL_GROUPS = ['owner', 'staff', 'client', 'it'];
+export function cleanEvaluation(d) {
+  d = d || {};
+  if (!EVAL_GROUPS.includes(d.group)) return { ok: false, why: 'Pick who you are first.' };
+  if (d.consent !== true) return { ok: false, why: 'Please tick the agreement box to send your answers.' };
+  const answers = {}, src = d.answers && typeof d.answers === 'object' ? d.answers : {};
+  for (const [k, v] of Object.entries(src)) { if (!/^[a-z]{2}\d$/.test(k)) continue; const n = Number(v); if (Number.isInteger(n) && n >= 1 && n <= 5) answers[k] = n; }
+  const n = Object.keys(answers).length;
+  if (n < 10 || n > 40) return { ok: false, why: 'Please answer every statement.' };
+  const txt = (v, max) => String(v || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max);
+  return { ok: true, rec: { group: d.group, answers, name: txt(d.name, 60), comment: txt(d.comment, 800), consent: true } };
+}

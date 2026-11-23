@@ -19,6 +19,7 @@ import './dash/reports.js';
 import './dash/data.js';
 import './dash/alerts.js';
 import './dash/offline.js';
+import './dash/survey.js';
 import { init as init_offline } from './dash/offline.js';
 import { call, db, onAuth } from './fb.js';
 import { ACT, CHG, FORM, OWNER_ACTS, S } from './dash/state.js';

@@ -309,3 +309,15 @@ test('split bill on the receipt: each part with its method', async () => {
   assert.equal(r.method, 'Cash ₱100 + GCash ₱299');
   assert.equal(r.paidAtShop, 399);
 });
+
+test('system evaluation: answers are checked before saving', async () => {
+  const { cleanEvaluation } = await import('../src/core.js');
+  const answers = Object.fromEntries(['fs1', 'fs2', 'fs3', 'pe1', 'pe2', 'pe3', 'us1', 'us2', 'us3', 're1'].map(k => [k, 4]));
+  assert.equal(cleanEvaluation({ group: 'client', answers, consent: true }).ok, true);
+  assert.equal(cleanEvaluation({ group: 'hacker', answers, consent: true }).ok, false);
+  assert.equal(cleanEvaluation({ group: 'client', answers }).ok, false); // no consent
+  assert.equal(cleanEvaluation({ group: 'client', answers: { fs1: 5 }, consent: true }).ok, false); // too few
+  const r = cleanEvaluation({ group: 'it', answers: { ...answers, se1: 5, fs1: 9, bad_key: 5, 'x1': '3' }, name: 'A'.repeat(99), comment: 'ok\u0007', consent: true });
+  assert.equal(r.rec.answers.fs1, undefined); assert.equal(r.rec.answers.bad_key, undefined); assert.equal(r.rec.answers.x1, undefined);
+  assert.equal(r.rec.name.length, 60); assert.equal(r.rec.comment, 'ok');
+});

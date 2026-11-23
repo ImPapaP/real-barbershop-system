@@ -9,6 +9,7 @@ import { MODAL, closeModal, modalErr, openModal } from './modals.js';
 import { logAct, meName } from './access.js';
 import { advanceModal, cutoffLabel, cutoffOf, cutoffShift, nodeToPng, payslip, printNode, slipFor, slipModal, vPayroll } from './payroll.js';
 import { FEATURES, MIN_NOSHOWS, MIN_ROWS, featuresOf, fitNoShow, predict, reasons, scoreForecasts, startOf } from './ml.js';
+import { evalPanel } from './survey.js';
 
 // ================= NO-SHOW RISK =================
 // From each client's past bookings (not walk-ins): how many they missed. Shown on upcoming bookings so the shop
@@ -133,12 +134,12 @@ export function vReports() {
     <p class="muted small">Average clients started each hour. Busiest day: <b>${DAYS_LONG[dayTot.slice().sort((a, b) => b.v - a.v)[0].d]}</b>. Quietest: <b>${DAYS_LONG[dayTot.slice().sort((a, b) => a.v - b.v)[0].d]}</b>.</p>${heatmap(cells, max, hours)}</section>
   <section class="panel rep" data-rep="discounts"><div class="panel-h"><h2>Coupons, promos and discounts</h2>${exportBtns('discounts')}</div>
     <p class="muted small">${couponsGiven} coupon${couponsGiven === 1 ? '' : 's'} given to clients in this period · ${D.sales.filter(s => s.couponId).length} used at checkout.</p>
-    ${disc.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Discount</th><th class="r">Times used</th><th class="r">Total discount</th><th class="r">Sales with it</th></tr></thead><tbody>${disc.map(x => `<tr><td><b>${esc(x.k)}</b></td><td class="r">${x.n}</td><td class="r">${money(x.amt)}</td><td class="r">${money(x.sales)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">No discounts in this period.</p>'}</section>`;
+    ${disc.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Discount</th><th class="r">Times used</th><th class="r">Total discount</th><th class="r">Sales with it</th></tr></thead><tbody>${disc.map(x => `<tr><td><b>${esc(x.k)}</b></td><td class="r">${x.n}</td><td class="r">${money(x.amt)}</td><td class="r">${money(x.sales)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">No discounts in this period.</p>'}</section>
+  ${evalPanel()}`;
 }
 
 // ================= FORECAST =================
-// Same-weekday average over the last 8 weeks, times the recent trend (last 4 weeks ÷ the 4 before, kept between
-// 0.8 and 1.25). Capacity = barbers working that day × 1 client an hour. 80%+ of capacity = busy, 30% or less = slow.
+// See forecastModel below for how each day is predicted. Capacity = barbers working that day × 1 client an hour. 80%+ of capacity = busy, 30% or less = slow.
 // Forecast for each weekday: a weighted average of the same weekday over the last 8 weeks (last week counts most,
 // each older week 0.7× as much), times a damped recent trend (square root of the last 4 weeks vs the 4 before, per
 // day with sales, kept between −10% and +15%). Days with no sales at all (closed, or before records began) are left out.

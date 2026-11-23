@@ -21,7 +21,7 @@ for i, ch in enumerate(css):
 if depth: sys.exit(f'styles.css: {depth} unclosed {{ — check the last edit')
 build = hashlib.sha256(''.join(f'{n}{v}' for n, v in sorted(ver.items())).encode()).hexdigest()[:10]
 DASH = 'r3al-hq-7m2k'  # the dashboard's unlisted folder (change it here and rename the folder to move it)
-pages = [pub / 'index.html', pub / 'booking.html', pub / 'terms.html', pub / 'privacy.html', pub / 'receipt.html', pub / 'account.html', pub / 'clock.html', pub / DASH / 'index.html', pub / DASH / 'login.html']
+pages = [pub / 'index.html', pub / 'booking.html', pub / 'terms.html', pub / 'privacy.html', pub / 'evaluate.html', pub / 'receipt.html', pub / 'account.html', pub / 'clock.html', pub / DASH / 'index.html', pub / DASH / 'login.html']
 # Build id covers the pages' own markup too (minus the stamp itself)
 strip = lambda h: re.sub(r'<meta name="build"[^>]*>\n?|<script id="fresh">.*?</script>\n?|<script id="theme">.*?</script>\n?', '', re.sub(r'\?v=\w+', '', h), flags=re.S)
 build = hashlib.sha256((build + ''.join(strip(p.read_text()) for p in pages)).encode()).hexdigest()[:10]

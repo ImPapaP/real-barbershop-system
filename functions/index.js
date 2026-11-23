@@ -19,6 +19,7 @@
 //   syncFacebookPhotos every 3 hours -> newest Facebook page photos into the website gallery
 //   syncFacebookNow    dashboard -> the same, right away
 //   staffLogin         owner -> create, change or remove a staff member's dashboard sign-in and access level
+//   submitEvaluation  saves one system evaluation questionnaire (evaluate.html)
 //   twoFaStatus / twoFaSend / twoFaVerify / twoFaForget  owner two-step sign-in (a code by email or text on a new device)
 //   setPin / pinUnlock / pinLock  owner PIN: unlock owner-only actions on a receptionist or staff account until Lock or sign-out
 //   clockPunch         staff phone, after scanning the shop's time-clock QR -> time in / time out
@@ -38,7 +39,7 @@ import {
   validateRequest, policyOf, slotId, isActiveSlot, desiredSlots, slotStateFor, apptMins, startMs,
   verifyPaymongoSignature, rebookLink, newToken, tokenMatches, bookingCode, smsText, emailContent, eligibleBarbers,
   servicesById, blockTimes, phNow, addDays, normalizePhone, validEmail, parseSlotId, waitlistMatches,
-  maskEmail, maskPhone, promoCheck, cleanCode, validProofImage, cleanBday, receiptView, receiptSms, receiptEmail, queueItems, accountView, depositFor, cleanOptions, withOption, hasDeposit, lateLimit, refundOnCancel,
+  maskEmail, maskPhone, cleanEvaluation, promoCheck, cleanCode, validProofImage, cleanBday, receiptView, receiptSms, receiptEmail, queueItems, accountView, depositFor, cleanOptions, withOption, hasDeposit, lateLimit, refundOnCancel,
   lateFine, lateRateOf, shiftStartOf, roleOf, ACCESS
 } from './src/core.js';
 import { createCheckout, expireCheckout, sendSms, sendEmail } from './src/providers.js';
@@ -891,6 +892,17 @@ export const pinUnlock = onCall(async req => {
 export const pinLock = onCall(async req => {
   if (!req.auth) return { ok: true };
   await db.doc(`elevations/${req.auth.uid}`).delete().catch(() => {});
+  return { ok: true };
+});
+
+// =============== system evaluation (ISO/IEC 25010 questionnaire, evaluate.html) ===============
+// Anyone with the link can answer once per visit; at most 10 per network per day so the results can't be flooded.
+export const submitEvaluation = onCall(async req => {
+  const c = cleanEvaluation(req.data); if (!c.ok) throw new HttpsError('invalid-argument', c.why);
+  const day = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10), ip = (req.rawRequest && (req.rawRequest.headers['x-forwarded-for'] || req.rawRequest.ip || '')).toString().split(',')[0].trim();
+  const lim = db.doc(`evalLimits/${sha(ip + day).slice(0, 32)}`);
+  await db.runTransaction(async t => { const s = await t.get(lim), n = s.exists ? s.data().n || 0 : 0; if (n >= 10) throw new HttpsError('resource-exhausted', 'Too many answers from this network today. Try again tomorrow.'); t.set(lim, { n: n + 1, day }); });
+  await db.collection('evaluations').add({ ...c.rec, at: Date.now() });
   return { ok: true };
 });
 

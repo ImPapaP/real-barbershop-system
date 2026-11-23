@@ -174,6 +174,39 @@ async def keyboard_and_screen_reader(c):
     check(not missing, f'controls with no name: {missing[:5]}')
 
 # WCAG contrast for every visible piece of text: 4.5:1, or 3:1 for large text (24px, or 18.7px bold)
+@t
+async def evaluation_survey_and_results(c):
+    pg = await c.new_page(); await pg.goto(BASE + 'evaluate.html'); await pg.wait_for_timeout(1200)
+    await pg.locator('input[name=group][value=staff]').check(); await pg.wait_for_timeout(200)
+    qs = await pg.evaluate("[...document.querySelectorAll('.ev-q')].map(q=>q.id.slice(2))")
+    check(len(qs) >= 15 and not any(q.startswith('ma') for q in qs), f'staff should get the non-technical statements, got {qs}')
+    await pg.click('.ev-submit button'); await pg.wait_for_timeout(200)
+    check('answer every' in await pg.locator('.ev-err').inner_text(), 'missing answers not caught')
+    for q in qs: await pg.locator(f'input[name={q}][value="4"]').check()
+    await pg.locator('#ev-consent').check(); await pg.click('.ev-submit button'); await pg.wait_for_timeout(800)
+    check(await pg.locator('.ev-thanks').count(), 'no thank-you after sending')
+    saved = [e for e in await store_get(pg, 'evaluations/') if not e.get('sample')]
+    check(len(saved) == 1 and saved[0]['group'] == 'staff' and set(saved[0]['answers'].values()) == {4}, f'answers not saved right: {saved}')
+    d = await c.new_page(); await sign_in(d, 'alex@demo.realbarbers'); await d.goto(D + '#reports'); await d.wait_for_timeout(1500)
+    sec = d.locator('[data-rep=evaluation]'); check(await sec.count(), 'no evaluation panel on Reports')
+    await d.select_option('#ev-g', 'staff'); await d.wait_for_timeout(400)
+    check('staff' in (await sec.locator('.kpi').nth(1).inner_text()), 'group filter did not apply')
+    btn = sec.locator('[data-act=evClearSamples]'); await btn.click(); await btn.click(); await d.wait_for_timeout(1200)
+    left = await store_get(d, 'evaluations/'); check(len(left) == 1 and not left[0].get('sample'), f'samples not removed: {len(left)} left')
+    await d.select_option('#ev-g', ''); await d.wait_for_timeout(300)
+    k = await d.locator('[data-rep=evaluation] .kpi').first.inner_text(); check('4.00' in k and 'Agree (Very good)' in k, f'overall mean wrong: {k}')
+
+@t
+async def no_show_model(c):
+    pg = await c.new_page(); await sign_in(pg, 'alex@demo.realbarbers'); await pg.goto(D + '#reports'); await pg.wait_for_timeout(1800)
+    sec = pg.locator('[data-rep=accuracy]'); check(await sec.count(), 'no accuracy panel')
+    txt = await sec.inner_text()
+    auc = float(re.search(r'Tells no-shows apart \(AUC\)\s*([\d.]+)', txt).group(1)); check(auc > 0.6, f'model AUC too low: {auc}')
+    check('Learned model' in txt and 'Old rule' in txt, 'comparison table missing')
+    await pg.goto(D + '#schedule'); await pg.wait_for_timeout(1200)
+    tags = await pg.locator('.risk').all_inner_texts()
+    check(any(re.search(r'\d+% chance', t) for t in tags), f'risk tags should show the model chance, got {tags}')
+
 CONTRAST_JS = """() => {
   const rgb = s => { const m = s.match(/[\\d.]+/g); if (!m) return [0,0,0,0]; const v = m.map(Number); if (s.startsWith('color(')) { const [r,g,b,al] = v; return [r*255, g*255, b*255, al === undefined ? 1 : al]; } return v; }; // rgb() or color(srgb ...) from color-mix
   const lum = ([r,g,b]) => { const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126*f(r) + 0.7152*f(g) + 0.0722*f(b); };
@@ -214,7 +247,7 @@ async def contrast_both_themes(c):
         problems += [f'[{theme}] login: {x}' for x in await pg.evaluate(CONTRAST_JS)]
     for scheme in ('light', 'dark'):  # the public site follows the device setting
         await pg.emulate_media(color_scheme=scheme)
-        for page in ['', 'booking.html', 'account.html', 'terms.html', 'privacy.html']:
+        for page in ['', 'booking.html', 'account.html', 'terms.html', 'privacy.html', 'evaluate.html']:
             await pg.goto(BASE + page); await pg.wait_for_timeout(900)
             await pg.evaluate('document.querySelectorAll("[data-reveal],.reveal").forEach(e=>e.classList.add("in","shown","is-in"))'); await pg.mouse.wheel(0, 20000); await pg.wait_for_timeout(900)
             problems += [f'[{scheme}] /{page}: {x}' for x in await pg.evaluate(CONTRAST_JS)]
@@ -242,7 +275,7 @@ async def names_and_labels(c):
         problems += [f'{tab}: {x}' for x in await pg.evaluate(NAMES_JS)]
     check(await pg.evaluate("document.querySelector('#toast').getAttribute('role')") in ('status', 'alert'), 'toast messages are not announced')
     await pg.evaluate("localStorage.setItem('rb-demo-user','out')")  # signed out, so the sign-in page stays put
-    for page in ['', 'booking.html', 'account.html', 'terms.html', 'privacy.html', DASH + '/login.html']:
+    for page in ['', 'booking.html', 'account.html', 'terms.html', 'privacy.html', 'evaluate.html', DASH + '/login.html']:
         await pg.goto(BASE + page); await pg.wait_for_timeout(1000)
         problems += [f'/{page}: {x}' for x in await pg.evaluate(NAMES_JS)]
     problems = sorted(set(problems))

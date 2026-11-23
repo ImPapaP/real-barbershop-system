@@ -242,8 +242,8 @@ The dashboard and website work with a keyboard and screen readers: a **Skip to p
 ## Tests
 
 - `cd functions && npm test`: server rules and messages.
-- `node --test tests/unit/*.test.mjs`: the dashboard's money math (checkout totals, split bills, cash drawer, commission, late deductions, coupons, cutoffs, payslip net pay).
-- `python tests/e2e/run.py`: the website and dashboard in a real browser, in demo mode: online booking and its alert, checkout (cash and split), coupons, payslips adding up, the owner's code, offline checkout, keyboard use, contrast and labels. First time: `pip install playwright && python -m playwright install chromium`.
+- `node --test tests/unit/*.test.mjs`: the dashboard's money math (checkout totals, split bills, cash drawer, commission, late deductions, coupons, cutoffs, payslip net pay), the no-show model (it must learn a known pattern and beat guessing), forecast scoring, and the evaluation scoring.
+- `python tests/e2e/run.py`: the website and dashboard in a real browser, in demo mode: online booking and its alert, checkout (cash and split), coupons, payslips adding up, the owner's code, offline checkout, the no-show model and accuracy panel, the evaluation questionnaire and its results, keyboard use, contrast and labels. First time: `pip install playwright && python -m playwright install chromium`.
 - GitHub runs all three on every push (`.github/workflows/tests.yml`).
 
 ## Staff sign-ins, owner PIN and activity log
@@ -287,8 +287,12 @@ Pick a period: today, this week, this month, a custom range and so on.
 - **Next 7 days forecast:**
   - **Per day:** expected clients and sales, bookings so far, barbers working, and busy hours.
   - **Tips:** for example "Saturday 3–7 PM is usually full: about 10 clients an hour for 8 barbers. Add a barber, or avoid giving a day off then" and "Monday 9 AM–1 PM is usually slow".
-  - **How it works:** the average for the same weekday over the last 8 weeks, times the recent trend (the last 4 weeks ÷ the 4 before, kept between −20% and +25%). Capacity is the barbers working that day × 1 client an hour, minus anyone on leave. 80%+ of capacity is busy; 30% or less (2–4 hours, Monday–Thursday) is slow.
+  - **How it works:** a weighted average of the same weekday over the last 8 weeks (last week counts most, each older week 0.7× as much), times a damped recent trend (the square root of the last 4 weeks ÷ the 4 before, kept between −10% and +15%). Days with no sales at all are left out. Capacity is the barbers working that day × 1 client an hour, minus anyone on leave. 80%+ of capacity is busy; 30% or less (2–4 hours, Monday–Thursday) is slow.
   - **Accuracy:** it shows how far off it was over the last 14 days. Each of those days is forecast using only the data from before it.
+- **How accurate the predictions are:**
+  - **Forecast:** over the last 28 days, compared with two simple guesses (same as last week; average of the last 7 days): average miss in clients a day and average % off.
+  - **No-show model:** tested on the newest 25% of finished bookings, which it never learned from. Shows AUC (0.5 = guessing, 1 = perfect), accuracy, precision, recall and a confusion matrix, next to the old rule and "assume everyone comes", plus what the model learned (which factors raise or lower risk).
+- **System evaluation (ISO/IEC 25010):** see below.
 - **This month vs last month:** sales for each day of the month, side by side.
 - **Barbers and services:** best barbers and best services, plus a barber table with clients, sales, average ticket, returning clients, no-show rate and stars.
 - **Busiest hours and days:** a heat map of the average clients started each hour of each weekday.
@@ -297,10 +301,21 @@ Pick a period: today, this week, this month, a custom range and so on.
 
 ## No-show risk
 
-Each client's past bookings are counted (walk-ins aren't). Missing 2 or more and 30%+ of their bookings gives **High no-show risk**; any miss and 20%+ gives **Some**. The flag appears on their upcoming booking in Schedule and Overview. Overview also lists them under **Text to confirm** for the next 3 days.
+A **learned model** (logistic regression) estimates each upcoming booking's chance of a no-show from the shop's own finished bookings (walk-ins aren't counted). It looks only at what's known before the visit: the client's past no-show rate, whether it's their first booking, how many days ahead they booked, whether they paid a down payment, whether they booked by phone or chat, and weekend or evening slots. It retrains by itself as bookings come in. A 45%+ chance gives **High no-show risk**, 25%+ gives **Some**, and the tag shows the chance and the main reasons (for example "38% chance · often missed past bookings, no down payment").
+
+Until there are 80 finished bookings with 10 no-shows, it uses the simple rule instead: missing 2 or more and 30%+ of their bookings gives **High**; any miss and 20%+ gives **Some**. The flag appears on their upcoming booking in Schedule and Overview. Overview also lists them under **Text to confirm** for the next 3 days.
 - **Text to confirm** opens a ready message ("Reply YES to confirm…") to copy or open in Messages.
 - **They confirmed** clears the flag.
 - If they don't reply, the slot can go to a walk-in.
+
+## System evaluation (ISO/IEC 25010)
+
+For measuring the system's quality (for example, a capstone evaluation), there's a questionnaire at **your-site/evaluate.html**. It isn't linked from the website; share the link or QR code from **Reports → System evaluation**.
+- Respondents pick a group (owner or manager, staff, client, or IT professional) and rate plain-language statements from 5 (strongly agree) to 1 (strongly disagree), grouped by the 8 ISO/IEC 25010:2011 quality characteristics: functional suitability, performance efficiency, compatibility, usability, reliability, security, maintainability and portability. Maintainability, portability and a few technical statements are for IT professionals only. About 5 minutes on a phone. They must agree to how the answers are used (Data Privacy Act).
+- The server checks each answer sheet and accepts at most 10 a day from one network.
+- **Results (owner):** weighted mean and standard deviation per characteristic and per statement, the overall mean, the usual interpretation (4.21–5.00 Strongly agree / Excellent, 3.41–4.20 Agree / Very good, 2.61–3.40 Neutral / Good, 1.81–2.60 Disagree / Fair, 1.00–1.80 Strongly disagree / Poor), a filter by group, and the latest comments. **CSV** exports the summary table; **Raw answers CSV** exports every answer sheet for your own statistics.
+- The demo includes sample answers, clearly marked. **Remove sample answers** deletes them; never report them as results.
+- Note: ISO/IEC 25010 was revised in 2023 (9 characteristics). This questionnaire follows the 2011 version, which most evaluation instruments still use; check which one your adviser wants.
 
 ## Client coupons
 
@@ -434,6 +449,8 @@ public/
   booking.html            customer's booking page
   r3al-hq-7m2k/index.html   dashboard (unlisted address)
   r3al-hq-7m2k/login.html   staff sign-in page
+  evaluate.html           system evaluation questionnaire (unlisted)
+  assets/evaluation.js    its statements and scoring (unit-tested) · assets/evaluate.js
   assets/firebase-config.js   paste your Firebase web config here
   assets/shared.js        helpers, availability, REAL Barbers starter menu
   assets/fb.js            picks the backend: Firebase when configured, otherwise demo mode
@@ -448,6 +465,8 @@ public/
     modals.js · actions.js · forms.js   pop-ups, buttons and form saves
     access.js · staffapp.js · tables.js   roles and PIN, time clock and closing, tables and coupons
     alerts.js · offline.js · data.js   booking alerts, offline mode, live data
+    ml.js                   no-show model and forecast scoring (unit-tested)
+    survey.js               system evaluation results
   r3al-hq-7m2k/sw.js       keeps the dashboard's files on the device so it opens offline
 tests/unit · tests/e2e    money math tests and browser tests (see Tests)
 .github/workflows/pages.yml   publishes public/ to GitHub Pages

@@ -49,6 +49,11 @@ service cloud.firestore {
     match /twofa/{uid} {
       allow read, write: if false; // Cloud Functions only (holds the code hash and remembered devices)
     }
+    match /evaluations/{id} {
+      allow read, delete: if boss();
+      allow create, update: if false; // Cloud Function submitEvaluation (checks answers, limits per network)
+    }
+    match /evalLimits/{id} { allow read, write: if false; }
     match /activity/{id} {
       allow read: if boss();
       allow create: if isAdmin() && request.resource.data.by == request.auth.uid;
