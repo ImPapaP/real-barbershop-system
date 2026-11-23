@@ -4,7 +4,7 @@ import { db, demo, demoBar, resetDemo, login, logout, resetPassword, onAuth, upl
 import { buildXlsx, xlDate, xlTime, colName } from './xlsx.js';
 import { qrSvg } from './qr.js';
 import { drawBanner, bannerBlob } from './banner.js';
-import { withOption, lateLimit, hasDeposit, bdaySelects, cleanBday, fmtBday, bdayDays, BDAY_TITLE, esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, DEFAULT_POLICY, lateFine, lateRateOf, shiftStartOf, roleOf, ACCESS, CLOCK_START, couponLive, couponLabel, startMs, canServe, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE, defaultFaq, cleanCode } from './shared.js';
+import { themeBtn, withOption, lateLimit, hasDeposit, bdaySelects, cleanBday, fmtBday, bdayDays, BDAY_TITLE, esc, pad, DAYS, DAYS_LONG, MONTHS, toMin, sum, fmtTime, priceLabel, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, DEFAULT_POLICY, lateFine, lateRateOf, shiftStartOf, roleOf, ACCESS, CLOCK_START, couponLive, couponLabel, startMs, canServe, resizeImage, initials, phoneKey, morph, brand, LOGO_LG, commissionOf, commissionFor, ROLES, isServiceStaff, PRODUCT_FEE, defaultFaq, cleanCode } from './shared.js';
 
 // ---------- constants ----------
 const METHODS = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer'];
@@ -188,7 +188,7 @@ function inner() {
     <aside class="side">
       <a href="#${allowedTabs()[0]}" style="text-decoration:none;color:inherit" aria-label="Dashboard home">${mark()}</a>
       <nav class="side-nav" aria-label="Dashboard">${navTabs().map(([id, l, locked]) => `<a href="#${id}" ${id === tab ? 'aria-current="page"' : ''}${locked ? ' class="locked"' : ''}>${icon(id)}<span class="lbl">${l}</span>${locked ? `<span class="lock-ic" aria-label="Needs the owner PIN">${icon('lock')}</span>` : badges[id] ? `<span class="badge" aria-label="${badges[id]} need attention">${badges[id]}</span>` : ''}</a>`).join('')}</nav>
-      <div class="side-foot">${whoChip()}<a class="btn btn-sm btn-ghost" href="../" target="_blank" rel="noopener">${icon('site')}<span class="lbl">Website</span></a><button class="btn btn-sm btn-ghost" data-act="logout">${icon('out')}<span class="lbl">Sign out</span></button></div>
+      <div class="side-foot">${whoChip()}${themeBtn('btn btn-sm btn-ghost', true)}<a class="btn btn-sm btn-ghost" href="../" target="_blank" rel="noopener">${icon('site')}<span class="lbl">Website</span></a><button class="btn btn-sm btn-ghost" data-act="logout">${icon('out')}<span class="lbl">Sign out</span></button></div>
     </aside>
     <main class="main"><div class="main-in${S.enter ? ' enter' : ''}">${loadingNote()}${S.infoMissing && isBoss() ? setupBanner() : ''}${elevBanner()}${OWNER_TABS.includes(tab) && !isBoss() ? vLocked(tab) : TAB_VIEWS[tab]()}</div></main>
   </div>`;

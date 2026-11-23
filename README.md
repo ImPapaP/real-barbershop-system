@@ -201,6 +201,10 @@ Men first choose **Deluxe** or **Regular**. Only that level's haircuts are shown
 - Change it in the dashboard: **Barbers → Edit → Men’s haircuts they do**, and **Shop setup → Services → Booking type / Haircut level**.
 - The booking functions check the same rules, so they can't be skipped.
 
+## Light and dark mode
+
+Every page has a sun / moon button: the website and booking pages in the header, the dashboard at the bottom of the sidebar, and the sign-in page at the top. The choice is saved on that phone or computer and applies on every page. With no choice made, pages follow the phone's or computer's own setting. The saved mode is applied before the page draws, so there's no white flash in dark mode.
+
 ## Opening the dashboard
 
 - **Address:** the dashboard has an address that's hard to guess: **your-site/r3al-hq-7m2k/**. On the preview that's https://impapap.github.io/real-barbershop-system/r3al-hq-7m2k/login.html. Bookmark it, and only give it to staff.

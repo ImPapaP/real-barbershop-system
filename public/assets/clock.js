@@ -2,7 +2,7 @@
 // with their own dashboard account and taps Time in / Time out. The server stamps the time (Cloud Function clockPunch),
 // so the phone's own clock doesn't matter. 9:01 is late; the deduction shows right away.
 import { db, call, demo, demoBar, login, logout, onAuth } from './fb.js';
-import { $, esc, money, fmtTime, fmtDate, STARTER, brand, phNow } from './shared.js';
+import { $, esc, money, fmtTime, fmtDate, STARTER, brand, themeBtn, phNow } from './shared.js';
 
 const K = new URLSearchParams(location.search).get('k') || '';
 const S = { info: { ...STARTER }, user: undefined, peek: null, busy: false, err: '', done: null, loginErr: '' };
@@ -10,7 +10,7 @@ const shop = () => S.info.shop || STARTER.shop;
 const m = n => money(n, shop().currency || '₱');
 
 function shell(inner) {
-  return `${demoBar ? demoBar('') : ''}<header class="site-head"><div class="wrap head-in"><a class="wordmark" href="./">${brand(shop().wordmark || shop().name)}</a></div></header>
+  return `${demoBar ? demoBar('') : ''}<header class="site-head"><div class="wrap head-in"><a class="wordmark" href="./">${brand(shop().wordmark || shop().name)}</a><nav class="site-nav">${themeBtn()}</nav></div></header>
   <main class="wrap acct clock-pg">${inner}</main>`;
 }
 function render() { $('#app').innerHTML = shell(body()); }

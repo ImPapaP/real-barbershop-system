@@ -1,7 +1,7 @@
 // Customer website: menu, gallery, team, reviews, hours and the booking flow (pays the deposit through PayMongo).
 // The page is drawn once; the booking panel, menu tabs and lightbox redraw on their own so animations don't replay.
 import { db, call, demo, demoBar, resetDemo } from './fb.js';
-import {
+import { themeBtn,
   $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, DAYS_LONG, MONTHS, sum, phNow, dowOf, policyOf, openStatus,
   availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph, brand, LOGO_LG, dur, isServiceStaff, toMin, fromMin, addDays, blockTimes, slotId, messengerLink, defaultFaq, monthGrid, shiftMonth, BACK_IC, bdaySelects, cleanBday, BDAY_TITLE, BDAY_HINT, queueEstimate, resizeImage, depositFor
 } from './shared.js';
@@ -125,7 +125,7 @@ function page() {
       <button class="lnk" data-act="scroll" data-to="visit">Visit</button>
       <a class="lnk acct-lnk" href="account.html" aria-label="My visits">${ic('user') || ''}<span>My visits</span></a>
       <span class="head-open${st.open ? ' on' : ''}" title="${esc(st.text)}"><b aria-hidden="true">●</b>${st.open ? 'Open now' : 'Closed now'}</span>
-      <button class="btn btn-accent btn-sm" data-act="scroll" data-to="book">Book now</button>
+      ${themeBtn()}<button class="btn btn-accent btn-sm" data-act="scroll" data-to="book">Book now</button>
     </nav>
   </div></header>
   ${S.last && S.last.date >= today.date ? `<div class="wrap" style="padding-block:12px"><p class="note row" style="justify-content:space-between"><span>You have a booking for <b>${fmtDate(S.last.date)}, ${fmtTime(S.last.time)}</b>.</span><a class="btn btn-sm" href="booking.html?id=${encodeURIComponent(S.last.id)}&t=${encodeURIComponent(S.last.token)}">View booking</a></p></div>` : ''}

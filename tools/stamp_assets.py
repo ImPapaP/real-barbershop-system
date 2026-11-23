@@ -21,7 +21,7 @@ build = hashlib.sha256(''.join(f'{n}{v}' for n, v in sorted(ver.items())).encode
 DASH = 'r3al-hq-7m2k'  # the dashboard's unlisted folder (change it here and rename the folder to move it)
 pages = [pub / 'index.html', pub / 'booking.html', pub / 'terms.html', pub / 'privacy.html', pub / 'receipt.html', pub / 'account.html', pub / 'clock.html', pub / DASH / 'index.html', pub / DASH / 'login.html']
 # Build id covers the pages' own markup too (minus the stamp itself)
-strip = lambda h: re.sub(r'<meta name="build"[^>]*>\n?|<script id="fresh">.*?</script>\n?', '', re.sub(r'\?v=\w+', '', h), flags=re.S)
+strip = lambda h: re.sub(r'<meta name="build"[^>]*>\n?|<script id="fresh">.*?</script>\n?|<script id="theme">.*?</script>\n?', '', re.sub(r'\?v=\w+', '', h), flags=re.S)
 build = hashlib.sha256((build + ''.join(strip(p.read_text()) for p in pages)).encode()).hexdigest()[:10]
 # GitHub Pages lets browsers keep a page for 10 minutes. This tiny check fetches the page fresh once;
 # if a newer build is live it refreshes the browser's copy and reloads (at most once per build).
@@ -30,6 +30,8 @@ FRESH = ('<script id="fresh">(function(){var b=document.querySelector(\'meta[nam
          'fetch(location.href,{cache:"reload"}).then(function(r){return r.text()}).then(function(t){'
          'var m=/<meta name="build" content="(\\w+)"/.exec(t);if(m&&m[1]!==b){try{sessionStorage.setItem("fresh-tried",b)}catch(e){}location.reload()}'
          '}).catch(function(){})})()</script>')
+# Light / dark: apply the visitor's saved choice before the page draws (no white flash in dark mode)
+THEME = ('<script id="theme">try{var t=localStorage.getItem("rb-theme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>')
 for page in pages:
     html = page.read_text()
     pre = '../assets/' if page.parent.name == DASH else 'assets/'
@@ -45,7 +47,7 @@ for page in pages:
     if m:
         entry = m.group(1)
         html = html.replace(m.group(0), f'{block}<script type="module" src="{pre}{entry}?v={ver[entry]}"></script>')
-    html = re.sub(r'<meta name="build"[^>]*>\n?|<script id="fresh">.*?</script>\n?', '', html, flags=re.S)
-    html = html.replace('<meta charset="utf-8">', f'<meta charset="utf-8">\n<meta name="build" content="{build}">\n{FRESH}', 1)
+    html = re.sub(r'<meta name="build"[^>]*>\n?|<script id="fresh">.*?</script>\n?|<script id="theme">.*?</script>\n?', '', html, flags=re.S)
+    html = html.replace('<meta charset="utf-8">', f'<meta charset="utf-8">\n<meta name="build" content="{build}">\n{THEME}\n{FRESH}', 1)
     page.write_text(html)
     print('stamped', page)

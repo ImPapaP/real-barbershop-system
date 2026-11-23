@@ -532,3 +532,35 @@ export function couponLabel(cp, services = [], cur = '₱') {
   if (cp.kind === 'service') { const s = services.find(x => x.id === cp.svcId); return `Free ${s ? s.name : 'service'}`; }
   return `${cur}${(Number(cp.value) || 0).toLocaleString('en-PH')} off`;
 }
+
+// ---------- light and dark mode ----------
+// The choice is saved on the device ('rb-theme': 'light' | 'dark'); with no choice the page follows the device.
+// Each page's <head> applies the saved choice before anything draws (tools/stamp_assets.py), so there's no flash.
+const SUN = '<svg class="th-ic" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.6"/><path d="M10 1.8v2.1M10 16.1v2.1M1.8 10h2.1M16.1 10h2.1M4.2 4.2l1.5 1.5M14.3 14.3l1.5 1.5M4.2 15.8l1.5-1.5M14.3 5.7l1.5-1.5"/></svg>';
+const MOON = '<svg class="th-ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M16.5 12.6A7 7 0 0 1 7.4 3.5a7 7 0 1 0 9.1 9.1z"/></svg>';
+export function getTheme() { try { const t = localStorage.getItem('rb-theme'); return t === 'dark' || t === 'light' ? t : 'system'; } catch (_) { return 'system'; } }
+export function effectiveTheme() { const t = getTheme(); if (t !== 'system') return t; try { return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; } catch (_) { return 'light'; } }
+const themeInner = withLabel => { const d = effectiveTheme() === 'dark'; return `${d ? SUN : MOON}${withLabel ? `<span class="lbl">${d ? 'Light mode' : 'Dark mode'}</span>` : ''}`; };
+export function themeBtn(cls = '', withLabel = false) {
+  const d = effectiveTheme() === 'dark';
+  return `<button type="button" class="theme-btn ${cls}" data-act="theme" data-lbl="${withLabel ? 1 : ''}" aria-label="Switch to ${d ? 'light' : 'dark'} mode" title="Switch to ${d ? 'light' : 'dark'} mode">${themeInner(withLabel)}</button>`;
+}
+export function applyTheme(t) {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  if (t === 'dark' || t === 'light') root.setAttribute('data-theme', t); else root.removeAttribute('data-theme');
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = effectiveTheme() === 'dark' ? '#0b0b0c' : '#f3f3f1';
+  document.querySelectorAll('[data-act="theme"]').forEach(b => { const d = effectiveTheme() === 'dark'; b.innerHTML = themeInner(!!b.dataset.lbl); b.setAttribute('aria-label', `Switch to ${d ? 'light' : 'dark'} mode`); b.title = b.getAttribute('aria-label'); });
+}
+if (typeof window !== 'undefined' && !window.__rbTheme) {
+  window.__rbTheme = 1;
+  applyTheme(getTheme());
+  document.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('[data-act="theme"]'); if (!b) return;
+    e.stopPropagation(); e.preventDefault();
+    const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
+    try { localStorage.setItem('rb-theme', next); } catch (_) {}
+    document.documentElement.classList.add('theme-anim'); applyTheme(next); setTimeout(() => document.documentElement.classList.remove('theme-anim'), 400);
+  }, true);
+  try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (getTheme() === 'system') applyTheme('system'); }); } catch (_) {}
+}
