@@ -7,6 +7,7 @@ import { allowedTabs, elevBanner, isBoss, myRole, navTabs, vLocked, whoChip } fr
 import { finesIn } from './staffapp.js';
 import { applyPaging } from './tables.js';
 import { riskChip } from './reports.js';
+import { alertBtn } from './alerts.js';
 
 // ---------- helpers ----------
 export const $ = (s, r = document) => r.querySelector(s);
@@ -43,6 +44,13 @@ export const staffName = id => id ? (staffById(id)?.name || 'Former barber') : '
 export const av = b => b && b.photo ? `<img class="avatar" src="${esc(siteUrl(b.photo))}" alt="">` : `<span class="avatar" aria-hidden="true">${esc(initials(b ? b.name : '?'))}</span>`;
 export const custById = id => S.customers.find(c => c.id === id);
 export const methodName = k => METHOD_NAMES[k] || k || 'Online';
+// How a sale was paid at the shop. A split bill (part cash, part GCash...) keeps its parts in sale.split: [{ m, amt }]
+// and counts in each method, so the cash drawer and Close the day only count the cash part.
+export const atShopOf = s => (s.total || 0) - (s.depositCredit || 0);
+export const paidParts = s => s.split && s.split.length ? s.split.map(x => [x.m, Number(x.amt) || 0]) : [[s.method || 'Cash', atShopOf(s)]];
+export const paidIn = (s, m) => paidParts(s).reduce((t, x) => t + (x[0] === m ? x[1] : 0), 0);
+export const usedMethod = (s, m) => paidParts(s).some(x => x[0] === m);
+export const payLabel = s => s.split && s.split.length ? s.split.map(x => `${x.m} ${money(x.amt)}`).join(' + ') : (s.method || 'Cash');
 export const depositPaid = a => a && a.deposit && a.deposit.status === 'paid' ? (a.deposit.amount || 0) : 0;
 // GCash screenshot payments waiting for the owner to check
 export const toReview = () => S.appointments.filter(a => a.status === 'pending_payment' && a.payMethod === 'gcash' && a.proof && a.proof.status === 'review' && !a.groupOf).sort((a, b) => a.proof.at - b.proof.at);
@@ -152,7 +160,7 @@ export function inner() {
     <aside class="side">
       <a href="#${allowedTabs()[0]}" style="text-decoration:none;color:inherit" aria-label="Dashboard home">${mark()}</a>
       <nav class="side-nav" aria-label="Dashboard">${navTabs().map(([id, l, locked]) => `<a href="#${id}" ${id === tab ? 'aria-current="page"' : ''}${locked ? ' class="locked"' : ''}>${icon(id)}<span class="lbl">${l}</span>${locked ? `<span class="lock-ic" aria-label="Needs the owner PIN">${icon('lock')}</span>` : badges[id] ? `<span class="badge" aria-label="${badges[id]} need attention">${badges[id]}</span>` : ''}</a>`).join('')}</nav>
-      <div class="side-foot">${whoChip()}${themeBtn('btn btn-sm btn-ghost', true)}<a class="btn btn-sm btn-ghost" href="../" target="_blank" rel="noopener">${icon('site')}<span class="lbl">Website</span></a><button class="btn btn-sm btn-ghost" data-act="logout">${icon('out')}<span class="lbl">Sign out</span></button></div>
+      <div class="side-foot">${whoChip()}${themeBtn('btn btn-sm btn-ghost', true)}${alertBtn()}<a class="btn btn-sm btn-ghost" href="../" target="_blank" rel="noopener">${icon('site')}<span class="lbl">Website</span></a><button class="btn btn-sm btn-ghost" data-act="logout">${icon('out')}<span class="lbl">Sign out</span></button></div>
     </aside>
     <main class="main"><div class="main-in${S.enter ? ' enter' : ''}">${loadingNote()}${S.infoMissing && isBoss() ? setupBanner() : ''}${elevBanner()}${OWNER_TABS.includes(tab) && !isBoss() ? vLocked(tab) : TAB_VIEWS[tab]()}</div></main>
   </div>`;
