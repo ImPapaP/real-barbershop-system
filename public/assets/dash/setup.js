@@ -10,7 +10,7 @@ import { vMoney, vTeam } from './money.js';
 import { vClients, vStock } from './clients.js';
 import { cutField, mFoot, openModal } from './modals.js';
 import { saveInfo, syncPublicBarbers } from './forms.js';
-import { clockSetupPanel, pinPanel, signinsPanel } from './staffapp.js';
+import { clockSetupPanel, pinPanel, signinsPanel, twoStepPanel } from './staffapp.js';
 
 // ---------- tab: setup ----------
 // ---------- backups ----------
@@ -83,6 +83,7 @@ export function vSetup() {
   ${promosPanel()}
   ${signinsPanel()}
   <div class="grid2e">${pinPanel()}${clockSetupPanel()}</div>
+  ${twoStepPanel()}
   ${backupPanel()}`;
 }
 

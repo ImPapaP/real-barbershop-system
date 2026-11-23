@@ -19,6 +19,7 @@
 //   syncFacebookPhotos every 3 hours -> newest Facebook page photos into the website gallery
 //   syncFacebookNow    dashboard -> the same, right away
 //   staffLogin         owner -> create, change or remove a staff member's dashboard sign-in and access level
+//   twoFaStatus / twoFaSend / twoFaVerify / twoFaForget  owner two-step sign-in (a code by email or text on a new device)
 //   setPin / pinUnlock / pinLock  owner PIN: unlock owner-only actions on a receptionist or staff account until Lock or sign-out
 //   clockPunch         staff phone, after scanning the shop's time-clock QR -> time in / time out
 //   sendDaySummary     dashboard -> text the end-of-day summary to the owner
@@ -37,7 +38,7 @@ import {
   validateRequest, policyOf, slotId, isActiveSlot, desiredSlots, slotStateFor, apptMins, startMs,
   verifyPaymongoSignature, rebookLink, newToken, tokenMatches, bookingCode, smsText, emailContent, eligibleBarbers,
   servicesById, blockTimes, phNow, addDays, normalizePhone, validEmail, parseSlotId, waitlistMatches,
-  promoCheck, cleanCode, validProofImage, cleanBday, receiptView, receiptSms, receiptEmail, queueItems, accountView, depositFor, cleanOptions, withOption, hasDeposit, lateLimit, refundOnCancel,
+  maskEmail, maskPhone, promoCheck, cleanCode, validProofImage, cleanBday, receiptView, receiptSms, receiptEmail, queueItems, accountView, depositFor, cleanOptions, withOption, hasDeposit, lateLimit, refundOnCancel,
   lateFine, lateRateOf, shiftStartOf, roleOf, ACCESS
 } from './src/core.js';
 import { createCheckout, expireCheckout, sendSms, sendEmail } from './src/providers.js';
@@ -102,7 +103,10 @@ async function sendTo(kind, person, info, link, { email = true } = {}) {
   if (email && person.email) out.email = await sendEmail(mailCfg, person.email, emailContent(kind, person, info, link));
   return out;
 }
-async function isAdmin(req) { return !!(req.auth && (await db.doc(`admins/${req.auth.uid}`).get()).exists); }
+async function isAdmin(req) {
+  if (!req.auth) return false; const s = await db.doc(`admins/${req.auth.uid}`).get(); if (!s.exists) return false;
+  return roleOf(s.data()) !== 'owner' || await twoOk(req); // the owner's account counts only after its two-step code
+}
 
 // Loyalty: completed visits for the client behind a booking (matched by customer id, then phone).
 async function loyaltyFor(a, info) {
@@ -820,7 +824,7 @@ export const syncFacebookNow = onCall(async req => {
 async function adminOf(req) { if (!req.auth) return null; const s = await db.doc(`admins/${req.auth.uid}`).get(); return s.exists ? { uid: req.auth.uid, ...s.data() } : null; }
 async function bossOf(req) {
   const a = await adminOf(req); if (!a) return null;
-  if (roleOf(a) === 'owner') return a;
+  if (roleOf(a) === 'owner' && await twoOk(req)) return a;
   const e = await db.doc(`elevations/${a.uid}`).get();
   return e.exists && (e.data().until || 0) > Date.now() ? a : null;
 }
@@ -856,7 +860,7 @@ export const staffLogin = onCall(async req => {
 });
 
 export const setPin = onCall(async req => {
-  const me = await adminOf(req); if (!me || roleOf(me) !== 'owner') throw new HttpsError('permission-denied', 'Only the owner can set the PIN.');
+  const me = await adminOf(req); if (!me || roleOf(me) !== 'owner' || !(await twoOk(req))) throw new HttpsError('permission-denied', 'Only the owner can set the PIN.');
   const pin = String(req.data && req.data.pin || '');
   if (!/^\d{4}$/.test(pin)) throw new HttpsError('invalid-argument', 'The PIN is 4 digits.');
   const salt = crypto.randomBytes(16).toString('hex');
@@ -887,6 +891,75 @@ export const pinUnlock = onCall(async req => {
 export const pinLock = onCall(async req => {
   if (!req.auth) return { ok: true };
   await db.doc(`elevations/${req.auth.uid}`).delete().catch(() => {});
+  return { ok: true };
+});
+
+// =============== owner two-step sign-in ===============
+// The owner's account needs a 6-digit code (by email, or by text to the owner's mobile) the first time it signs in on a
+// device. twofa/{uid}: { ok: <auth_time of the verified sign-in>, hash, exp, tries, sentAt, day, count, devices: [{ h, exp, at }] }
+// firestore.rules only give owner powers when twofa/{uid}.ok matches the sign-in's auth_time, so a stolen password alone isn't enough.
+// "Remember this device" keeps a random token on that device (only its hash is stored) for 30 days.
+const twoRef = uid => db.doc(`twofa/${uid}`);
+const authTime = req => Number(req.auth && req.auth.token && req.auth.token.auth_time) || 0;
+async function ownerNeedsTwo(req) {
+  const me = await adminOf(req); if (!me) throw new HttpsError('permission-denied', 'Sign in first.');
+  return { me, owner: roleOf(me) === 'owner' };
+}
+async function twoOk(req) { const s = await twoRef(req.auth.uid).get(); return s.exists && s.data().ok === authTime(req) && authTime(req) > 0; }
+export const twoFaStatus = onCall(async req => {
+  const { me, owner } = await ownerNeedsTwo(req); if (!owner) return { ok: true };
+  const ref = twoRef(me.uid), snap = await ref.get(), t = snap.exists ? snap.data() : {}, now = Date.now(), at = authTime(req);
+  if (at && t.ok === at) return { ok: true };
+  const dev = String(req.data && req.data.device || '');
+  if (dev && (t.devices || []).some(d => d.h === sha(dev) && d.exp > now)) { await ref.set({ ok: at, okAt: now }, { merge: true }); return { ok: true, device: true }; }
+  const info = await loadInfo(), phone = normalizePhone((info.shop || {}).ownerPhone || '');
+  return { ok: false, email: maskEmail(req.auth.token.email || me.email || ''), phone: phone ? maskPhone(phone) : '' };
+});
+export const twoFaSend = onCall({ secrets: NOTIFY_SECRETS }, async req => {
+  const { me, owner } = await ownerNeedsTwo(req); if (!owner) throw new HttpsError('failed-precondition', 'Only the owner’s account uses a code.');
+  const via = req.data && req.data.via === 'sms' ? 'sms' : 'email', ref = twoRef(me.uid), snap = await ref.get(), o = snap.exists ? snap.data() : {}, now = Date.now();
+  if (o.sentAt && now - o.sentAt < 45e3) throw new HttpsError('resource-exhausted', 'A code was just sent. Wait a few seconds before asking for another.');
+  const day = new Date(now + 8 * 3600e3).toISOString().slice(0, 10), sentToday = o.day === day ? o.count || 0 : 0;
+  if (sentToday >= 8) throw new HttpsError('resource-exhausted', 'Too many codes today. Try again tomorrow.');
+  const info = await loadInfo(), shopName = (info.shop && info.shop.name) || 'REAL Barbers', code = String(crypto.randomInt(0, 1e6)).padStart(6, '0');
+  let sent = false, to = '';
+  if (via === 'sms') {
+    const phone = normalizePhone((info.shop || {}).ownerPhone || '');
+    if (!phone) throw new HttpsError('failed-precondition', 'No owner mobile number yet. Use email, then add it in Shop setup → Shop details.');
+    sent = await sendSms({ apiKey: SEMAPHORE_API_KEY.value(), sender: SMS_SENDER_NAME.value() }, phone, `${shopName} dashboard code: ${code}. It expires in 10 minutes. Don't share it with anyone.`); to = maskPhone(phone);
+  } else {
+    const email = req.auth.token.email || me.email || '';
+    sent = await sendEmail({ user: SHOP_EMAIL.value(), pass: GMAIL_APP_PASSWORD.value(), fromName: shopName }, email, {
+      subject: `${shopName} dashboard code: ${code}`,
+      text: `Your sign-in code is ${code}. It expires in 10 minutes.\n\nIf you didn't just sign in to the dashboard, change your password now.`,
+      html: `<p>Your sign-in code is</p><p style="font:700 28px/1.2 monospace;letter-spacing:4px">${code}</p><p>It expires in 10 minutes.</p><p style="color:#666">If you didn’t just sign in to the dashboard, change your password now.</p>` }); to = maskEmail(email);
+  }
+  if (!sent) throw new HttpsError('unavailable', via === 'sms' ? 'Couldn’t send the text. Try email instead.' : 'Couldn’t send the email. Try a text instead.');
+  await ref.set({ hash: sha(code + me.uid), exp: now + 10 * 60e3, tries: 0, sentAt: now, day, count: sentToday + 1 }, { merge: true });
+  return { ok: true, to };
+});
+export const twoFaVerify = onCall(async req => {
+  const { me, owner } = await ownerNeedsTwo(req); if (!owner) return { ok: true };
+  const code = String(req.data && req.data.code || '').replace(/\D/g, ''), ref = twoRef(me.uid), snap = await ref.get(), o = snap.exists ? snap.data() : {}, now = Date.now();
+  if (code.length !== 6) throw new HttpsError('invalid-argument', 'Enter the 6-digit code.');
+  if (!o.hash || o.exp < now) throw new HttpsError('deadline-exceeded', 'That code has expired. Ask for a new one.');
+  if ((o.tries || 0) >= 5) throw new HttpsError('resource-exhausted', 'Too many wrong tries. Ask for a new code.');
+  if (!crypto.timingSafeEqual(Buffer.from(sha(code + me.uid), 'hex'), Buffer.from(o.hash, 'hex'))) {
+    await ref.update({ tries: (o.tries || 0) + 1 });
+    await logActivity(me, 'login', 'Wrong two-step code');
+    throw new HttpsError('permission-denied', 'That code isn’t right. Check it and try again.');
+  }
+  const upd = { ok: authTime(req), okAt: now, hash: FieldValue.delete(), exp: 0, tries: 0 };
+  let device = '';
+  if (req.data && req.data.remember) { device = newToken() + newToken(); upd.devices = [...(o.devices || []).filter(d => d.exp > now).slice(-4), { h: sha(device), exp: now + 30 * 864e5, at: now }]; }
+  await ref.set(upd, { merge: true });
+  await logActivity(me, 'login', `Two-step sign-in passed${device ? ' · device remembered for 30 days' : ''}`);
+  return { ok: true, device };
+});
+export const twoFaForget = onCall(async req => {
+  const { me, owner } = await ownerNeedsTwo(req); if (!owner || !(await twoOk(req))) throw new HttpsError('permission-denied', 'Only the owner can do this.');
+  await twoRef(me.uid).set({ devices: [] }, { merge: true });
+  await logActivity(me, 'login', 'Signed out every remembered device (two-step)');
   return { ok: true };
 });
 

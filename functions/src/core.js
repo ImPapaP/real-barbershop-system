@@ -395,3 +395,7 @@ export function couponLabel(cp, services = [], cur = '₱') {
   if (cp.kind === 'service') { const s = services.find(x => x.id === cp.svcId); return `Free ${s ? s.name : 'service'}`; }
   return `${cur}${(Number(cp.value) || 0).toLocaleString('en-PH')} off`;
 }
+
+// Shown on the two-step screen so the owner knows where the code went, without printing the whole address
+export const maskEmail = e => { const [u, d] = String(e || '').split('@'); if (!u || !d) return ''; return `${u.slice(0, 2)}${'•'.repeat(Math.max(1, Math.min(6, u.length - 2)))}@${d}`; };
+export const maskPhone = p => { const x = String(p || '').replace(/\D/g, ''); return x.length >= 7 ? `${x.slice(0, 4)} ••• ${x.slice(-4)}` : ''; };

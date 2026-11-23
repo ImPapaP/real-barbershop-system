@@ -291,3 +291,21 @@ test('client coupons: live until used or expired, labels, shown on My visits', a
   const v = accountView({ phone: '09170000100', customers: [{ id: 'c1', name: 'Marco', coupons: [{ id: 'k1', kind: 'amount', value: 100, note: 'Sorry for the wait' }, { id: 'k2', kind: 'amount', value: 50, used: true }] }], appts: [], sales: [], info: { services: [], shop: {} }, today: '2026-11-21' });
   assert.deepEqual(v.coupons, [{ id: 'k1', label: '₱100 off', note: 'Sorry for the wait', expires: '' }]);
 });
+
+test('owner two-step: where the code went is shown masked', async () => {
+  const { maskEmail, maskPhone } = await import('../src/core.js');
+  assert.equal(maskEmail('alex.reyes@gmail.com'), 'al••••••@gmail.com');
+  assert.equal(maskEmail('al@x.com'), 'al•@x.com');
+  assert.equal(maskEmail('nope'), '');
+  assert.equal(maskPhone('09171234567'), '0917 ••• 4567');
+  assert.equal(maskPhone(''), '');
+});
+
+test('split bill on the receipt: each part with its method', async () => {
+  const { payLabel, receiptView } = await import('../src/core.js');
+  assert.equal(payLabel({ method: 'GCash' }), 'GCash');
+  assert.equal(payLabel({ method: 'Split', split: [{ m: 'Cash', amt: 200 }, { m: 'GCash', amt: 1150.5 }] }), 'Cash ₱200 + GCash ₱1,150.5');
+  const r = receiptView('s1', { date: '2026-11-23', time: '10:00', total: 399, method: 'Split', split: [{ m: 'Cash', amt: 100 }, { m: 'GCash', amt: 299 }], lines: [] }, { shop: {} });
+  assert.equal(r.method, 'Cash ₱100 + GCash ₱299');
+  assert.equal(r.paidAtShop, 399);
+});

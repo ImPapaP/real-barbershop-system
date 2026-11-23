@@ -173,6 +173,16 @@ export function pinPanel() {
     <form class="stack" data-form="setpin"><div class="fgrid three">${field(S.pinSet ? 'New 4-digit PIN' : '4-digit PIN', `<input id="pn-a" name="a" type="password" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" autocomplete="new-password" required>`, 'pn-a')}${field('Type it again', `<input id="pn-b" name="b" type="password" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" autocomplete="new-password" required>`, 'pn-b')}<div class="field" style="align-self:end"><button class="btn btn-primary" type="submit">${S.pinSet ? 'Change PIN' : 'Set PIN'}</button></div></div><p class="err" id="pn-err" hidden></p></form>
     ${myRole() === 'owner' ? `<label class="consent"><input type="checkbox" id="pn-lock" data-change="lockDevice" ${S.lockOn ? 'checked' : ''}><span><b>Lock owner pages on this device.</b> For a shared phone or tablet signed in as the owner: income, staff pay, settings and voids ask for the PIN. Only this device is locked.</span></label>` : ''}</section>`;
 }
+// Owner two-step sign-in: always on for the owner's account. Here the owner can sign out every remembered device.
+export function twoStepPanel() {
+  if (myRole() !== 'owner') return '';
+  return `<section class="panel"><div class="panel-h"><h2>Two-step sign-in</h2>${chip({ kind: 'good', icon: '✓', label: 'On for the owner' })}</div>
+    <p class="muted small" style="max-width:72ch">On a new phone or computer, the owner’s account asks for a 6-digit code sent by email${info().shop && info().shop.ownerPhone ? ' or by text to the owner’s mobile' : ' (add the owner’s mobile in Shop details to also get it by text)'}. A device marked “remember” skips the code for 30 days. If a phone is lost or the password leaks, change the password and sign out every remembered device.</p>
+    <div class="row"><button type="button" class="btn btn-sm" data-act="twoFaForget">Sign out every remembered device</button></div></section>`;
+}
+Object.assign(ACT, {
+  async twoFaForget(el) { if (!armed(el)) return; try { await call('twoFaForget', {}); try { Object.keys(localStorage).filter(k => k.startsWith('rb-2fa-')).forEach(k => localStorage.removeItem(k)); } catch (_) {} toast('Every remembered device will need a code next time'); } catch (e) { toast(e.message || 'Couldn’t do that. Try again.', 'bad'); } },
+});
 export function signinsPanel() {
   const withLogin = staffAll().filter(b => b.login);
   return `<section class="panel"><div class="panel-h"><h2>Who can use this dashboard</h2><a class="btn btn-sm btn-ghost" href="#team">Staff</a></div>

@@ -75,6 +75,11 @@ render();
     S.user = user; S.canAdmin = false;
     if (user) {
       try { const a = await db.doc(`admins/${user.uid}`).get(); S.canAdmin = a.exists; S.me = a.exists ? { uid: user.uid, ...a.data() } : null; } catch (_) { S.canAdmin = false; S.me = null; }
+      if (S.canAdmin && myRole() === 'owner') { // owner's account: the two-step code for this sign-in, or a remembered device
+        let dev = ''; try { dev = localStorage.getItem('rb-2fa-' + user.uid) || ''; } catch (_) {}
+        let st = { ok: true }; try { st = await call('twoFaStatus', { device: dev }); } catch (_) {}
+        if (!st.ok) { location.replace('login.html' + (location.hash && location.hash !== '#' ? '?next=' + encodeURIComponent(location.hash) : '')); return; }
+      }
       try { S.lockOn = myRole() === 'owner' && localStorage.getItem('rb-lock') === '1'; } catch (_) { S.lockOn = false; }
       S.elevUntil = 0; NAV.length = 0; trackNav();
       db.doc(`elevations/${user.uid}`).get().then(e => { if (e.exists) call('pinLock').catch(() => {}); }).catch(() => {}); // a reload locks owner pages again
