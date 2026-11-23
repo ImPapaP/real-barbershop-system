@@ -25,7 +25,7 @@ export const METHOD_NAMES = { gcash: 'GCash', paymaya: 'Maya', card: 'Card', qrp
 export const S = {
   ready: false, user: null, canAdmin: false, loginErr: '', loginBusy: false, loginMsg: '',
   info: null, infoMissing: false, slow: false,
-  staff: [], appointments: [], sales: [], expenses: [], customers: [], inventory: [], payouts: [], waitlist: [], attendance: [], promos: [], closings: [], leaves: [], timeclock: [], activity: [], payslips: [], advances: [], cutoff: '', loaded: {}, me: null, elevUntil: 0, lockOn: false, reminding: '',
+  staff: [], appointments: [], sales: [], expenses: [], customers: [], inventory: [], payouts: [], waitlist: [], attendance: [], promos: [], closings: [], leaves: [], timeclock: [], activity: [], evaluations: [], payslips: [], advances: [], cutoff: '', loaded: {}, me: null, elevUntil: 0, lockOn: false, reminding: '',
   proofImgs: {}, cutImgs: {}, refImgs: {},
   schedDate: '', schedBarber: '', schedQ: '', schedStatus: '', schedSrc: '', showExpired: false, period: 'month', from: '', to: '',
   clientQ: '', clientSort: 'recent', stockFilter: 'all', showArchived: false, pos: null, busy: false, uploading: ''

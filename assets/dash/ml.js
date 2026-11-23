@@ -65,7 +65,7 @@ export function train(X, y, { iters = 600, lr = 0.3, l2 = 0.01 } = {}) {
   const mean = Array(k).fill(0), sd = Array(k).fill(0);
   X.forEach(r => r.forEach((v, j) => { mean[j] += v / n; }));
   X.forEach(r => r.forEach((v, j) => { sd[j] += (v - mean[j]) ** 2 / n; }));
-  for (let j = 0; j < k; j++) sd[j] = Math.sqrt(sd[j]) || 1;
+  for (let j = 0; j < k; j++) { sd[j] = Math.sqrt(sd[j]); if (!(sd[j] > 1e-9)) sd[j] = 1; } // a feature that never changes gets no weight
   const Z = X.map(r => r.map((v, j) => (v - mean[j]) / sd[j]));
   const base = y.reduce((s, v) => s + v, 0) / n;
   let b = Math.log((base + 1e-6) / (1 - base + 1e-6)); const w = Array(k).fill(0);

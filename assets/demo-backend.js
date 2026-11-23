@@ -8,7 +8,7 @@ import {
 
 // The saved demo is keyed by a fingerprint of the starter data, so changing the menu or team
 // (or a browser briefly mixing old and new files) never leaves stale sample data behind.
-const SEED_REV = 34; // bump when seed() itself changes
+const SEED_REV = 36; // bump when seed() itself changes
 const fingerprint = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const KEY = `rb-demo-${SEED_REV}-${fingerprint(JSON.stringify([STARTER, STARTER_STAFF]))}`, USER_KEY = 'rb-demo-user';
 try { Object.keys(localStorage).filter(k => k.startsWith('rb-demo-') && k !== KEY && k !== USER_KEY).forEach(k => localStorage.removeItem(k)); } catch (_) {}
@@ -163,6 +163,11 @@ function seed() {
       m.set(`appointments/up${i}`, { date, time, startAt: startMs(date, time), barberId: bars[i], serviceIds: ['h1'], mins: 60, source: i % 2 ? 'phone' : 'online', status: 'booked', name: c.name, phone: c.phone, email: '', customerId: '',
         code: `UP${i}`, token: `demoup${i}`, notify: true, reminders: {}, deposit: null, createdAt: Date.now() - (6 + i * 3) * 864e5 }); });
   }
+  // sample answers to the system evaluation, marked sample: true so they're never mistaken for real ones
+  { const ids = { fs: 3, pe: 3, co: 3, us: 5, re: 3, se: 4, ma: 3, po: 3 }, itOnly = ['co3', 'us5', 'se4', 'ma1', 'ma2', 'ma3', 'po1', 'po2', 'po3'];
+    [['owner', 1], ['staff', 5], ['client', 6], ['it', 3]].forEach(([g, k]) => { for (let i = 0; i < k; i++) {
+      const answers = {}; Object.entries(ids).forEach(([c, n]) => { for (let j = 1; j <= n; j++) { const id = c + j; if (g !== 'it' && itOnly.includes(id)) continue; answers[id] = rnd() < 0.55 ? 5 : rnd() < 0.8 ? 4 : 3; } });
+      m.set(`evaluations/s_${g}${i}`, { group: g, answers, name: '', comment: i === 0 ? { owner: 'The offline mode saved us when the internet was down.', staff: 'Checkout is fast. Please add a printed receipt option.', client: 'Easy to book, I like the reminders.', it: 'Clean code and good tests.' }[g] : '', consent: true, sample: true, at: Date.now() - (i + 1) * 3600e3 * 7 }); } }); }
   // cash advances (vale)
   { const t = new Date(Date.now() + 8 * 3600e3), dd = t.getUTCDate(), ym = t.toISOString().slice(0, 7), cur = `${ym}-${dd <= 15 ? 1 : 2}`, prevC = dd <= 15 ? `${new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 0)).toISOString().slice(0, 7)}-2` : `${ym}-1`;
     m.set('advances/v1', { staffId: 'jay', amount: 1000, date: day(-12), parts: 2, start: prevC, note: 'School fees', at: Date.now() - 12 * 864e5, by: 'Alex' });
@@ -385,6 +390,13 @@ const FUNCS = {
     if (String(d.pin || '') !== p.pin) { const fails = (p.fails || 0) + 1; store.set('private/pin', { ...p, fails: fails >= 5 ? 0 : fails, lockUntil: fails >= 5 ? now + 15 * 60e3 : 0 }); actLog(u, 'pin', 'Wrong owner PIN' + (fails >= 5 ? ' (5 tries: locked 15 minutes)' : '')); changed(); fail('permission-denied', fails >= 5 ? 'Too many wrong tries. Locked for 15 minutes.' : 'Wrong PIN.'); }
     const until = now + 12 * 3600e3; store.set('private/pin', { ...p, fails: 0 }); store.set('elevations/' + u.uid, { until, at: now });
     actLog(u, 'pin', `Owner PIN entered${d.why ? ': ' + String(d.why).slice(0, 80) : ''}`); changed(); return { until };
+  },
+  submitEvaluation(d) {
+    const groups = ['owner', 'staff', 'client', 'it']; if (!groups.includes(d.group)) fail('invalid-argument', 'Pick who you are first.');
+    if (d.consent !== true) fail('invalid-argument', 'Please tick the agreement box to send your answers.');
+    const answers = {}; Object.entries(d.answers || {}).forEach(([k, v]) => { if (/^[a-z]{2}\d$/.test(k) && [1, 2, 3, 4, 5].includes(+v)) answers[k] = +v; });
+    if (Object.keys(answers).length < 10) fail('invalid-argument', 'Please answer every statement.');
+    store.set('evaluations/e' + Date.now().toString(36), { group: d.group, answers, name: String(d.name || '').slice(0, 60), comment: String(d.comment || '').slice(0, 800), consent: true, at: Date.now() }); save(); changed(); return { ok: true };
   },
   pinLock(d, u) { if (u) store.delete('elevations/' + u.uid); changed(); return { ok: true }; },
   // Owner two-step sign-in (same rules as the server). Demo: no email or text goes out; the code is shown on screen.

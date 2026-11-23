@@ -53,6 +53,7 @@ export function bossWatches() {
   w('activity', db.collection('activity').where('at', '>=', Date.now() - 90 * 864e5));
   w('payslips', db.collection('payslips'));
   w('advances', db.collection('advances'));
+  w('evaluations', db.collection('evaluations'));
 }
 export function stopBossWatches() { while (bossUnsubs.length) { try { bossUnsubs.pop()(); } catch (_) {} } }
 // Staff see only their own records (the queries match firestore.rules)
