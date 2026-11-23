@@ -23,7 +23,7 @@ function load() { try { const s = localStorage.getItem(KEY); return s ? new Map(
 function save() { try { localStorage.setItem(KEY, JSON.stringify([...store])); } catch (_) {} }
 function changed() { save(); queueMicrotask(() => listeners.forEach(f => f())); }
 window.addEventListener('storage', e => { if (e.key === KEY) { store = load() || store; listeners.forEach(f => f()); } });
-export function resetDemo() { try { localStorage.removeItem(KEY); localStorage.removeItem(USER_KEY); localStorage.removeItem('lastBooking'); } catch (_) {} location.reload(); }
+export function resetDemo() { try { localStorage.removeItem(KEY); localStorage.removeItem(USER_KEY); localStorage.removeItem('lastBooking'); localStorage.removeItem('rb-signin-at'); } catch (_) {} try { Object.keys(localStorage).filter(k => k.startsWith('rb-2fa-')).forEach(k => localStorage.removeItem(k)); } catch (_) {} location.reload(); }
 
 // ---------- sample data ----------
 // Neutral placeholder for the sample payment screenshot (a real one is the customer's own phone screenshot).
@@ -363,6 +363,34 @@ const FUNCS = {
     actLog(u, 'pin', `Owner PIN entered${d.why ? ': ' + String(d.why).slice(0, 80) : ''}`); changed(); return { until };
   },
   pinLock(d, u) { if (u) store.delete('elevations/' + u.uid); changed(); return { ok: true }; },
+  // Owner two-step sign-in (same rules as the server). Demo: no email or text goes out; the code is shown on screen.
+  twoFaStatus(d, u) {
+    const me = adminDoc(u); if (!me) fail('permission-denied', 'Sign in first.'); if (roleOf(me) !== 'owner') return { ok: true };
+    const t = store.get('twofa/' + u.uid) || {}, now = Date.now();
+    if (u.at && t.ok === u.at) return { ok: true };
+    if (d.device && (t.devices || []).some(x => x.h === d.device && x.exp > now)) { store.set('twofa/' + u.uid, { ...t, ok: u.at }); save(); return { ok: true, device: true }; }
+    const ph = String((info().shop || {}).ownerPhone || '').replace(/\D/g, '');
+    return { ok: false, email: u.email.replace(/^(..)[^@]*/, '$1••••'), phone: ph.length >= 7 ? `${ph.slice(0, 4)} ••• ${ph.slice(-4)}` : '' };
+  },
+  twoFaSend(d, u) {
+    const me = adminDoc(u); if (!me || roleOf(me) !== 'owner') fail('failed-precondition', 'Only the owner’s account uses a code.');
+    if (d.via === 'sms' && !String((info().shop || {}).ownerPhone || '').trim()) fail('failed-precondition', 'No owner mobile number yet. Use email, then add it in Shop setup → Shop details.');
+    const code = String(Math.floor(Math.random() * 1e6)).padStart(6, '0'), t = store.get('twofa/' + u.uid) || {};
+    store.set('twofa/' + u.uid, { ...t, code, exp: Date.now() + 10 * 60e3, tries: 0 }); save();
+    return { ok: true, to: d.via === 'sms' ? 'the owner’s mobile' : u.email.replace(/^(..)[^@]*/, '$1••••'), demoCode: code };
+  },
+  twoFaVerify(d, u) {
+    const me = adminDoc(u); if (!me || roleOf(me) !== 'owner') return { ok: true };
+    const t = store.get('twofa/' + u.uid) || {}, code = String(d.code || '').replace(/\D/g, ''), now = Date.now();
+    if (code.length !== 6) fail('invalid-argument', 'Enter the 6-digit code.');
+    if (!t.code || t.exp < now) fail('deadline-exceeded', 'That code has expired. Ask for a new one.');
+    if ((t.tries || 0) >= 5) fail('resource-exhausted', 'Too many wrong tries. Ask for a new code.');
+    if (code !== t.code) { store.set('twofa/' + u.uid, { ...t, tries: (t.tries || 0) + 1 }); save(); actLog(u, 'login', 'Wrong two-step code'); changed(); fail('permission-denied', 'That code isn’t right. Check it and try again.'); }
+    const device = d.remember ? 'dev' + Math.random().toString(36).slice(2) + Date.now().toString(36) : '';
+    store.set('twofa/' + u.uid, { ok: u.at, devices: [...(t.devices || []).filter(x => x.exp > now).slice(-4), ...(device ? [{ h: device, exp: now + 30 * 864e5 }] : [])] });
+    actLog(u, 'login', `Two-step sign-in passed${device ? ' · device remembered for 30 days' : ''}`); changed(); return { ok: true, device };
+  },
+  twoFaForget(d, u) { const t = store.get('twofa/' + u.uid) || {}; store.set('twofa/' + u.uid, { ...t, devices: [] }); actLog(u, 'login', 'Signed out every remembered device (two-step)'); changed(); return { ok: true }; },
   clockPunch(d, u) {
     const me = adminDoc(u); if (!me || !me.staffId) fail('permission-denied', 'This sign-in isn’t linked to a staff member. Ask the owner.');
     const key = (store.get('private/clock') || {}).key; if (!key || String(d.k || '') !== key) fail('permission-denied', 'This QR code is old. Scan the one at the shop.');
@@ -531,9 +559,10 @@ let user = null;
 // Demo: any password works. An email of one of the demo sign-ins (alex@ owner, airyl@ receptionist, lyndon@, vince@demo.realbarbers, or one
 // the owner adds in Staff → Edit → Sign-in) signs in as that person; any other email is the owner.
 const demoUser = email => { const e = String(email || '').trim().toLowerCase(), hit = [...store].find(([k, v]) => k.startsWith('admins/') && v.email && v.email === e); return hit ? { uid: hit[0].slice(7), email: e } : { uid: 'demo', email: e || 'alex@demo.realbarbers' }; };
-try { const v = localStorage.getItem(USER_KEY); user = v === 'out' ? null : demoUser(v && v !== 'in' ? v : ''); } catch (_) { user = demoUser(''); }
+const AT_KEY = 'rb-signin-at', atOf = () => { try { return Number(localStorage.getItem(AT_KEY)) || 1; } catch (_) { return 1; } };
+try { const v = localStorage.getItem(USER_KEY); user = v === 'out' ? null : { ...demoUser(v && v !== 'in' ? v : ''), at: atOf() }; } catch (_) { user = { ...demoUser(''), at: 1 }; }
 export function onAuth(fn) { authFns.add(fn); setTimeout(() => fn(user), 0); return () => authFns.delete(fn); }
-export async function login(email) { user = demoUser(email); try { localStorage.setItem(USER_KEY, user.email); } catch (_) {} authFns.forEach(f => f(user)); }
+export async function login(email) { user = { ...demoUser(email), at: Date.now() }; try { localStorage.setItem(USER_KEY, user.email); localStorage.setItem(AT_KEY, String(user.at)); } catch (_) {} authFns.forEach(f => f(user)); }
 export async function logout() { user = null; try { localStorage.setItem(USER_KEY, 'out'); } catch (_) {} authFns.forEach(f => f(null)); }
 export async function resetPassword() {}
 
