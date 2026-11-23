@@ -1,7 +1,7 @@
 // "Your booking" page, opened from the confirmation email or after paying on PayMongo.
 // Shows the booking status and lets the customer reschedule or cancel within the policy.
 import { db, call, demoBar, resetDemo } from './fb.js';
-import { $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, MONTHS, dowOf, sum, policyOf, availableTimes, bookableDates, timeChips, STARTER, icsFor, brand, themeBtn, LOGO_LG, resizeImage, phNow, monthGrid, shiftMonth, BACK_IC, receiptHTML } from './shared.js';
+import { $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, MONTHS, dowOf, sum, policyOf, availableTimes, bookableDates, timeChips, STARTER, icsFor, brand, LOGO_LG, resizeImage, phNow, monthGrid, shiftMonth, BACK_IC, receiptHTML } from './shared.js';
 
 const q = new URLSearchParams(location.search);
 const ID = q.get('id') || '', TOKEN = q.get('t') || '';
@@ -17,7 +17,7 @@ const m = n => money(n, info().shop.currency || '₱');
 function render() { const a = document.activeElement, id = a && a.id; $('#app').innerHTML = shell(body()); if (id) document.getElementById(id)?.focus({ preventScroll: true }); }
 function shell(inner) {
   const shop = info().shop;
-  return `${demoBar('')}<header class="site-head"><div class="wrap head-in"><a class="wordmark" href="./">${brand(shop.wordmark || shop.name)}</a><nav class="site-nav">${themeBtn()}<a class="lnk acct-lnk" href="account.html" aria-label="My visits"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="6.5" r="3.2"/><path d="M3.5 17.5a6.5 6.5 0 0113 0"/></svg><span>My visits</span></a><a class="btn btn-sm" href="./#book">Book again</a></nav></div></header>
+  return `${demoBar('')}<header class="site-head"><div class="wrap head-in"><a class="wordmark" href="./">${brand(shop.wordmark || shop.name)}</a><nav class="site-nav"><a class="lnk acct-lnk" href="account.html" aria-label="My visits"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="6.5" r="3.2"/><path d="M3.5 17.5a6.5 6.5 0 0113 0"/></svg><span>My visits</span></a><a class="btn btn-sm" href="./#book">Book again</a></nav></div></header>
   <main class="sec"><div class="wrap" style="max-width:760px;display:grid;gap:18px"><a class="pop-back page-back-link" href="./">${BACK_IC}<span>Back to the website</span></a>${inner}</div></main>
   <footer class="site-foot"><div class="wrap"><span>${esc(shop.name)} · ${esc(shop.phone)}</span><span>${esc(shop.address)}</span></div></footer>`;
 }

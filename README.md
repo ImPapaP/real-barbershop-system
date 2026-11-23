@@ -201,9 +201,9 @@ Men first choose **Deluxe** or **Regular**. Only that level's haircuts are shown
 - Change it in the dashboard: **Barbers → Edit → Men’s haircuts they do**, and **Shop setup → Services → Booking type / Haircut level**.
 - The booking functions check the same rules, so they can't be skipped.
 
-## Light and dark mode
+## Light and dark mode (dashboard)
 
-Every page has a sun / moon button: the website and booking pages in the header, the dashboard at the bottom of the sidebar, and the sign-in page at the top. The choice is saved on that phone or computer and applies on every page. With no choice made, pages follow the phone's or computer's own setting. The saved mode is applied before the page draws, so there's no white flash in dark mode.
+The dashboard has a sun / moon button at the bottom of the sidebar, and the staff sign-in page has one at the top. The choice is saved on that phone or computer. Before anyone picks, it follows the device's own setting. The saved mode is applied before the page draws, so there's no white flash. The public website has no button: it always follows each visitor's own phone or computer setting.
 
 ## Opening the dashboard
 

@@ -31,7 +31,7 @@ FRESH = ('<script id="fresh">(function(){var b=document.querySelector(\'meta[nam
          'var m=/<meta name="build" content="(\\w+)"/.exec(t);if(m&&m[1]!==b){try{sessionStorage.setItem("fresh-tried",b)}catch(e){}location.reload()}'
          '}).catch(function(){})})()</script>')
 # Light / dark: apply the visitor's saved choice before the page draws (no white flash in dark mode)
-THEME = ('<script id="theme">try{var t=localStorage.getItem("rb-theme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>')
+THEME = ('<script id="theme">document.documentElement.dataset.themed=1;try{var t=localStorage.getItem("rb-theme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>')
 for page in pages:
     html = page.read_text()
     pre = '../assets/' if page.parent.name == DASH else 'assets/'
@@ -48,6 +48,7 @@ for page in pages:
         entry = m.group(1)
         html = html.replace(m.group(0), f'{block}<script type="module" src="{pre}{entry}?v={ver[entry]}"></script>')
     html = re.sub(r'<meta name="build"[^>]*>\n?|<script id="fresh">.*?</script>\n?|<script id="theme">.*?</script>\n?', '', html, flags=re.S)
-    html = html.replace('<meta charset="utf-8">', f'<meta charset="utf-8">\n<meta name="build" content="{build}">\n{THEME}\n{FRESH}', 1)
+    theme = f'{THEME}\n' if page.parent.name == DASH else ''  # light/dark switch: dashboard and its sign-in page only
+    html = html.replace('<meta charset="utf-8">', f'<meta charset="utf-8">\n<meta name="build" content="{build}">\n{theme}{FRESH}', 1)
     page.write_text(html)
     print('stamped', page)
