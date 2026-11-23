@@ -213,6 +213,39 @@ The dashboard has a sun / moon button at the bottom of the sidebar, and the staf
 - **Moving it:** rename the `public/r3al-hq-7m2k` folder, change `DASH` in `tools/stamp_assets.py`, and update the two links that use it (`clock.js` "See my day" and the shop's booking email in `functions/index.js`).
 - **Protection:** the hidden address is only extra. The sign-in and the database rules are what protect the data.
 
+## Owner two-step sign-in
+
+The owner's account needs a 6-digit code the first time it signs in on a new phone or computer. After the password, the sign-in page offers **Email me** (the owner's sign-in email) or **Text me** (the owner's mobile in Shop setup → Shop details). The code works for 10 minutes; 5 wrong tries need a new code. Tick **Remember this device for 30 days** to skip it on that device.
+
+- The database rules and owner-only server functions only treat the account as the owner after the code, so a leaked password alone can't open income, pay or settings.
+- Receptionist and barber sign-ins don't use a code.
+- Lost a phone? Change the password, then **Shop setup → Two-step sign-in → Sign out every remembered device**.
+- Emails need the Gmail app password from setup Part 1, texts need Semaphore. If neither works yet, the owner can't finish signing in. To get back in, set up email first, or in the Firebase console delete `twofa/<owner uid>` and sign in again (a new code is still needed).
+- In the demo no email or text goes out: the code is shown on the screen.
+
+## Booking alerts
+
+When a client books online, sends a GCash screenshot, or joins the walk-in queue with the shop QR, the owner's and receptionist's screens play a short chime and show a pop-up (with **Open** / **Check it**). It stays a minute, and the browser tab shows the count if the dashboard is in the background. The **Alert sound** button in the menu turns the sound off on that device. Browsers only allow sound after someone has tapped or typed on the page once. Barbers don't get these alerts.
+
+## Split bills
+
+At checkout, choose **Split bill**, type the cash part, and pick how the rest is paid (GCash, Maya, card or bank). The rest is filled in for you, and the cash received and change work on the cash part. The cash drawer, Close the day, income by payment method, the payment filter, exports and the receipt all count each part under its own method, so everything still adds up.
+
+## Working offline
+
+If the internet drops, the dashboard keeps working on that device: checkout, the schedule and clients keep going, and a yellow bar at the bottom says how many changes are waiting. They send by themselves when the internet is back. The dashboard also opens without internet if it was opened on that device before. Official receipt numbers come from the server, so a sale rung up offline shows "Number given when back online" and gets its number when the connection returns. Things that need the server (texts, emails, the owner PIN, sign-in codes) wait for the internet.
+
+## Accessibility
+
+The dashboard and website work with a keyboard and screen readers: a **Skip to page content** link, a visible focus ring, pop-ups that take focus, keep Tab inside and give focus back when they close, labelled buttons and fields, and announced messages. Text meets WCAG AA contrast (4.5:1) in light and dark mode; the browser tests check this on every page.
+
+## Tests
+
+- `cd functions && npm test`: server rules and messages.
+- `node --test tests/unit/*.test.mjs`: the dashboard's money math (checkout totals, split bills, cash drawer, commission, late deductions, coupons, cutoffs, payslip net pay).
+- `python tests/e2e/run.py`: the website and dashboard in a real browser, in demo mode: online booking and its alert, checkout (cash and split), coupons, payslips adding up, the owner's code, offline checkout, keyboard use, contrast and labels. First time: `pip install playwright && python -m playwright install chromium`.
+- GitHub runs all three on every push (`.github/workflows/tests.yml`).
+
 ## Staff sign-ins, owner PIN and activity log
 
 - **Who sees what.** Give each person a sign-in in **Staff → Edit → Sign-in**:
@@ -405,8 +438,20 @@ public/
   assets/shared.js        helpers, availability, REAL Barbers starter menu
   assets/fb.js            picks the backend: Firebase when configured, otherwise demo mode
   assets/firebase-backend.js · demo-backend.js
-  assets/site.js · booking.js · admin.js · styles.css
+  assets/site.js · booking.js · styles.css
+  assets/admin.js         dashboard entry: loads the parts below and starts them
+  assets/dash/            the dashboard, one file per area:
+    state.js                constants and shared state
+    core.js                 helpers, saving, page drawing, pay plans, clients
+    calc.js                 money math with no screen code (unit-tested)
+    ops.js · money.js · clients.js · setup.js · payroll.js · reports.js   the pages
+    modals.js · actions.js · forms.js   pop-ups, buttons and form saves
+    access.js · staffapp.js · tables.js   roles and PIN, time clock and closing, tables and coupons
+    alerts.js · offline.js · data.js   booking alerts, offline mode, live data
+  r3al-hq-7m2k/sw.js       keeps the dashboard's files on the device so it opens offline
+tests/unit · tests/e2e    money math tests and browser tests (see Tests)
 .github/workflows/pages.yml   publishes public/ to GitHub Pages
+.github/workflows/tests.yml   runs every test on each push
 tools/stamp_assets.py     adds ?v=<hash> to scripts and styles so visitors always get the latest version
 ```
 

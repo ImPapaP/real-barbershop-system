@@ -1,0 +1,33 @@
+# Runs every test on each push and pull request:
+#  - server rules and messages (functions/test), no install needed
+#  - money math the dashboard uses (tests/unit)
+#  - the website and dashboard in a real browser, in demo mode (tests/e2e/run.py)
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Server tests
+        run: cd functions && node --test test/*.test.js
+      - name: Money math tests
+        run: node --test tests/unit/*.test.mjs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Browser tests
+        run: |
+          pip install playwright==1.49.1
+          python -m playwright install --with-deps chromium
+          python tools/stamp_assets.py
+          python tests/e2e/run.py

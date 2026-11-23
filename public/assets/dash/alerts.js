@@ -86,3 +86,4 @@ export function alertBtn() {
 Object.assign(ACT, {
   alertSound() { const on = !soundOn(); setAlertSound(on); toast(on ? 'Alert sound on' : 'Alert sound off'); render(); },
 });
+Object.assign(ACT, { skipMain() { const m = document.getElementById('main'); if (m) { m.focus(); m.scrollIntoView({ block: 'start' }); } } });
