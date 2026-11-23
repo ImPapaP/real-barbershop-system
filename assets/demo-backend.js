@@ -8,7 +8,7 @@ import {
 
 // The saved demo is keyed by a fingerprint of the starter data, so changing the menu or team
 // (or a browser briefly mixing old and new files) never leaves stale sample data behind.
-const SEED_REV = 31; // bump when seed() itself changes
+const SEED_REV = 34; // bump when seed() itself changes
 const fingerprint = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const KEY = `rb-demo-${SEED_REV}-${fingerprint(JSON.stringify([STARTER, STARTER_STAFF]))}`, USER_KEY = 'rb-demo-user';
 try { Object.keys(localStorage).filter(k => k.startsWith('rb-demo-') && k !== KEY && k !== USER_KEY).forEach(k => localStorage.removeItem(k)); } catch (_) {}
@@ -139,6 +139,30 @@ function seed() {
   { const hist = { 3: ['noshow', 'done', 'noshow', 'done'], 5: ['noshow', 'done', 'done', 'done'], 9: ['noshow', 'noshow', 'done'] };
     for (let ci = 0; ci < 10; ci++) (hist[ci] || ['done', 'done', 'done']).forEach((st, k) => { const date = day(-7 * (k + 1) - (ci % 3)), time = `${10 + (ci % 8)}:00`;
       m.set(`appointments/h${ci}_${k}`, { date, time, startAt: startMs(date, time), barberId: ['reymart', 'lyndon', 'renz', 'angelo', 'ed', 'rod', 'dave', 'dave', 'dave', 'mac'][ci], serviceIds: ['h1'], mins: 60, source: 'online', status: st, name: names[ci], phone: `09170000${100 + ci}`, email: '', customerId: `c${ci}`, code: `H${ci}${k}`, token: `h${ci}${k}`, deposit: { amount: 200, status: st === 'noshow' ? 'kept' : 'paid', method: 'gcash' }, createdAt: startMs(date, time) - 3 * 864e5 }); }); }
+  // two months of finished bookings from ~50 other clients, so the no-show model has history to learn from.
+  // Like a real shop: a few clients often skip, and skipping is likelier when they booked far ahead, paid nothing down,
+  // booked by chat, or booked an evening or weekend slot.
+  { const first = ['Paolo', 'Jomar', 'Kenneth', 'Arvin', 'Mark', 'Jayson', 'Rodel', 'Ivan', 'Nico', 'Gab', 'Enzo', 'Luis', 'Bryan', 'Joel', 'Ramil', 'Cris', 'Ryan', 'Aldrin', 'Vince', 'Jun'];
+    const last = ['Dizon', 'Bautista', 'Garcia', 'Navarro', 'Pascual', 'Soriano', 'Castillo', 'Salazar', 'Domingo', 'Manalo', 'Ocampo', 'Rivera'];
+    const pool = Array.from({ length: 48 }, (_, i) => ({ name: `${first[i % first.length]} ${last[(i * 7) % last.length]}`, phone: `0917555${String(1000 + i)}`, skip: rnd() < 0.16 ? 0.4 + rnd() * 0.25 : 0.03 + rnd() * 0.07 }));
+    const bars = ['reymart', 'lyndon', 'renz', 'angelo', 'ed', 'rod', 'mac', 'vince'], logit = q => Math.log(q / (1 - q)), sig = z => 1 / (1 + Math.exp(-z));
+    let hb = 0;
+    for (let d = -62; d <= -1; d++) {
+      const dow = new Date(Date.parse(day(d) + 'T00:00:00+08:00')).getUTCDay(), per = [0, 6].includes(dow) ? 12 : 7;
+      for (let j = 0; j < per; j++) {
+        const c = pick(pool), date = day(d), hr = 10 + Math.floor(rnd() * 10), time = `${hr}:00`, phone = rnd() < 0.3;
+        const lead = phone ? Math.floor(rnd() * 3) : Math.floor(rnd() ** 2 * 21), dep = !phone && rnd() < 0.7;
+        const z = logit(c.skip) - 0.7 + 0.55 * Math.log1p(lead) - 1.4 * dep + 0.6 * phone + 0.5 * (hr >= 17) + 0.3 * [0, 6].includes(dow);
+        const st = rnd() < sig(z) ? 'noshow' : 'done', id = `hb${hb++}`;
+        m.set(`appointments/${id}`, { date, time, startAt: startMs(date, time), barberId: pick(bars), serviceIds: ['h1'], mins: 60, source: phone ? 'phone' : 'online', status: st, name: c.name, phone: c.phone, email: '', customerId: '',
+          code: `HB${hb}`, token: `demohb${hb}`, notify: false, reminders: {}, deposit: dep ? { amount: 200, status: 'paid', method: 'gcash' } : null, createdAt: startMs(date, time) - lead * 864e5 - 3600e3 });
+      }
+    }
+    // a few of the frequent skippers have bookings coming up, so the model has someone to flag
+    pool.filter(c => c.skip > 0.4).slice(0, 4).forEach((c, i) => { const date = day(i % 3), time = `${17 + (i % 3)}:00`;
+      m.set(`appointments/up${i}`, { date, time, startAt: startMs(date, time), barberId: bars[i], serviceIds: ['h1'], mins: 60, source: i % 2 ? 'phone' : 'online', status: 'booked', name: c.name, phone: c.phone, email: '', customerId: '',
+        code: `UP${i}`, token: `demoup${i}`, notify: true, reminders: {}, deposit: null, createdAt: Date.now() - (6 + i * 3) * 864e5 }); });
+  }
   // cash advances (vale)
   { const t = new Date(Date.now() + 8 * 3600e3), dd = t.getUTCDate(), ym = t.toISOString().slice(0, 7), cur = `${ym}-${dd <= 15 ? 1 : 2}`, prevC = dd <= 15 ? `${new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 0)).toISOString().slice(0, 7)}-2` : `${ym}-1`;
     m.set('advances/v1', { staffId: 'jay', amount: 1000, date: day(-12), parts: 2, start: prevC, note: 'School fees', at: Date.now() - 12 * 864e5, by: 'Alex' });
