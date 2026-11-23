@@ -534,8 +534,9 @@ export function couponLabel(cp, services = [], cur = '₱') {
 }
 
 // ---------- light and dark mode ----------
-// The choice is saved on the device ('rb-theme': 'light' | 'dark'); with no choice the page follows the device.
-// Each page's <head> applies the saved choice before anything draws (tools/stamp_assets.py), so there's no flash.
+// Dashboard only (pages marked data-themed): the choice is saved on the device ('rb-theme': 'light' | 'dark').
+// With no choice, and always on the public website, pages follow the device's own setting.
+// The dashboard pages' <head> applies the saved choice before anything draws (tools/stamp_assets.py), so there's no flash.
 const SUN = '<svg class="th-ic" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.6"/><path d="M10 1.8v2.1M10 16.1v2.1M1.8 10h2.1M16.1 10h2.1M4.2 4.2l1.5 1.5M14.3 14.3l1.5 1.5M4.2 15.8l1.5-1.5M14.3 5.7l1.5-1.5"/></svg>';
 const MOON = '<svg class="th-ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M16.5 12.6A7 7 0 0 1 7.4 3.5a7 7 0 1 0 9.1 9.1z"/></svg>';
 export function getTheme() { try { const t = localStorage.getItem('rb-theme'); return t === 'dark' || t === 'light' ? t : 'system'; } catch (_) { return 'system'; } }
@@ -552,7 +553,7 @@ export function applyTheme(t) {
   const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = effectiveTheme() === 'dark' ? '#0b0b0c' : '#f3f3f1';
   document.querySelectorAll('[data-act="theme"]').forEach(b => { const d = effectiveTheme() === 'dark'; b.innerHTML = themeInner(!!b.dataset.lbl); b.setAttribute('aria-label', `Switch to ${d ? 'light' : 'dark'} mode`); b.title = b.getAttribute('aria-label'); });
 }
-if (typeof window !== 'undefined' && !window.__rbTheme) {
+if (typeof window !== 'undefined' && !window.__rbTheme && document.documentElement.dataset.themed) {
   window.__rbTheme = 1;
   applyTheme(getTheme());
   document.addEventListener('click', e => {
