@@ -8,28 +8,47 @@ import { stars } from './setup.js';
 import { MODAL, closeModal, modalErr, openModal } from './modals.js';
 import { logAct, meName } from './access.js';
 import { advanceModal, cutoffLabel, cutoffOf, cutoffShift, nodeToPng, payslip, printNode, slipFor, slipModal, vPayroll } from './payroll.js';
+import { FEATURES, MIN_NOSHOWS, MIN_ROWS, featuresOf, fitNoShow, predict, reasons, scoreForecasts, startOf } from './ml.js';
 
 // ================= NO-SHOW RISK =================
 // From each client's past bookings (not walk-ins): how many they missed. Shown on upcoming bookings so the shop
 // can text them to confirm first. Two or more misses and 30%+ of bookings = high; any miss and 20%+ = medium.
 export const clientKey = x => x.customerId || phoneKey(x.phone || '') || '';
+// The no-show model (dash/ml.js) learns from the shop's finished bookings. It's retrained when bookings change
+// or the day changes. Until there's enough history (80 finished bookings, 10 no-shows) the simple rule is used.
+export const RISK_HIGH = 0.45, RISK_SOME = 0.25; // chance of a no-show for a High / Some risk tag
+let NS = null, nsSig = '';
+export function noShowModel() {
+  let ns = 0, dn = 0; for (const a of S.appointments) { if (a.status === 'noshow') ns++; else if (a.status === 'done') dn++; }
+  const sig = `${today()}|${S.appointments.length}|${ns}|${dn}`;
+  if (sig !== nsSig) { nsSig = sig; NS = fitNoShow(S.appointments, clientKey, today(), RISK_SOME); }
+  return NS;
+}
 export function riskOf(a) {
   if (!a || a.source === 'walk-in' || !['booked', 'pending_payment'].includes(a.status) || a.date < today()) return null;
   const k = clientKey(a); if (!k) return null;
-  const past = S.appointments.filter(x => x.id !== a.id && x.source !== 'walk-in' && x.date < today() && ['done', 'noshow'].includes(x.status) && clientKey(x) === k);
-  const ns = past.filter(x => x.status === 'noshow').length, n = past.length; if (!ns) return null;
+  const past = S.appointments.filter(x => x.id !== a.id && x.source !== 'walk-in' && x.date < today() && ['done', 'noshow'].includes(x.status) && clientKey(x) === k).sort((x, y) => startOf(x) - startOf(y));
+  const ns = past.filter(x => x.status === 'noshow').length, n = past.length;
+  const M = noShowModel();
+  if (M.ready) {
+    const x = featuresOf(a, past), p = predict(M.model, x), level = p >= RISK_HIGH ? 'high' : p >= RISK_SOME ? 'medium' : null;
+    return level ? { ns, n, p, level, why: reasons(M.model, x), model: true } : null;
+  }
+  if (!ns) return null;
   const rate = ns / n, level = ns >= 2 && rate >= 0.3 ? 'high' : rate >= 0.2 ? 'medium' : null;
   return level ? { ns, n, rate, level } : null;
 }
+const riskWords = R => R.model ? `${Math.round(R.p * 100)}% chance${R.why.length ? ` · ${R.why.join(', ')}` : ''}` : `missed ${R.ns} of ${R.n}`;
 export function riskChip(a) {
   const R = riskOf(a); if (!R) return '';
   if (a.confirmed) return ' ' + chip({ kind: 'good', icon: '✓', label: 'Confirmed by text' });
-  return ` <span class="risk risk-${R.level}" title="Missed ${R.ns} of their last ${R.n} bookings">${R.level === 'high' ? 'High' : 'Some'} no-show risk · missed ${R.ns} of ${R.n}</span><button type="button" class="btn btn-sm btn-ghost risk-btn" data-act="confirmText" data-id="${esc(a.id)}">Text to confirm</button>`;
+  return ` <span class="risk risk-${R.level}" title="${R.model ? `No-show model: ${Math.round(R.p * 100)}% chance. Missed ${R.ns} of ${R.n} past bookings.` : `Missed ${R.ns} of their last ${R.n} bookings`}">${R.level === 'high' ? 'High' : 'Some'} no-show risk · ${esc(riskWords(R))}</span><button type="button" class="btn btn-sm btn-ghost risk-btn" data-act="confirmText" data-id="${esc(a.id)}">Text to confirm</button>`;
 }
 export function confirmModal(a) {
   const sh = info().shop, msg = `Hi ${String(a.name || '').split(' ')[0]}! This is ${sh.name}. Just confirming your booking ${a.date === today() ? 'today' : 'on ' + fmtDate(a.date)} at ${fmtTime(a.time)} with ${staffName(a.barberId)}. Reply YES to confirm, or let us know if you can’t make it. Thank you!`;
   const R = riskOf(a) || { ns: 0, n: 0 };
-  openModal('Text to confirm', `<div class="stack"><p><b>${esc(a.name)}</b> missed ${R.ns} of their last ${R.n} bookings. Send a quick text before the visit; if they don’t answer, you can give the slot to a walk-in.</p>
+  const why = R.model ? `The no-show model gives this booking a <b>${Math.round(R.p * 100)}%</b> chance of a no-show${R.why.length ? ` (${esc(R.why.join(', '))})` : ''}. They missed ${R.ns} of ${R.n} past bookings.` : `missed ${R.ns} of their last ${R.n} bookings.`;
+  openModal('Text to confirm', `<div class="stack"><p><b>${esc(a.name)}</b> ${R.model ? '· ' : ''}${why} Send a quick text before the visit; if they don’t answer, you can give the slot to a walk-in.</p>
     <div class="field"><label for="cf-msg">Message</label><textarea id="cf-msg" rows="4">${esc(msg)}</textarea></div>
     <p class="muted small">Number: <b>${esc(a.phone || 'none')}</b></p>
     <div class="modal-f"><button type="button" class="btn btn-ghost" data-act="cfCopy">Copy message</button>${a.phone ? `<a class="btn" data-act="cfSms" data-id="${esc(a.id)}" href="sms:${esc(a.phone)}?body=${encodeURIComponent(msg)}">Open in Messages</a>` : ''}<button type="button" class="btn btn-primary" data-act="markConfirmed" data-id="${esc(a.id)}">They confirmed</button></div></div>`);
@@ -100,6 +119,7 @@ export function vReports() {
   ${periodBar()}
   <div class="kpis">${kpi('Sales', money(D.total), dPct(D.total, P.total))}${kpi('Clients served', D.count, dPct(D.count, P.count))}${kpi('Average ticket', money(D.avg), dPct(D.avg, P.avg))}${kpi('Returning clients', pct(D.repeat), `<span class="d">${D.returning} of ${D.keys} known clients came before</span>`)}${kpi('No-show rate', pct(D.nsRate), `<span class="d">${D.ns} of ${D.appts.length} bookings · before: ${pct(P.nsRate)}</span>`)}</div>
   ${forecastPanel()}
+  ${accuracyPanel()}
   <section class="panel rep" data-rep="month"><div class="panel-h"><h2>This month vs last month</h2>${exportBtns('month')}</div>
     <p class="muted small">Days 1–${dToday}: <b>${money(cmTo)}</b> this month vs <b>${money(pmTo)}</b> last month ${dPct(cmTo, pmTo)}</p>
     ${barChart(bk, [{ name: 'This month', cls: 's1', values: cm }, { name: 'Last month', cls: 's2', values: pm }])}</section>
@@ -119,16 +139,26 @@ export function vReports() {
 // ================= FORECAST =================
 // Same-weekday average over the last 8 weeks, times the recent trend (last 4 weeks ÷ the 4 before, kept between
 // 0.8 and 1.25). Capacity = barbers working that day × 1 client an hour. 80%+ of capacity = busy, 30% or less = slow.
+// Forecast for each weekday: a weighted average of the same weekday over the last 8 weeks (last week counts most,
+// each older week 0.7× as much), times a damped recent trend (square root of the last 4 weeks vs the 4 before, per
+// day with sales, kept between −10% and +15%). Days with no sales at all (closed, or before records began) are left out.
+export const FC_WEEKS = 8, FC_DECAY = 0.7, FC_TREND = 0.5; // tuned on the accuracy check: a damped trend (square root) misses least
 export function forecastModel(asOf = today()) {
-  const from = addDays(asOf, -56), win = S.sales.filter(s => s.date >= from && s.date < asOf);
-  const a4 = sum(win.filter(s => s.date >= addDays(asOf, -28)), netOf), b4 = sum(win.filter(s => s.date < addDays(asOf, -28)), netOf);
-  const trend = b4 > 0 ? Math.min(1.25, Math.max(0.8, a4 / b4)) : 1;
-  const occ = Array(7).fill(0); for (let i = 1; i <= 56; i++) occ[parseYmd(addDays(asOf, -i)).getDay()]++;
-  const cnt = Array(7).fill(0), rev = Array(7).fill(0), cells = Array.from({ length: 7 }, () => ({}));
+  const from = addDays(asOf, -FC_WEEKS * 7), win = S.sales.filter(s => s.date >= from && s.date < asOf);
+  const byDay = new Map(); win.forEach(s => { const o = byDay.get(s.date) || { n: 0, v: 0, h: {} }; o.n++; o.v += netOf(s); byDay.set(s.date, o); });
   const barberSale = s => { const b = staffById(s.barberId); return !b || (b.role || 'barber') === 'barber'; };
-  win.forEach(s => { const d = parseYmd(s.date).getDay(); cnt[d]++; rev[d] += netOf(s); if (s.time && barberSale(s)) { const h = +s.time.slice(0, 2); cells[d][h] = (cells[d][h] || 0) + 1; } });
-  cells.forEach((c, d) => Object.keys(c).forEach(h => { c[h] = occ[d] ? c[h] / occ[d] * trend : 0; }));
-  return { trend, cells, clients: cnt.map((n, d) => occ[d] ? n / occ[d] * trend : 0), sales: rev.map((v, d) => occ[d] ? v / occ[d] * trend : 0), weeks: 8 };
+  win.forEach(s => { if (s.time && barberSale(s)) { const o = byDay.get(s.date), h = +s.time.slice(0, 2); o.h[h] = (o.h[h] || 0) + 1; } });
+  // trend: average clients per recorded day, last 4 weeks vs the 4 before
+  const per = (a, b) => { let n = 0, c = 0; for (let i = a; i <= b; i++) { const o = byDay.get(addDays(asOf, -i)); if (!o) continue; c++; n += o.n; } return c ? n / c : 0; };
+  const recent = per(1, 28), before = per(29, 56), trend = before > 0 && recent > 0 ? Math.min(1.15, Math.max(0.9, (recent / before) ** FC_TREND)) : 1;
+  const W = Array(7).fill(0), cnt = Array(7).fill(0), rev = Array(7).fill(0), cells = Array.from({ length: 7 }, () => ({}));
+  for (let i = 1; i <= FC_WEEKS * 7; i++) {
+    const d = addDays(asOf, -i), o = byDay.get(d); if (!o) continue; // a day with no sales at all: closed, or before records began
+    const dow = parseYmd(d).getDay(), w = FC_DECAY ** Math.floor((i - 1) / 7);
+    W[dow] += w; cnt[dow] += w * o.n; rev[dow] += w * o.v; Object.keys(o.h).forEach(h => { cells[dow][h] = (cells[dow][h] || 0) + w * o.h[h]; });
+  }
+  cells.forEach((c, d) => Object.keys(c).forEach(h => { c[h] = W[d] ? c[h] / W[d] * trend : 0; }));
+  return { trend, cells, clients: cnt.map((n, d) => W[d] ? n / W[d] * trend : 0), sales: rev.map((v, d) => W[d] ? v / W[d] * trend : 0), weeks: FC_WEEKS };
 }
 export const workingOn = d => serviceStaff().filter(b => b.active !== false && (b.role || 'barber') === 'barber' && (b.days || [0, 1, 2, 3, 4, 5, 6]).includes(parseYmd(d).getDay()) && !leaveOn(b, d)); // barbers: haircuts are most of the demand
 export function runs(hours, test) { const out = []; let st = null; hours.forEach((h, i) => { if (test(h)) { if (st === null) st = h; } else if (st !== null) { out.push([st, hours[i - 1] + 1]); st = null; } }); if (st !== null) out.push([st, hours[hours.length - 1] + 1]); return out; }
@@ -151,7 +181,61 @@ export function forecastPanel() {
     ${tips.length ? `<ul class="fc-tips">${tips.sort((x, y) => (x.kind === 'busy' ? 0 : 1) - (y.kind === 'busy' ? 0 : 1)).slice(0, 6).map(t => `<li class="fc-${t.kind}"><span>${t.kind === 'busy' ? '▲' : '▽'}</span><div>${t.text}</div></li>`).join('')}</ul>` : '<p class="muted">No busy or slow stretches expected this week.</p>'}
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Day</th><th class="r">Expected clients</th><th class="r">Expected sales</th><th class="r">Booked so far</th><th class="r">Barbers</th><th>Busy hours</th></tr></thead><tbody>
     ${rows.map(x => `<tr><td class="nowrap"><b>${x.d === today() ? 'Today' : DAYS[x.dow] + ' ' + shortDate(x.d)}</b></td><td class="r">${Math.round(x.clients * 0.85)}–${Math.round(x.clients * 1.15)}</td><td class="r">${money(Math.round(x.sales / 100) * 100)}</td><td class="r">${x.booked}</td><td class="r">${x.cap}</td><td class="small">${x.busy.length ? x.busy.map(([a, b]) => hrLabel(a, b)).join(', ') : '<span class="muted">—</span>'}</td></tr>`).join('')}</tbody></table></div>
-    <p class="muted small" style="margin-top:10px">How it works: the average for the same weekday over the last ${M.weeks} weeks, adjusted for the recent trend (${M.trend >= 1 ? '+' : ''}${Math.round((M.trend - 1) * 100)}% vs the 4 weeks before). Busy = 80%+ of what the barbers working that day can take (one client an hour each).${mape !== null ? ` Over the last 14 days it was off by about <b>${Math.round(mape * 100)}%</b> on average.` : ''}</p></section>`;
+    <p class="muted small" style="margin-top:10px">How it works: a weighted average of the same weekday over the last ${M.weeks} weeks (recent weeks count more), adjusted for a damped recent trend (${M.trend >= 1 ? '+' : ''}${Math.round((M.trend - 1) * 100)}% vs the 4 weeks before). Busy = 80%+ of what the barbers working that day can take (one client an hour each).${mape !== null ? ` Over the last 14 days it was off by about <b>${Math.round(mape * 100)}%</b> on average.` : ''}</p></section>`;
+}
+// ================= PREDICTION ACCURACY =================
+// How well the forecast and the no-show model have done, measured on days and bookings they didn't learn from.
+// For the owner deciding how much to trust them (and for the capstone write-up: every number here can be exported).
+const pctOr = v => v == null ? '—' : `${Math.round(v * 100)}%`;
+export function forecastScores(days = 28) {
+  const cnt = d => S.sales.filter(s => s.date === d).length;
+  const rows = Array.from({ length: days }, (_, i) => addDays(today(), -(i + 1))).map(d => {
+    const dow = parseYmd(d).getDay(), last7 = Array.from({ length: 7 }, (_, k) => cnt(addDays(d, -(k + 1))));
+    return { d, actual: cnt(d), model: forecastModel(d).clients[dow], lastWeek: last7[6], avg7: sum(last7, x => x) / 7 };
+  });
+  return { rows, score: scoreForecasts(rows) };
+}
+export function accuracyPanel() {
+  const F = forecastScores(), fs = F.score, M = noShowModel();
+  const names = { model: 'Our forecast (same weekday, 8 weeks weighted, trend)', lastWeek: 'Guess: same as last week', avg7: 'Guess: average of the last 7 days' };
+  const best = ['lastWeek', 'avg7'].map(k => fs[k]).filter(Boolean).sort((a, b) => a.mae - b.mae)[0];
+  const gain = fs.model && best && best.mae ? 1 - fs.model.mae / best.mae : null;
+  REP.accuracy = [['Section', 'Method', 'Average miss (clients a day)', 'Average % off', 'Days or bookings checked'],
+    ...Object.keys(names).filter(k => fs[k]).map(k => ['Forecast', names[k], +fs[k].mae.toFixed(2), +(fs[k].mape * 100).toFixed(1), fs[k].n])];
+  let ns = `<p class="muted">The no-show model needs more history first: ${M.rows} finished bookings and ${M.noshows} no-shows so far (it needs ${MIN_ROWS} and ${MIN_NOSHOWS}). Until then the risk tags use the simple rule: missed 2 or more, 30% of the time.</p>`;
+  if (M.ready) {
+    const E = M.eval, R = M.rule, w = M.model.w.map((v, j) => ({ j, v })).sort((a, b) => Math.abs(b.v) - Math.abs(a.v)), wmax = Math.max(...w.map(x => Math.abs(x.v))) || 1;
+    REP.accuracy.push([], ['No-show', 'Method', 'AUC', 'Accuracy', 'Precision', 'Recall', 'Bookings checked'],
+      ['No-show', 'Learned model', +E.auc.toFixed(3), +E.accuracy.toFixed(3), E.precision == null ? '' : +E.precision.toFixed(3), E.recall == null ? '' : +E.recall.toFixed(3), M.test],
+      ['No-show', 'Old rule', R.auc == null ? '' : +R.auc.toFixed(3), +R.accuracy.toFixed(3), R.precision == null ? '' : +R.precision.toFixed(3), R.recall == null ? '' : +R.recall.toFixed(3), M.test],
+      ['No-show', 'Assume everyone comes', 0.5, +M.usual.accuracy.toFixed(3), '', 0, M.test],
+      [], ['No-show factor', 'Weight (per standard deviation)', 'Effect'], ...w.map(x => [FEATURES[x.j][1], +x.v.toFixed(3), x.v > 0 ? 'raises risk' : 'lowers risk']));
+    ns = `<div class="acc-kpis">
+        <div class="kpi"><span>Tells no-shows apart (AUC)</span><b>${E.auc.toFixed(2)}</b><small>0.5 is guessing, 1.0 is perfect. Old rule: ${R.auc == null ? '—' : R.auc.toFixed(2)}</small></div>
+        <div class="kpi"><span>No-shows it flagged</span><b>${pctOr(E.recall)}</b><small>${E.tp} of ${E.testNoshows} in the test bookings</small></div>
+        <div class="kpi"><span>Flags that were right</span><b>${pctOr(E.precision)}</b><small>${E.tp} of ${E.tp + E.fp} flagged didn't come</small></div>
+      </div>
+      <div class="acc-grid">
+        <div class="tbl-wrap"><table class="tbl"><caption class="sr-only">No-show model compared with the old rule</caption><thead><tr><th>Method</th><th class="r">AUC</th><th class="r">Accuracy</th><th class="r">Precision</th><th class="r">Recall</th></tr></thead><tbody>
+          <tr><td><b>Learned model</b></td><td class="r"><b>${E.auc.toFixed(2)}</b></td><td class="r">${pctOr(E.accuracy)}</td><td class="r">${pctOr(E.precision)}</td><td class="r">${pctOr(E.recall)}</td></tr>
+          <tr><td>Old rule (missed 2+, 30%)</td><td class="r">${R.auc == null ? '—' : R.auc.toFixed(2)}</td><td class="r">${pctOr(R.accuracy)}</td><td class="r">${pctOr(R.precision)}</td><td class="r">${pctOr(R.recall)}</td></tr>
+          <tr><td>Assume everyone comes</td><td class="r">0.50</td><td class="r">${pctOr(M.usual.accuracy)}</td><td class="r">—</td><td class="r">0%</td></tr></tbody></table></div>
+        <div><table class="cm" aria-label="Test bookings: what the model said and what happened"><thead><tr><th></th><th scope="col">Didn’t come</th><th scope="col">Came</th></tr></thead><tbody>
+          <tr><th scope="row">Flagged</th><td class="cm-ok">${E.tp}</td><td class="cm-no">${E.fp}</td></tr>
+          <tr><th scope="row">Not flagged</th><td class="cm-no">${E.fn}</td><td class="cm-ok">${E.tn}</td></tr></tbody></table>
+          <p class="muted small">Test bookings, flagged at ${Math.round(M.thr * 100)}% chance or more (the “Some risk” tag).</p></div>
+      </div>
+      <h3 class="acc-h">What the model learned</h3>
+      <ul class="acc-w">${w.map(x => `<li><span>${esc(FEATURES[x.j][1])}</span><i aria-hidden="true"><b class="${x.v > 0 ? 'up' : 'dn'}" style="width:${Math.round(Math.abs(x.v) / wmax * 100)}%"></b></i><em>${Math.abs(x.v) < 0.05 ? 'little effect' : x.v > 0 ? 'raises risk' : 'lowers risk'}</em></li>`).join('')}</ul>
+      <p class="muted small">Logistic regression trained on the oldest ${M.train} of ${M.rows} finished bookings and tested on the newest ${M.test} (it never saw those while learning). It retrains by itself as bookings come in. Accuracy alone can look good by guessing “everyone comes”, because most clients do, so AUC and recall matter more here.</p>`;
+  }
+  return `<section class="panel rep" data-rep="accuracy"><div class="panel-h"><h2>How accurate the predictions are</h2>${exportBtns('accuracy')}</div>
+    <h3 class="acc-h">Sales forecast, last 28 days</h3>
+    ${fs.model ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Method</th><th class="r">Average miss</th><th class="r">Average % off</th></tr></thead><tbody>
+      ${Object.keys(names).filter(k => fs[k]).map(k => `<tr${k === 'model' ? ' class="acc-best"' : ''}><td>${k === 'model' ? `<b>${names[k]}</b>` : names[k]}</td><td class="r">${fs[k].mae.toFixed(1)} clients a day</td><td class="r">${(fs[k].mape * 100).toFixed(0)}%</td></tr>`).join('')}</tbody></table></div>
+      <p class="muted small">${gain == null ? '' : gain > 0 ? `The forecast misses by ${Math.round(gain * 100)}% less than the better simple guess. ` : `The forecast isn’t beating a simple guess yet (often the case with little history). `}Each day is predicted only from sales before that day.</p>` : '<p class="muted">Not enough sales yet to check the forecast.</p>'}
+    <h3 class="acc-h">No-show model</h3>
+    ${ns}</section>`;
 }
 Object.assign(ACT, {
   cutPrev() { S.cutoff = cutoffShift(S.cutoff, -1); render(); },
