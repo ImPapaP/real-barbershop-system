@@ -1,12 +1,30 @@
 // Staff sign-in page (the dashboard's own login, at the same unlisted address as the dashboard).
 // Signs in with email and password, checks the account has dashboard access (admins/{uid}), then opens the dashboard.
 import { db, login, logout, resetPassword, onAuth, demo } from './fb.js';
-import { $, esc, STARTER, brand } from './shared.js';
+import { $, esc, STARTER, brand, phNow, fmtTime, DAYS, MONTHS } from './shared.js';
 
 const next = (() => { const n = new URLSearchParams(location.search).get('next') || ''; return /^#[\w-]*$/.test(n) ? n : ''; })();
 const S = { busy: false, err: '', msg: '', show: false, checking: true, email: '' };
 try { S.email = localStorage.getItem('rb-last-email') || ''; } catch (_) {}
 const shop = STARTER.shop;
+let hours = STARTER.hours;
+db.doc('public/info').get().then(d => { if (d.exists && Array.isArray(d.data().hours)) { hours = d.data().hours; tick(); } }).catch(() => {});
+// shop status and the time, in Philippine time
+function status() {
+  const n = phNow(), h = hours.find(x => x.d === n.dow) || {}, fmt = t => fmtTime(t).replace(':00', '');
+  if (!h.closed && h.open && n.time >= h.open && n.time < h.close) return { open: true, text: `Open now · until ${fmt(h.close)}` };
+  if (!h.closed && h.open && n.time < h.open) return { open: false, text: `Opens at ${fmt(h.open)}` };
+  for (let i = 1; i <= 7; i++) { const x = hours.find(y => y.d === (n.dow + i) % 7); if (x && !x.closed && x.open) return { open: false, text: `Closed · opens ${i === 1 ? 'tomorrow' : DAYS[x.d]} ${fmt(x.open)}` }; }
+  return { open: false, text: 'Closed' };
+}
+const greet = () => { const m = phNow().min; return m < 720 ? 'Good morning' : m < 1080 ? 'Good afternoon' : 'Good evening'; };
+const dateLine = () => { const n = phNow(), d = new Date(n.date + 'T00:00:00'); return `${DAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`; };
+function tick() {
+  const c = $('#si-clock'), st = $('#si-status'), g = $('#si-greet'); if (!c) return;
+  c.textContent = fmtTime(phNow().time); const x = status(); st.textContent = x.text; st.parentElement.classList.toggle('open', x.open);
+  if (g) g.textContent = greet();
+}
+setInterval(tick, 20000);
 
 const IC = {
   mail: '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4.5" width="15" height="11" rx="2"/><path d="m3 5.5 7 5.5 7-5.5"/></svg>',
@@ -15,7 +33,7 @@ const IC = {
 };
 function render() {
   const a = document.activeElement, id = a && a.id, val = id === 'si-email' ? a.value : null, pv = $('#si-pass') ? $('#si-pass').value : '';
-  const hr = new Date().getHours(), hello = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
+  const st = status();
   $('#app').innerHTML = `<main class="si">
     <aside class="si-brand" aria-hidden="true"><div class="si-brand-in">
       <img class="si-mark" src="../assets/logo.png" alt="" width="88" height="88">
@@ -25,8 +43,14 @@ function render() {
     <section class="si-main"><div class="si-box">
       <a class="si-back" href="../">${IC.arrow}<span>Website</span></a>
       <img class="si-logo-sm" src="../assets/logo.png" alt="" width="64" height="64">
-      <p class="si-eyebrow">${hello}</p><h1 class="si-h">Staff sign in</h1>
-      <p class="si-sub">Use the email and password the owner gave you. You’ll see the pages for your role.</p>
+      <div class="si-head">
+        <div class="si-meta"><span class="si-pill${st.open ? ' open' : ''}"><i></i><span id="si-status">${esc(st.text)}</span></span><span class="si-date">${esc(dateLine())} · <b id="si-clock">${fmtTime(phNow().time)}</b></span></div>
+        <p class="si-eyebrow">Staff sign in</p>
+        <h1 class="si-h"><span id="si-greet">${greet()}</span><span class="si-dot">.</span></h1>
+        <p class="si-sub">Sign in to start your shift.</p>
+        <div class="si-roles" aria-label="One sign-in for every role"><span>Owner</span><span>Receptionist</span><span>Barber</span></div>
+        <p class="si-note">One sign-in for everyone. The dashboard opens with just the pages for your role.</p>
+      </div>
       ${S.checking ? '<div class="si-wait"><span class="spinner"></span><span>Checking your sign-in…</span></div>' : `
       <form id="si-form" class="si-form" novalidate>
         <label class="si-field" for="si-email"><span class="si-lbl">Email</span><span class="si-in">${IC.mail}<input id="si-email" type="email" inputmode="email" autocomplete="username" placeholder="name@example.com" value="${esc(val ?? S.email)}" required></span></label>
