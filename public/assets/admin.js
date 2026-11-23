@@ -178,7 +178,7 @@ function render() {
 function view() { return demoBar() + inner(); }
 function inner() {
   if (!S.ready) return `<div class="center"><div><span class="spinner"></span><p class="muted">Opening the dashboard…</p></div></div>`;
-  if (!S.user) return loginView();
+  if (!S.user) { location.replace('login.html' + (location.hash && location.hash !== '#' ? '?next=' + encodeURIComponent(location.hash) : '')); return '<div class="center"><span class="spinner"></span></div>'; } // signed out: the staff sign-in page
   if (!S.canAdmin) return gate('No dashboard access', `You’re signed in as ${S.user.email}, but this account has no dashboard access yet. Ask the owner to give you a sign-in in Staff → Edit → Sign-in.`, true);
   const tab = route();
   const attention = S.appointments.filter(a => a.status === 'needs_attention' || (a.conflict && ['booked', 'pending_payment'].includes(a.status))).length;
@@ -194,16 +194,6 @@ function inner() {
   </div>`;
 }
 function gate(title, msg, signOut) { return `<div class="center"><div><img class="logo-hero" src="${LOGO_LG}" alt="" width="180" height="180"><h1 style="font:400 30px/1.1 var(--f-slab)">${esc(title)}</h1><p class="muted">${esc(msg)}</p>${signOut ? '<button class="btn" data-act="logout">Sign out</button>' : ''}</div></div>`; }
-function loginView() {
-  return `<div class="center"><form class="panel stack" data-form="login" style="width:min(100%,380px);text-align:left">
-    <img class="logo-hero" src="${LOGO_LG}" alt="${esc(info().shop.name)}" width="180" height="180"><h1 style="font:400 28px/1.1 var(--f-slab);text-align:center">Staff sign in</h1>
-    ${field('Email', `<input id="l-email" name="email" type="email" autocomplete="username" required>`, 'l-email')}
-    ${field('Password', `<input id="l-pass" name="pass" type="password" autocomplete="current-password" required>`, 'l-pass')}
-    ${demo ? `<div class="hint stack" style="gap:8px"><span>Demo: any password works. Sign in as</span><div class="row">${[['alex@demo.realbarbers', 'Owner (Alex)'], ['airyl@demo.realbarbers', 'Receptionist (Airyl)'], ['lyndon@demo.realbarbers', 'Barber (Lyndon)']].map(([e, l]) => `<button type="button" class="btn btn-sm" data-act="demoAs" data-email="${e}">${l}</button>`).join('')}</div></div>` : ''}${S.loginErr ? `<p class="err" role="alert">${esc(S.loginErr)}</p>` : ''}${S.loginMsg ? `<p class="hint">${esc(S.loginMsg)}</p>` : ''}
-    <button class="btn btn-primary btn-lg" type="submit" ${S.loginBusy ? 'disabled' : ''}>${S.loginBusy ? 'Signing in…' : 'Sign in'}</button>
-    <button type="button" class="btn btn-ghost btn-sm" data-act="forgot">Forgot password?</button>
-  </form></div>`;
-}
 function loadingNote() {
   if (!COLS.some(c => !S.loaded[c])) return '';
   return `<div class="banner" role="status"><span>${S.slow ? 'Shop records can’t be reached right now. What you see may be incomplete.' : 'Loading shop records…'}</span></div>`;
@@ -1865,12 +1855,6 @@ const FORM = {
     const list = faqOwn(); if (i >= 0) list[i] = { q, a }; else list.push({ q, a });
     if (await saveInfo({ faq: list })) { closeModal(); toast('FAQ saved'); }
   },
-  async login(f) {
-    const fd = new FormData(f); S.loginBusy = true; S.loginErr = ''; S.loginMsg = ''; render();
-    try { await login(String(fd.get('email')).trim(), String(fd.get('pass'))); }
-    catch (e) { S.loginErr = /invalid|wrong|not-found|credential/i.test(e.code || e.message) ? 'Wrong email or password.' : /too-many/i.test(e.code || '') ? 'Too many attempts. Wait a few minutes and try again.' : 'Couldn’t sign in. Check your connection.'; }
-    S.loginBusy = false; render();
-  },
   async appt(f) {
     const fd = new FormData(f), mode = f.dataset.mode, id = f.dataset.id || newId();
     const name = String(fd.get('name') || '').trim(), phone = String(fd.get('phone') || '').trim(), svc = fd.getAll('svc');
@@ -2279,7 +2263,6 @@ function loginFields(b) {
 
 // ================= ACTIONS & FORMS for the above =================
 Object.assign(ACT, {
-  demoAs(el) { const f = $('form[data-form="login"]'); if (f) { f.querySelector('#l-email').value = el.dataset.email; f.querySelector('#l-pass').value = 'demo'; f.requestSubmit(); } },
   allMine() { S.allMine = true; render(); },
   lockNow() { S.elevUntil = 0; if (myRole() !== 'owner') stopBossWatches(); call('pinLock').catch(() => {}); toast('Owner pages locked'); render(); },
   clockQr() { clockModal(); },

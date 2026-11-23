@@ -6,7 +6,7 @@ Replaces Setmore with your own booking system on Firebase.
 - **Online booking**: the customer picks services, a barber, a date and a free time, then pays the ₱200 deposit through PayMongo (GCash, Maya, card, QR Ph). The slot is held for 15 minutes while they pay. Once paid, the booking is confirmed by email and text.
 - **Booking page** (`/booking.html`): the link in the customer's email. They can check the booking, reschedule up to 48 hours before, or cancel.
 - **Reminders**: an email and a text the day before, and a text 2 hours before.
-- **Dashboard** (`/admin/`): schedule and walk-in queue, checkout (with the online deposit credited), income and expenses with profit, barber commissions and payouts, clients with loyalty, inventory, and shop setup.
+- **Dashboard** (`/r3al-hq-7m2k/`, unlisted): schedule and walk-in queue, checkout (with the online deposit credited), income and expenses with profit, barber commissions and payouts, clients with loyalty, inventory, and shop setup.
 
 ## Live preview
 
@@ -81,7 +81,7 @@ This uploads the website and the database security rules. The site is now at `ht
 
 #### 5. Load the menu and team
 
-Open `https://<your-project-id>.web.app/admin/`, sign in, and click **Load starter menu**. It saves REAL Barbers' Setmore services and prices and a starter team (Deluxe: Lyndon, Roderick, Reymart, Angelo; Regular: Joe Ed, Renz, Jay, Vince, Mac; Dave for women’s services), the real Setmore reviews, and the GCash number for down payments. Then:
+Open `https://<your-project-id>.web.app/r3al-hq-7m2k/login.html`, sign in, and click **Load starter menu**. It saves REAL Barbers' Setmore services and prices and a starter team (Deluxe: Lyndon, Roderick, Reymart, Angelo; Regular: Joe Ed, Renz, Jay, Vince, Mac; Dave for women’s services), the real Setmore reviews, and the GCash number for down payments. Then:
 
 - **Barbers**: fix names, days in, commission rates, and who takes men's or women's bookings.
 - **Shop setup**: check the address, hours, prices and durations. Setmore listed every service as 1 hour; the starter menu uses realistic times instead (haircuts at least 45 min: Regular and Signature 45 min, Deluxe 1 hr, promos 1 hr 15 min to 2 hrs, rebond 4 hrs and so on). Adjust any that don’t match your shop. The length decides how long the chair is blocked online.
@@ -203,7 +203,11 @@ Men first choose **Deluxe** or **Regular**. Only that level's haircuts are shown
 
 ## Opening the dashboard
 
-The website has no link to the dashboard, and its address isn't in the public pages' code. Open it directly at **your-site/admin/** (on the preview: https://impapap.github.io/real-barbershop-system/admin/) and bookmark it. Search engines are told not to list it. It still needs a sign-in, so the hidden address isn't the only protection.
+- **Address:** the dashboard has an address that's hard to guess: **your-site/r3al-hq-7m2k/**. On the preview that's https://impapap.github.io/real-barbershop-system/r3al-hq-7m2k/login.html. Bookmark it, and only give it to staff.
+- **Hidden from the website:** no link to it, and it isn't in the public pages' code. Search engines are told not to list it. The old `/admin/` address no longer works.
+- **Signing in:** its own page, **login.html**: email and password, show/hide password, and "Forgot password?". After signing in it opens the dashboard, or the page you were trying to open. An account without dashboard access is signed out with a message. Opening the dashboard while signed out goes to the sign-in page.
+- **Moving it:** rename the `public/r3al-hq-7m2k` folder, change `DASH` in `tools/stamp_assets.py`, and update the two links that use it (`clock.js` "See my day" and the shop's booking email in `functions/index.js`).
+- **Protection:** the hidden address is only extra. The sign-in and the database rules are what protect the data.
 
 ## Staff sign-ins, owner PIN and activity log
 
@@ -391,7 +395,8 @@ functions/
 public/
   index.html              website
   booking.html            customer's booking page
-  admin/index.html        dashboard
+  r3al-hq-7m2k/index.html   dashboard (unlisted address)
+  r3al-hq-7m2k/login.html   staff sign-in page
   assets/firebase-config.js   paste your Firebase web config here
   assets/shared.js        helpers, availability, REAL Barbers starter menu
   assets/fb.js            picks the backend: Firebase when configured, otherwise demo mode

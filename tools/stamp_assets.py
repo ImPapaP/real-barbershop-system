@@ -12,7 +12,8 @@ assets = sorted(p for p in (pub / 'assets').iterdir() if p.suffix in ('.js', '.c
 ver = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()[:10] for p in assets}
 
 build = hashlib.sha256(''.join(f'{n}{v}' for n, v in sorted(ver.items())).encode()).hexdigest()[:10]
-pages = [pub / 'index.html', pub / 'booking.html', pub / 'terms.html', pub / 'privacy.html', pub / 'receipt.html', pub / 'account.html', pub / 'clock.html', pub / 'admin' / 'index.html']
+DASH = 'r3al-hq-7m2k'  # the dashboard's unlisted folder (change it here and rename the folder to move it)
+pages = [pub / 'index.html', pub / 'booking.html', pub / 'terms.html', pub / 'privacy.html', pub / 'receipt.html', pub / 'account.html', pub / 'clock.html', pub / DASH / 'index.html', pub / DASH / 'login.html']
 # Build id covers the pages' own markup too (minus the stamp itself)
 strip = lambda h: re.sub(r'<meta name="build"[^>]*>\n?|<script id="fresh">.*?</script>\n?', '', re.sub(r'\?v=\w+', '', h), flags=re.S)
 build = hashlib.sha256((build + ''.join(strip(p.read_text()) for p in pages)).encode()).hexdigest()[:10]
@@ -25,10 +26,10 @@ FRESH = ('<script id="fresh">(function(){var b=document.querySelector(\'meta[nam
          '}).catch(function(){})})()</script>')
 for page in pages:
     html = page.read_text()
-    pre = '../assets/' if page.parent.name == 'admin' else 'assets/'
+    pre = '../assets/' if page.parent.name == DASH else 'assets/'
     key = pre if pre.startswith('.') else './' + pre  # import map keys must look like URLs
     # the public pages don't mention the dashboard's own files, so its address isn't in their source
-    admin_only = {'admin.js', 'xlsx.js'} if page.parent.name != 'admin' else set()
+    admin_only = {'admin.js', 'xlsx.js', 'signin.js'} if page.parent.name != DASH else set()
     imap = {'imports': {f'{key}{n}': f'{key}{n}?v={v}' for n, v in ver.items() if n.endswith('.js') and n not in admin_only}}
     block = f'<script type="importmap" id="asset-versions">{json.dumps(imap, separators=(",", ":"))}</script>\n'
     html = re.sub(r'<script type="importmap" id="asset-versions">.*?</script>\n', '', html, flags=re.S)

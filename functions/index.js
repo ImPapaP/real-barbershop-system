@@ -88,7 +88,7 @@ async function notify(kind, id, a, info, { sms = true, email = true, shop = null
   const results = {};
   if (sms && a.phone) results.sms = await sendSms(smsCfg, a.phone, smsText(kind, v, info));
   if (email && a.email && a.token) results.email = await sendEmail(mailCfg, a.email, emailContent(kind, v, info, bookingLink(id, a.token)));
-  if (shop) results.shop = await sendEmail(mailCfg, SHOP_EMAIL.value(), emailContent(shop, v, info, `${site()}/admin/#schedule`));
+  if (shop) results.shop = await sendEmail(mailCfg, SHOP_EMAIL.value(), emailContent(shop, v, info, `${site()}/r3al-hq-7m2k/#schedule`));
   await apptRef(id).update({ notices: FieldValue.arrayUnion({ at: Date.now(), kind, ...results }) }).catch(() => {});
   return results;
 }
