@@ -1,7 +1,7 @@
 // Staff sign-in page (the dashboard's own login, at the same unlisted address as the dashboard).
 // Signs in with email and password, checks the account has dashboard access (admins/{uid}), then opens the dashboard.
 import { db, login, logout, resetPassword, onAuth, demo } from './fb.js';
-import { $, esc, STARTER, brand, phNow, fmtTime, DAYS, MONTHS } from './shared.js';
+import { $, esc, STARTER, brand, themeBtn, phNow, fmtTime, DAYS, MONTHS } from './shared.js';
 
 const next = (() => { const n = new URLSearchParams(location.search).get('next') || ''; return /^#[\w-]*$/.test(n) ? n : ''; })();
 const S = { busy: false, err: '', msg: '', show: false, checking: true, email: '' };
@@ -58,7 +58,7 @@ function render() {
       <ul class="si-feats"><li>Schedule and walk-ins</li><li>Checkout and receipts</li><li>Pay, time in and payslips</li></ul>
       <p class="si-addr">${esc(shop.name)} · ${esc((shop.address || '').split(',').slice(-2).join(',').trim() || 'Antipolo')}</p></div></aside>
     <section class="si-main"><div class="si-box">
-      <a class="si-back" href="../">${IC.arrow}<span>Website</span></a>
+      <div class="si-top"><a class="si-back" href="../">${IC.arrow}<span>Website</span></a>${themeBtn()}</div>
       <img class="si-logo-sm" src="../assets/logo.png" alt="" width="64" height="64">
       <div class="si-head">
         <div class="si-meta"><span class="si-pill${st.open ? ' open' : ''}"><i></i><span id="si-status">${esc(st.text)}</span></span><span class="si-date">${esc(dateLine())} · <b id="si-clock">${fmtTime(phNow().time)}</b></span></div>
