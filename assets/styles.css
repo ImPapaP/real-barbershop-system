@@ -1490,3 +1490,19 @@ input[data-cust][aria-expanded="true"]{background-image:url("data:image/svg+xml,
 .risk-high{background:color-mix(in srgb,var(--bad) 14%,var(--surface));color:var(--bad)}
 .risk-medium{background:color-mix(in srgb,var(--warn,#b7791f) 16%,var(--surface));color:var(--warn,#8a5a00)}
 .risk-btn{margin-left:4px;padding:2px 8px;min-height:26px;font-size:12px}
+
+/* ---------- staff sign-in page ---------- */
+.signin-pg{min-height:100svh;display:grid;place-items:center;padding-block:32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));background:radial-gradient(1200px 600px at 50% -10%,color-mix(in srgb,var(--accent) 14%,var(--bg)),var(--bg))}
+.signin-card{width:min(100%,400px);display:grid;gap:14px;padding:28px 24px;background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.12)}
+.signin-logo{justify-self:center;width:104px;height:104px;object-fit:contain}
+.signin-card .eyebrow{text-align:center;margin:0}
+.signin-card h1{text-align:center;font:400 30px/1.05 var(--f-slab);margin:0 0 4px}
+.signin-card .link-btn{justify-self:center}
+.center-t{text-align:center}
+.pw-wrap{position:relative}
+.pw-wrap input{padding-right:64px}
+.pw-eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:none;font:600 13px/1 var(--f-body);color:var(--muted);padding:8px;cursor:pointer}
+.pw-eye:hover{color:var(--ink)}
+.ok-msg{margin:0;color:var(--good);font-size:14px}
+.signin-demo{border-top:1px dashed var(--line);padding-top:12px;display:grid;gap:8px}
+.signin-foot{text-align:center;margin:4px 0 0}

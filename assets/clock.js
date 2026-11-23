@@ -28,10 +28,10 @@ function body() {
       <h1>${S.done.action === 'in' ? (late ? `${r.lateMin} minute${r.lateMin === 1 ? '' : 's'} late` : `On time. Have a good day, ${esc(S.done.name.split(' ')[0])}!`) : `See you next time, ${esc(S.done.name.split(' ')[0])}`}</h1>
       ${late ? `<p>${r.fine ? `${m(r.fine)} comes off your pay (${Math.ceil(r.lateMin / 15)} × ${m(r.rate)} for each started 15 minutes after ${fmtTime(r.start)}).` : 'No deduction for you.'} If there was a good reason, tell the owner: they can excuse it.</p>` : ''}
       ${S.done.action === 'out' && r.inHM ? `<p class="muted">In at ${fmtTime(r.inHM)}, out at ${fmtTime(r.outHM)}.</p>` : ''}
-      <a class="btn btn-lg" href="admin/#me">See my day</a></section>`; }
+      <a class="btn btn-lg" href="r3al-hq-7m2k/#me">See my day</a></section>`; }
   if (!S.peek) return S.err ? `<section class="acct-card"><p class="err">${esc(S.err)}</p><button class="btn" data-act="retry">Try again</button> <button class="btn btn-ghost" data-act="out">Sign out</button></section>` : '<div class="center"><span class="spinner"></span></div>';
   const P = S.peek, r = P.rec, first = P.name.split(' ')[0];
-  if (P.state === 'done') return `<section class="acct-card"><p class="eyebrow">Staff time clock</p><h1>You’re done for today, ${esc(first)}</h1><p class="muted">In at ${fmtTime(r.inHM)}, out at ${fmtTime(r.outHM)}. If that’s wrong, ask the owner to fix it.</p><a class="btn" href="admin/#me">See my day</a></section>`;
+  if (P.state === 'done') return `<section class="acct-card"><p class="eyebrow">Staff time clock</p><h1>You’re done for today, ${esc(first)}</h1><p class="muted">In at ${fmtTime(r.inHM)}, out at ${fmtTime(r.outHM)}. If that’s wrong, ask the owner to fix it.</p><a class="btn" href="r3al-hq-7m2k/#me">See my day</a></section>`;
   return `<section class="acct-card clock-card"><p class="eyebrow">Staff time clock · ${esc(fmtDate(phNow().date, true))}</p>
     <h1>${P.state === 'in' ? `Leaving, ${esc(first)}?` : `Hi, ${esc(first)}`}</h1>
     <p class="muted">${P.state === 'in' ? `You timed in at ${fmtTime(r.inHM)}.` : `Time in by ${fmtTime(P.start)}. It’s ${clockNow()} now.`}</p>
