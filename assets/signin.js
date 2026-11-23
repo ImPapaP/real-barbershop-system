@@ -17,7 +17,24 @@ function status() {
   for (let i = 1; i <= 7; i++) { const x = hours.find(y => y.d === (n.dow + i) % 7); if (x && !x.closed && x.open) return { open: false, text: `Closed · opens ${i === 1 ? 'tomorrow' : DAYS[x.d]} ${fmt(x.open)}` }; }
   return { open: false, text: 'Closed' };
 }
-const greet = () => { const m = phNow().min; return m < 720 ? 'Good morning' : m < 1080 ? 'Good afternoon' : 'Good evening'; };
+// Philippine time: morning until noon, afternoon until 6 PM, evening after (and before 5 AM)
+const greet = () => { const m = phNow().min; return m >= 300 && m < 720 ? 'Good morning' : m >= 720 && m < 1080 ? 'Good afternoon' : 'Good evening'; };
+// A verse for the day (King James Version, public domain); a new one each day
+const VERSES = [
+  ['And whatsoever ye do, do it heartily, as to the Lord, and not unto men.', 'Colossians 3:23'],
+  ['I can do all things through Christ which strengtheneth me.', 'Philippians 4:13'],
+  ['Commit thy works unto the LORD, and thy thoughts shall be established.', 'Proverbs 16:3'],
+  ['This is the day which the LORD hath made; we will rejoice and be glad in it.', 'Psalm 118:24'],
+  ['They are new every morning: great is thy faithfulness.', 'Lamentations 3:23'],
+  ['Be strong and of a good courage; be not afraid, neither be thou dismayed: for the LORD thy God is with thee whithersoever thou goest.', 'Joshua 1:9'],
+  ['And let us not be weary in well doing: for in due season we shall reap, if we faint not.', 'Galatians 6:9'],
+  ['Trust in the LORD with all thine heart; and lean not unto thine own understanding.', 'Proverbs 3:5'],
+  ['They shall run, and not be weary; and they shall walk, and not faint.', 'Isaiah 40:31'],
+  ['Seest thou a man diligent in his business? he shall stand before kings.', 'Proverbs 22:29'],
+  ['Establish thou the work of our hands upon us; yea, the work of our hands establish thou it.', 'Psalm 90:17'],
+  ['Whatsoever thy hand findeth to do, do it with thy might.', 'Ecclesiastes 9:10']
+];
+const verse = () => { const d = new Date(phNow().date + 'T00:00:00'), n = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 864e5); return VERSES[n % VERSES.length]; };
 const dateLine = () => { const n = phNow(), d = new Date(n.date + 'T00:00:00'); return `${DAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`; };
 function tick() {
   const c = $('#si-clock'), st = $('#si-status'), g = $('#si-greet'); if (!c) return;
@@ -48,8 +65,7 @@ function render() {
         <p class="si-eyebrow">Staff sign in</p>
         <h1 class="si-h"><span id="si-greet">${greet()}</span><span class="si-dot">.</span></h1>
         <p class="si-sub">Sign in to start your shift.</p>
-        <div class="si-roles" aria-label="One sign-in for every role"><span>Owner</span><span>Receptionist</span><span>Barber</span></div>
-        <p class="si-note">One sign-in for everyone. The dashboard opens with just the pages for your role.</p>
+        ${(() => { const [t, ref] = verse(); return `<figure class="si-verse"><blockquote>“${esc(t)}”</blockquote><figcaption>${esc(ref)} <span>KJV</span></figcaption></figure>`; })()}
       </div>
       ${S.checking ? '<div class="si-wait"><span class="spinner"></span><span>Checking your sign-in…</span></div>' : `
       <form id="si-form" class="si-form" novalidate>
