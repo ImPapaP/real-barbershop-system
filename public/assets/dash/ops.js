@@ -1,7 +1,7 @@
 // Dashboard · Overview, Schedule (with the end-of-day check) and Checkout pages.
 import { DAYS, bdayDays, cleanBday, esc, fmtTime, lateLimit, priceLabel, sum } from '../shared.js';
 import { APPT, METHODS, S } from './state.js';
-import { $, activeServices, activeStaff, addDays, ago, apptRow, apptsOn, assignSelect, av, barChart, bdayPromoText, bdayWhen, buckets, chip, cur, custStats, delta, depositChip, field, fmtDate, hbars, icon, info, isLateNow, kpi, leaveOn, loyaltyN, mark, matchCustomer, methodName, money, needsBarber, netOf, normPhone, nowHM, num, opt, pageHead, parseYmd, payIndex, periodRange, pol, proofsPanel, refChip, round2, schedule, serviceStaff, services, shortDate, staffById, staffName, summary, svcNames, today, visible } from './core.js';
+import { $, activeServices, activeStaff, addDays, ago, apptRow, apptsOn, assignSelect, av, barChart, bdayPromoText, bdayWhen, buckets, chip, cur, custStats, delta, depositChip, field, fmtDate, hbars, icon, info, isLateNow, kpi, leaveOn, loyaltyN, mark, matchCustomer, methodName, money, needsBarber, netOf, normPhone, nowHM, num, opt, pageHead, paidIn, parseYmd, payIndex, payLabel, periodRange, pol, proofsPanel, refChip, round2, schedule, services, serviceStaff, shortDate, staffById, staffName, summary, svcNames, today, visible } from './core.js';
 import { isBoss } from './access.js';
 import { clockLine } from './staffapp.js';
 import { cpLabel, filterDD, liveCoupons } from './tables.js';
@@ -137,8 +137,8 @@ export function dayCheck(d) {
   const inChair = visits.filter(a => a.status === 'inchair'), waiting = visits.filter(a => a.status === 'waiting');
   const left = walk.filter(a => ['cancelled', 'noshow'].includes(a.status));
   const sales = S.sales.filter(s => s.date === d), loose = sales.filter(s => !s.apptId);
-  const byMethod = METHODS.map(m => [m, sum(sales.filter(s => (s.method || 'Cash') === m), s => (s.total || 0) - (s.depositCredit || 0))]).filter(x => x[1]);
-  const cashIn = sum(sales.filter(s => (s.method || 'Cash') === 'Cash'), s => (s.total || 0) - (s.depositCredit || 0));
+  const byMethod = METHODS.map(m => [m, sum(sales, s => paidIn(s, m))]).filter(x => x[1]);
+  const cashIn = sum(sales, s => paidIn(s, 'Cash'));
   const cashOut = sum(S.expenses.filter(e => e.date === d && e.method === 'Cash'), e => e.amount || 0);
   const c = S.closings.find(x => x.id === d) || {}, expected = round2((c.float || 0) + cashIn - cashOut), diff = c.counted == null ? null : round2(c.counted - expected);
   const flagged = [...unpaid.map(a => [a, 'Marked done, no payment recorded']), ...(d < today() ? inChair.map(a => [a, 'Still “in chair”: was it paid?']) : [])];
@@ -167,7 +167,15 @@ export function waitlistPanel(d) {
 }
 
 // ---------- tab: checkout ----------
-export function blankPos() { return { lines: [], name: '', phone: '', barberId: '', discount: '', discountNote: '', tip: '', method: 'Cash', cash: '', apptId: '', deposit: 0, depositMethod: '', pick: 'services', save: true }; }
+// A split bill: the cash part is typed in, the rest goes to the other method. Both parts must be more than zero.
+export function splitOf(p, T) {
+  const total = round2(T.collect), cash = round2(num(p.splitCash)), rest = round2(total - cash);
+  if (!(total > 0)) return { ok: false, cash: 0, rest: 0, why: 'Nothing to collect, so there is nothing to split.' };
+  if (!(cash > 0)) return { ok: false, cash: 0, rest: total, why: 'Type how much of the bill is paid in cash.' };
+  if (rest <= 0) return { ok: false, cash, rest: 0, why: `The cash part must be less than ${money(total, 1)}. For all cash, choose Cash.` };
+  return { ok: true, cash, rest };
+}
+export function blankPos() { return { lines: [], name: '', phone: '', barberId: '', discount: '', discountNote: '', tip: '', method: 'Cash', cash: '', splitCash: '', split2: 'GCash', apptId: '', deposit: 0, depositMethod: '', pick: 'services', save: true }; }
 export function posTotals(p) {
   const svc = sum(p.lines.filter(l => l.kind === 'service'), l => l.price * l.qty), prod = sum(p.lines.filter(l => l.kind === 'product'), l => l.price * l.qty);
   const disc = Math.min(num(p.discount), svc + prod), tip = Math.max(0, num(p.tip));
@@ -189,7 +197,7 @@ export function vCheckout() {
   const appt = p.apptId ? S.appointments.find(a => a.id === p.apptId) : null;
   const recent = S.sales.filter(s => s.date === today()).sort((a, b) => (b.at || 0) - (a.at || 0));
   const needBarber = p.lines.some(l => l.kind === 'service') && !p.barberId;
-  const change = p.method === 'Cash' && num(p.cash) > 0 ? num(p.cash) - T.collect : null;
+  const sp = splitOf(p, T), change = p.method === 'Cash' && num(p.cash) > 0 ? num(p.cash) - T.collect : p.method === 'Split' && num(p.cash) > 0 ? num(p.cash) - sp.cash : null;
   const groups = [...new Set(activeServices().map(s => s.cat || 'Services'))];
   return `${pageHead(appt ? `For ${appt.name || 'walk-in'} · ${appt.source === 'walk-in' ? 'walk-in #' + (appt.queueNo || '') : fmtTime(appt.time)}` : 'Ring up a sale', 'Checkout', p.lines.length || p.name ? `<button class="btn" data-act="posClear">Clear ticket</button>` : '')}
   <div class="pos">
@@ -229,11 +237,14 @@ export function vCheckout() {
           ${T.deposit ? `<div><span>Deposit paid online (${esc(methodName(p.depositMethod))})</span><span>${money(-T.deposit, 1)}</span></div>` : ''}
           <div class="grand"><span>${T.deposit ? 'Collect now' : 'Total'}</span><span>${money(T.collect, 1)}</span></div>
         </div>
-        <div class="seg" role="group" aria-label="Payment method">${METHODS.map(x => `<button type="button" data-act="posMethod" data-v="${esc(x)}" aria-pressed="${p.method === x}">${esc(x)}</button>`).join('')}</div>
+        <div class="seg" role="group" aria-label="Payment method">${[...METHODS, 'Split'].map(x => `<button type="button" data-act="posMethod" data-v="${esc(x)}" aria-pressed="${p.method === x}">${x === 'Split' ? 'Split bill' : esc(x)}</button>`).join('')}</div>
+        ${p.method === 'Split' ? `<div class="split-pay"><div class="fgrid">${field('Cash part', `<input id="pos-scash" data-bind="pos.splitCash" data-live inputmode="decimal" value="${esc(p.splitCash)}" placeholder="0" aria-describedby="pos-split-hint">`, 'pos-scash')}${field('Rest paid by', `<select id="pos-s2" data-bind="pos.split2" data-live>${METHODS.filter(m => m !== 'Cash').map(m => opt(m, m, p.split2 === m)).join('')}</select>`, 'pos-s2')}</div>
+          <p class="hint" id="pos-split-hint" aria-live="polite">${sp.ok ? `Cash <b>${money(sp.cash, 1)}</b> + ${esc(p.split2)} <b>${money(sp.rest, 1)}</b> = ${money(T.collect, 1)}` : `<span class="err">${esc(sp.why)}</span>`}</p>
+          <div class="fgrid">${field('Cash received', `<input id="pos-cash" data-bind="pos.cash" data-live inputmode="decimal" value="${esc(p.cash)}" placeholder="${sp.cash || ''}">`, 'pos-cash')}<div class="field"><label>Change</label><p style="font:800 26px/1.4 var(--f-display)" class="${change != null && change < 0 ? 'down' : ''}">${change == null ? '—' : change < 0 ? 'Short ' + money(-change, 1) : money(change, 1)}</p></div></div></div>` : ''}
         ${p.method === 'Cash' ? `<div class="fgrid">${field('Cash received', `<input id="pos-cash" data-bind="pos.cash" data-live inputmode="decimal" value="${esc(p.cash)}" placeholder="${T.collect}">`, 'pos-cash')}<div class="field"><label>Change</label><p style="font:800 26px/1.4 var(--f-display)" class="${change != null && change < 0 ? 'down' : ''}">${change == null ? '—' : change < 0 ? 'Short ' + money(-change, 1) : money(change, 1)}</p></div></div>` : ''}
         <label class="row small"><input type="checkbox" id="pos-save" data-bind="pos.save" ${p.save ? 'checked' : ''}> Save new client to the client list</label>
         ${needBarber ? '<p class="err">Choose the barber who did the service.</p>' : ''}
-        <button type="button" class="btn btn-accent btn-lg" data-act="posComplete" ${!p.lines.length || needBarber || S.busy ? 'disabled' : ''}>Complete sale · ${money(T.collect, 1)}</button>
+        <button type="button" class="btn btn-accent btn-lg" data-act="posComplete" ${!p.lines.length || needBarber || S.busy || (p.method === 'Split' && !sp.ok) ? 'disabled' : ''}>Complete sale · ${money(T.collect, 1)}</button>
       </div>
     </section>
   </div>
@@ -242,7 +253,7 @@ export function vCheckout() {
 export function salesTable(list, more) {
   if (!list.length) return '<p class="empty">No sales yet. Completed checkouts show up here.</p>';
   return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Client</th><th>Barber</th><th>Items</th><th>Paid by</th><th class="r">Tip</th><th class="r">Total</th><th></th></tr></thead><tbody>
-    ${list.map(s => `<tr><td class="num nowrap">${shortDate(s.date)} <span class="muted small">${fmtTime(s.time)}</span></td><td>${esc(s.name || 'Walk-in')}</td><td>${esc(staffName(s.barberId))}</td><td class="small">${esc((s.lines || []).map(l => l.qty > 1 ? `${l.name} ×${l.qty}` : l.name).join(', '))}</td><td>${esc(s.method)}${s.depositCredit ? `<div class="muted small">+ ${money(s.depositCredit)} deposit</div>` : ''}</td><td class="r">${s.tip ? money(s.tip) : '—'}</td><td class="r"><b>${money(s.total, 1)}</b></td>
+    ${list.map(s => `<tr><td class="num nowrap">${shortDate(s.date)} <span class="muted small">${fmtTime(s.time)}</span></td><td>${esc(s.name || 'Walk-in')}</td><td>${esc(staffName(s.barberId))}</td><td class="small">${esc((s.lines || []).map(l => l.qty > 1 ? `${l.name} ×${l.qty}` : l.name).join(', '))}</td><td>${esc(payLabel(s))}${s.depositCredit ? `<div class="muted small">+ ${money(s.depositCredit)} deposit</div>` : ''}</td><td class="r">${s.tip ? money(s.tip) : '—'}</td><td class="r"><b>${money(s.total, 1)}</b></td>
       <td><div class="acts"><button class="btn btn-sm btn-ghost" data-act="showSale" data-id="${esc(s.id)}">Receipt</button><button class="btn btn-sm btn-danger" data-act="voidSale" data-id="${esc(s.id)}">Void</button></div></td></tr>`).join('')}
   </tbody></table></div>${more ? `<p class="muted small" style="margin-top:10px">${esc(more)}</p>` : ''}`;
 }

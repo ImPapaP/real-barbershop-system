@@ -3,7 +3,7 @@ import { ACCESS, CLOCK_START, esc, fmtTime, lateFine, lateRateOf, pad, shiftStar
 import { call, db, demo, login } from '../fb.js';
 import { qrSvg } from '../qr.js';
 import { ACT, APPT, CHG, FORM, METHODS, S, TAB_VIEWS } from './state.js';
-import { $, activeStaff, addDays, apptsOn, armed, av, chip, del, field, fmtDate, icon, inR, info, kpi, leaveOn, mark, money, num, opt, pageHead, payExample, payFor, payIndex, payRule, periodRange, pol, put, rangeLabel, refChip, render, round2, schedule, services, short, shortDate, staffAll, staffById, staffName, summary, svcNames, toast, today } from './core.js';
+import { $, activeStaff, addDays, apptsOn, armed, av, chip, del, field, fmtDate, icon, info, inR, kpi, leaveOn, mark, money, num, opt, pageHead, paidIn, payExample, payFor, payIndex, payRule, periodRange, pol, put, rangeLabel, refChip, render, round2, schedule, services, short, shortDate, staffAll, staffById, staffName, summary, svcNames, toast, today } from './core.js';
 import { owedFor, periodBar } from './money.js';
 import { MODAL, closeModal, mFoot, modalErr, newToken, openModal, staffModal } from './modals.js';
 import { saveInfo } from './forms.js';
@@ -121,9 +121,9 @@ export function vMyPay() {
 export function dayData(d) {
   const sales = S.sales.filter(s => s.date === d), appts = apptsOn(d), exps = S.expenses.filter(e => e.date === d);
   const atShop = s => (s.total || 0) - (s.depositCredit || 0);
-  const methods = METHODS.map(m => [m, round2(sum(sales.filter(s => (s.method || 'Cash') === m), atShop))]).filter(x => x[1]);
+  const methods = METHODS.map(m => [m, round2(sum(sales, s => paidIn(s, m)))]).filter(x => x[1]);
   const online = round2(sum(sales, s => s.depositCredit || 0));
-  const cashIn = round2(sum(sales.filter(s => (s.method || 'Cash') === 'Cash'), atShop)), cashOut = round2(sum(exps.filter(e => e.method === 'Cash'), e => e.amount || 0));
+  const cashIn = round2(sum(sales, s => paidIn(s, 'Cash'))), cashOut = round2(sum(exps.filter(e => e.method === 'Cash'), e => e.amount || 0));
   const c = S.closings.find(x => x.id === d) || {}, expected = round2((c.float || 0) + cashIn - cashOut), diff = c.counted == null ? null : round2(c.counted - expected);
   const barbers = activeStaff().map(b => { const x = sales.filter(s => s.barberId === b.id), tc = clockOf(b, d);
     return { b, clients: x.length, sales: round2(sum(x, s => (s.svcTotal || 0) + (s.prodTotal || 0) - (s.discount || 0))), tips: round2(sum(x, s => s.tip || 0)), noshow: appts.filter(a => a.barberId === b.id && a.status === 'noshow').length, tc }; })

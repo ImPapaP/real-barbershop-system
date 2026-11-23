@@ -472,7 +472,7 @@ const FUNCS = {
     const visits = s.customerId ? [...store].filter(([k, v]) => k.startsWith('sales/') && v.customerId === s.customerId).length : 0;
     return { id: d.id, date: s.date, time: s.time, name: s.name && s.name !== 'Walk-in' ? s.name : '', barberName: (I.barbers.find(b => b.id === s.barberId) || {}).name || '',
       lines: (s.lines || []).map(l => ({ name: l.name, qty: Number(l.qty) || 1, price: Number(l.price) || 0 })), discount: s.discount || 0, discountNote: s.discountNote || '', tip: s.tip || 0, total: s.total || 0,
-      depositCredit: s.depositCredit || 0, paidAtShop: Math.max(0, (s.total || 0) - (s.depositCredit || 0)), method: s.method || '', cash: s.cash || 0,
+      depositCredit: s.depositCredit || 0, paidAtShop: Math.max(0, (s.total || 0) - (s.depositCredit || 0)), method: Array.isArray(s.split) && s.split.length ? s.split.map(x => `${x.m} ₱${(Math.round((Number(x.amt) || 0) * 100) / 100).toLocaleString('en-PH')}`).join(' + ') : (s.method || ''), cash: s.cash || 0,
       orNo: s.orNo || '', shop: { name: sh.name || '', wordmark: sh.wordmark || '', address: sh.address || '', phone: sh.phone || '', tagline: sh.tagline || '', tin: sh.tin || '', birPermit: sh.birPermit || '' }, loyalty: every && s.customerId ? { every, visits } : null };
   },
   rateVisit(d) {

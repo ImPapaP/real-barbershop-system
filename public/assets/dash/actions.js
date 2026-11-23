@@ -4,8 +4,8 @@ import { bannerBlob } from '../banner.js';
 import { buildXlsx } from '../xlsx.js';
 import { call, db, deleteImage, logout, resetDemo, resetPassword, uploadImage } from '../fb.js';
 import { ACT, APPT, CHG, S } from './state.js';
-import { $, NAV, addDays, ago, armed, custById, del, delta, depositPaid, ensureCustomer, fmtDate, groupOf, info, money, newId, nowHM, num, parseYmd, patch, periodRange, pol, put, render, round2, services, staffById, staffName, svcById, svcNames, toast, today, waitingWalkins, ymd } from './core.js';
-import { blankPos, posTotals } from './ops.js';
+import { $, addDays, ago, armed, custById, del, delta, depositPaid, ensureCustomer, fmtDate, groupOf, info, money, NAV, newId, nowHM, num, parseYmd, patch, payLabel, periodRange, pol, put, render, round2, services, staffById, staffName, svcById, svcNames, toast, today, waitingWalkins, ymd } from './core.js';
+import { blankPos, posTotals, splitOf } from './ops.js';
 import { exportRows, exportXlsx, fileBase, leaveModal, saveBlob } from './money.js';
 import { BACKUP_COLS, allRecords, faqModal, happenModal, happenPreview, printPoster, promoModal, qrModal, reviewModal, walkinUrl } from './setup.js';
 import { MODAL, adjustModal, apptModal, clientDrawer, clientModal, closeModal, expenseModal, itemModal, modalBack, newToken, openModal, payModal, receiptModal, serviceModal, staffModal } from './modals.js';
@@ -132,7 +132,7 @@ Object.assign(ACT, {
     try {
       const all = await allRecords(), H = t => ({ v: t, s: 'head' });
       const cust = [['Name', 'Phone', 'Email', 'Birthday', 'Notes', 'Added'].map(H), ...all.customers.map(c => [c.name || '', c.phone || '', c.email || '', c.birthday ? fmtBday(c.birthday) : '', c.notes || '', c.createdAt ? ymd(new Date(c.createdAt)) : ''])];
-      const sal = [['Date', 'Time', 'Receipt no.', 'Client', 'Staff', 'Items', 'Discount', 'Tip', 'Total', 'Paid online', 'Payment', 'Commission'].map(H), ...all.sales.sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || ''))).map(x => [x.date, x.time || '', x.orNo || '', x.name || 'Walk-in', staffName(x.barberId), (x.lines || []).map(l => l.name + (l.qty > 1 ? ' ×' + l.qty : '')).join(', '), { v: x.discount || 0, s: 'money' }, { v: x.tip || 0, s: 'money' }, { v: x.total || 0, s: 'money' }, { v: x.depositCredit || 0, s: 'money' }, x.method || '', { v: x.commission || 0, s: 'money' }])];
+      const sal = [['Date', 'Time', 'Receipt no.', 'Client', 'Staff', 'Items', 'Discount', 'Tip', 'Total', 'Paid online', 'Payment', 'Commission'].map(H), ...all.sales.sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || ''))).map(x => [x.date, x.time || '', x.orNo || '', x.name || 'Walk-in', staffName(x.barberId), (x.lines || []).map(l => l.name + (l.qty > 1 ? ' ×' + l.qty : '')).join(', '), { v: x.discount || 0, s: 'money' }, { v: x.tip || 0, s: 'money' }, { v: x.total || 0, s: 'money' }, { v: x.depositCredit || 0, s: 'money' }, payLabel(x), { v: x.commission || 0, s: 'money' }])];
       const bk = [['Date', 'Time', 'Code', 'Client', 'Phone', 'Email', 'Services', 'Staff', 'Status', 'How booked', 'Down payment'].map(H), ...all.appointments.sort((a, b) => ((a.date || '') + (a.time || '')).localeCompare((b.date || '') + (b.time || ''))).map(a => [a.date || '', a.time || '', a.code || '', a.name || '', a.phone || '', a.email || '', svcNames(a.serviceIds, a.options), a.anyBarber ? 'Any (to assign)' : staffName(a.barberId), (APPT[a.status] || {}).label || a.status || '', a.source || '', a.deposit ? `${a.deposit.amount || 0} ${a.deposit.status || ''}` : ''])];
       saveBlob(buildXlsx([{ name: 'Clients', cols: [24, 16, 26, 14, 30, 12], rows: cust, freeze: 'A2' }, { name: 'Sales', cols: [12, 8, 14, 22, 14, 40, 11, 9, 11, 12, 12, 12], rows: sal, freeze: 'A2' }, { name: 'Bookings', cols: [12, 8, 10, 22, 15, 24, 34, 16, 14, 12, 14], rows: bk, freeze: 'A2' }], { title: `${info().shop.name} records ${today()}`, author: info().shop.name }), `real-barbers-records-${today()}.xlsx`);
       toast('Excel file downloaded');
@@ -187,6 +187,7 @@ Object.assign(ACT, {
   async posComplete(el) {
     const p = S.pos, T = posTotals(p); if (!p.lines.length || S.busy) return;
     if (p.lines.some(l => l.kind === 'service') && !p.barberId) { toast('Choose the barber first.', 'bad'); return; }
+    const sp = p.method === 'Split' ? splitOf(p, T) : null; if (sp && !sp.ok) { toast(sp.why, 'bad'); return; }
     S.busy = true; el.disabled = true;
     try {
       const appt = p.apptId ? S.appointments.find(a => a.id === p.apptId) : null;
@@ -200,7 +201,7 @@ Object.assign(ACT, {
       const sale = {
         date: today(), time: nowHM(), at: Date.now(), customerId, name: p.name.trim() || 'Walk-in', phone: p.phone.trim(), phoneKey: phoneKey(p.phone), barberId: p.barberId,
         lines: p.lines.map(l => ({ ...l, price: Number(l.price) || 0 })), svcTotal: T.svc, prodTotal: T.prod, discount: T.disc, discountNote: T.disc ? (p.discountNote || '') : '',
-        tip: T.tip, total: T.total, depositCredit: T.deposit, ...(p.couponId && T.disc ? { couponId: p.couponId } : {}), method: p.method, cash: p.method === 'Cash' ? num(p.cash) : 0, apptId: p.apptId || '', rate, commission, productFees, rtoken, ...(orNo ? { orNo } : {}), ...(p.lateFee ? { lateFee: true } : {}), ...(p.servedLate ? { servedLate: true } : {})
+        tip: T.tip, total: T.total, depositCredit: T.deposit, ...(p.couponId && T.disc ? { couponId: p.couponId } : {}), method: p.method, cash: p.method === 'Cash' || sp ? num(p.cash) : 0, ...(sp ? { split: [{ m: 'Cash', amt: sp.cash }, { m: p.split2 || 'GCash', amt: sp.rest }] } : {}), apptId: p.apptId || '', rate, commission, productFees, rtoken, ...(orNo ? { orNo } : {}), ...(p.lateFee ? { lateFee: true } : {}), ...(p.servedLate ? { servedLate: true } : {})
       };
       if (!await put('sales', id, sale)) return;
       for (const l of p.lines.filter(x => x.kind === 'product')) {
@@ -210,7 +211,7 @@ Object.assign(ACT, {
       if (p.apptId && p.lateFee) { const la = S.appointments.find(x => x.id === p.apptId) || {}; await patch('appointments', p.apptId, { status: 'noshow', lateFeeSale: id, saleId: id, customerId: customerId || '', receipt: { id, t: rtoken }, ...(la.deposit && la.deposit.status === 'paid' ? { deposit: { ...la.deposit, status: 'kept' } } : {}) }); }
       else if (p.apptId) { const sa = S.appointments.find(x => x.id === p.apptId) || {}; await patch('appointments', p.apptId, { status: 'done', saleId: id, customerId: customerId || '', receipt: { id, t: rtoken }, ...(p.servedLate ? { servedLate: true, ...(sa.deposit && sa.deposit.status === 'paid' ? { deposit: { ...sa.deposit, status: 'kept' } } : {}) } : {}) }); }
       if (p.couponId && p.couponCust && T.disc) { const cc = S.customers.find(x => x.id === p.couponCust); if (cc) await patch('customers', cc.id, { coupons: (cc.coupons || []).map(x => x.id === p.couponId ? { ...x, used: true, usedAt: Date.now(), saleId: id } : x) }); }
-      logAct('sale', `Rang up ${money(sale.total, 1)} for ${sale.name} · ${staffName(sale.barberId)} · ${sale.method}${sale.discount ? ` · ${money(sale.discount)} discount${sale.discountNote ? ' (' + sale.discountNote + ')' : ''}` : ''}${sale.orNo ? ' · ' + sale.orNo : ''}${sale.servedLate ? ' · served late' : ''}${sale.lateFee ? ' · late fee' : ''}`, { amount: sale.total, ref: id });
+      logAct('sale', `Rang up ${money(sale.total, 1)} for ${sale.name} · ${staffName(sale.barberId)} · ${payLabel(sale)}${sale.discount ? ` · ${money(sale.discount)} discount${sale.discountNote ? ' (' + sale.discountNote + ')' : ''}` : ''}${sale.orNo ? ' · ' + sale.orNo : ''}${sale.servedLate ? ' · served late' : ''}${sale.lateFee ? ' · late fee' : ''}`, { amount: sale.total, ref: id });
       S.pos = blankPos();
       toast(`Sale saved · ${money(sale.total, 1)}`); receiptModal({ id, ...sale }, true);
     } finally { S.busy = false; render(); }

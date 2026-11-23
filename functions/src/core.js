@@ -273,6 +273,8 @@ export const validProofImage = s => typeof s === 'string' && /^data:image\/(jpeg
 
 // ---------- receipts ----------
 // What the client may see of a sale: no commission, cost or staff pay. `barberName` is passed in.
+// "Cash", or for a split bill "Cash ₱200 + GCash ₱150"
+export const payLabel = s => Array.isArray(s.split) && s.split.length ? s.split.map(x => `${x.m} ₱${(Math.round((Number(x.amt) || 0) * 100) / 100).toLocaleString('en-PH')}`).join(' + ') : (s.method || '');
 export function receiptView(id, s, info, barberName = '', visits = 0) {
   const sh = info.shop || {}, every = Math.max(0, parseInt(sh.loyaltyEvery, 10) || 0);
   const lines = (s.lines || []).map(l => ({ name: String(l.name || 'Item'), qty: Number(l.qty) || 1, price: Number(l.price) || 0 }));
@@ -280,7 +282,7 @@ export function receiptView(id, s, info, barberName = '', visits = 0) {
   return {
     id, date: s.date, time: s.time, name: s.name && s.name !== 'Walk-in' ? String(s.name) : '', barberName,
     lines, discount: Number(s.discount) || 0, discountNote: s.discountNote || '', tip: Number(s.tip) || 0, total: Number(s.total) || 0,
-    depositCredit: Number(s.depositCredit) || 0, paidAtShop, method: s.method || '', cash: Number(s.cash) || 0,
+    depositCredit: Number(s.depositCredit) || 0, paidAtShop, method: payLabel(s), cash: Number(s.cash) || 0,
     orNo: s.orNo || '', shop: { name: sh.name || '', wordmark: sh.wordmark || '', address: sh.address || '', phone: sh.phone || '', tagline: sh.tagline || '', tin: sh.tin || '', birPermit: sh.birPermit || '' },
     loyalty: every && s.customerId ? { every, visits } : null
   };

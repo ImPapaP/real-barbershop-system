@@ -2,7 +2,7 @@
 import { buildXlsx, colName, xlDate, xlTime } from '../xlsx.js';
 import { esc, isServiceStaff, sum } from '../shared.js';
 import { EXP_CATS, METHODS, PERIODS, S } from './state.js';
-import { $, addDays, av, barChart, basePayOn, buckets, chip, field, fmtDate, hbars, icon, info, kpi, methodName, money, netOf, num, opt, pageHead, payExample, payFor, payRule, payStart, payType, periodRange, rangeLabel, roleName, round2, serviceStaff, services, short, shortDate, staffAll, staffById, staffName, summary, svcNames, toast, today } from './core.js';
+import { $, addDays, av, barChart, basePayOn, buckets, chip, field, fmtDate, hbars, icon, info, kpi, methodName, money, netOf, num, opt, pageHead, paidIn, payExample, payFor, payLabel, payRule, payStart, payType, periodRange, rangeLabel, roleName, round2, services, serviceStaff, short, shortDate, staffAll, staffById, staffName, summary, svcNames, toast, today, usedMethod } from './core.js';
 import { salesTable } from './ops.js';
 import { closeModal, openModal } from './modals.js';
 import { timePanel } from './staffapp.js';
@@ -21,7 +21,7 @@ export function exportRows(r) {
   const lineNames = (x, kind) => (x.lines || []).filter(l => l.kind === kind).map(l => l.qty > 1 ? `${l.name} ×${l.qty}` : l.name).join(', ');
   const sales = [...s.sales].sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || ''))).map(x => ({
     type: 'Sale', date: x.date, time: x.time || '', client: x.name || 'Walk-in', barber: staffName(x.barberId),
-    services: lineNames(x, 'service'), products: lineNames(x, 'product'), method: x.method || '',
+    services: lineNames(x, 'service'), products: lineNames(x, 'product'), method: payLabel(x),
     svc: x.svcTotal || 0, prod: x.prodTotal || 0, disc: -(x.discount || 0), tip: x.tip || 0, total: x.total || 0,
     online: x.depositCredit || 0, shop: (x.total || 0) - (x.depositCredit || 0), comm: x.commission || 0
   }));
@@ -54,7 +54,7 @@ export function exportXlsx() {
     ['Barbers’ guaranteed daily pay', M(-s.base)], ['Barber commissions', M(-s.comm)], ['Expenses', M(-s.exp)],
     [{ v: 'Net profit', s: 'label' }, { v: s.profit, s: 'total' }], [],
     ['Clients served', { v: s.count, s: 'int' }], ['Average ticket', M(s.avg)], ['Tips collected for barbers', M(s.tips)], ['Paid online as deposits', M(s.deposits + s.keptAmt)], []];
-  const byMethod = METHODS.map(m => [m, sum(s.sales.filter(x => x.method === m), x => (x.total || 0) - (x.depositCredit || 0))]);
+  const byMethod = METHODS.map(m => [m, sum(s.sales, x => paidIn(x, m))]);
   byMethod.push(['Online deposits (PayMongo)', s.deposits + s.keptAmt]);
   sum1.push([{ v: 'Payments received', s: 'section' }, { v: '', s: 'section' }], ...byMethod.filter(x => x[1]).sort((a, b) => b[1] - a[1]).map(([k, v]) => [k, M(v)]), []);
   const byCat = EXP_CATS.map(c => [c, sum(s.exps.filter(x => x.cat === c), x => x.amount)]).filter(x => x[1]).sort((a, b) => b[1] - a[1]);
@@ -84,7 +84,7 @@ export function exportXlsx() {
 
   // Sales book: one row per numbered receipt, in receipt order (for the accountant / BIR books)
   const bookSales = s.sales.filter(x => x.orNo).sort((a, b) => String(a.orNo).localeCompare(String(b.orNo), undefined, { numeric: true }));
-  const bRows = bookSales.map(x => [D(x.date), x.orNo, x.name || 'Walk-in', M((x.svcTotal || 0) + (x.prodTotal || 0)), M(-(x.discount || 0)), M((x.total || 0) - (x.tip || 0)), x.method || '', M(x.depositCredit || 0), M((x.total || 0) - (x.depositCredit || 0) - (x.tip || 0))]);
+  const bRows = bookSales.map(x => [D(x.date), x.orNo, x.name || 'Walk-in', M((x.svcTotal || 0) + (x.prodTotal || 0)), M(-(x.discount || 0)), M((x.total || 0) - (x.tip || 0)), payLabel(x), M(x.depositCredit || 0), M((x.total || 0) - (x.depositCredit || 0) - (x.tip || 0))]);
   const bookSh = [...head('Sales book'), ['Date', 'Receipt no.', 'Client', 'Gross sales', 'Discount', 'Net sales', 'Payment', 'Paid online earlier', 'Paid at the shop'].map((t, i) => H(t, i, 3)), ...bRows];
   if (bRows.length) bookSh.push(totalRow(9, 5, 4 + bRows.length, 'Total', [3, 4, 5, 7, 8]));
   else bookSh.push([{ v: 'No numbered receipts in this period. Turn on official receipt numbers in Shop setup.', s: 'sub' }]);
@@ -111,14 +111,14 @@ export function vMoney() {
   const r = periodRange(S.period), s = summary(r), bk = buckets(r);
   const inc = bk.map(b => sum(s.sales.filter(x => b.match(x.date)), netOf) + sum(s.kept.filter(x => b.match(x.date)), x => x.deposit.amount));
   const out = bk.map(b => sum(s.exps.filter(x => b.match(x.date)), e => e.amount));
-  const byMethod = METHODS.map(m => ({ label: m, value: sum(s.sales.filter(x => x.method === m), x => (x.total || 0) - (x.depositCredit || 0)) }));
+  const byMethod = METHODS.map(m => ({ label: m, value: sum(s.sales, x => paidIn(x, m)) }));
   byMethod.push({ label: 'Online deposits', value: s.deposits + s.keptAmt, tip: 'Paid through PayMongo' });
   const methods = byMethod.filter(x => x.value).sort((a, b) => b.value - a.value);
   const byCat = EXP_CATS.map(c => ({ label: c, value: sum(s.exps.filter(x => x.cat === c), x => x.amount) })).filter(x => x.value).sort((a, b) => b.value - a.value);
   const svcMap = {}; for (const x of s.sales) for (const l of (x.lines || [])) if (l.kind === 'service') { svcMap[l.name] = svcMap[l.name] || { n: 0, v: 0 }; svcMap[l.name].n += l.qty; svcMap[l.name].v += l.qty * l.price; }
   const top = Object.entries(svcMap).map(([k, v]) => ({ label: k, value: v.v, text: `${v.n} × · ${money(v.v)}` })).sort((a, b) => b.value - a.value).slice(0, 6);
   const allSales = [...s.sales].sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
-  const sales = allSales.filter(x => (!S.saleBarber || x.barberId === S.saleBarber) && (!S.saleMethod || (x.method || 'Cash') === S.saleMethod));
+  const sales = allSales.filter(x => (!S.saleBarber || x.barberId === S.saleBarber) && (!S.saleMethod || usedMethod(x, S.saleMethod)));
   const allExps = [...s.exps].sort((a, b) => b.date.localeCompare(a.date)), expCats = [...new Set(allExps.map(e => e.cat))].sort();
   const exps = allExps.filter(e => (!S.expCat || e.cat === S.expCat) && (!S.expMethod || e.method === S.expMethod));
   return `${pageHead(rangeLabel(r), 'Income & expenses', `<button class="btn" data-act="exportXlsx">${ICON_DL}Download Excel</button><button class="btn btn-ghost" data-act="exportCsv">CSV</button><button class="btn btn-primary" data-act="newExpense">+ Expense</button>`)}

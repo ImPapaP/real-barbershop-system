@@ -3,6 +3,7 @@ import { db } from '../fb.js';
 import { S, unsubs } from './state.js';
 import { addDays, info, schedule, today } from './core.js';
 import { saveInfo } from './forms.js';
+import { checkAlerts, resetAlerts } from './alerts.js';
 import { bossWatches, isBoss, myRole, startOwnWatches, stopBossWatches } from './access.js';
 
 // ================= DATA =================
@@ -18,10 +19,10 @@ export function syncProducts() {
   productsSig = sig; saveInfo({ products: list });
 }
 export function watchCol(key, q) {
-  unsubs.push(q.onSnapshot(snap => { S[key] = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.loaded[key] = true; if (key === 'inventory') syncProducts(); schedule(); },
+  unsubs.push(q.onSnapshot(snap => { S[key] = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.loaded[key] = true; if (key === 'inventory') syncProducts(); if (key === 'appointments') checkAlerts(); schedule(); },
     err => { console.error(key, err); S.loaded[key] = true; S.slow = true; schedule(); }));
 }
-export function stopWatches() { while (unsubs.length) { try { unsubs.pop()(); } catch (_) {} } stopBossWatches(); S.loaded = {}; }
+export function stopWatches() { while (unsubs.length) { try { unsubs.pop()(); } catch (_) {} } stopBossWatches(); S.loaded = {}; resetAlerts(); }
 export function startWatches() {
   stopWatches();
   if (myRole() === 'staff') return startOwnWatches();

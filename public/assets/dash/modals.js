@@ -2,7 +2,7 @@
 import { DAYS, PRODUCT_FEE, ROLES, bdayDays, esc, fmtBday, fmtTime, lateFine, lateRateOf, priceLabel } from '../shared.js';
 import { db, demo } from '../fb.js';
 import { APPT, EXP_CATS, METHODS, S, STATUS_CHOICES } from './state.js';
-import { $, activeServices, bdayField, bdayPromoText, bdayWhen, cur, custById, custOf, custStats, field, fmtDate, icon, info, kpi, loyaltyN, mark, methodName, money, normPhone, num, opt, payExample, payRule, payType, pol, serviceStaff, services, shortDate, staffName, today, usualBarber, ymd } from './core.js';
+import { $, activeServices, bdayField, bdayPromoText, bdayWhen, cur, custById, custOf, custStats, field, fmtDate, icon, info, kpi, loyaltyN, mark, methodName, money, normPhone, num, opt, paidIn, payExample, payLabel, payRule, payType, pol, services, serviceStaff, shortDate, staffName, today, usualBarber, ymd } from './core.js';
 import { owedFor } from './money.js';
 import { cpClose, payFormSync, siteUrl } from './setup.js';
 import { loginFields } from './staffapp.js';
@@ -159,7 +159,7 @@ export function clientDrawer(c) {
     ${next ? `<p class="note">Next booking: <b>${fmtDate(next.date)} at ${fmtTime(next.time)}</b> with ${esc(staffName(next.barberId))}</p>` : ''}
     ${c.notes ? `<div class="note">${esc(c.notes)}</div>` : ''}
     ${liveCoupons(c).length ? `<p class="hint"><b>Coupon${liveCoupons(c).length > 1 ? 's' : ''} ready:</b> ${liveCoupons(c).map(cp => esc(cpLabel(cp)) + (cp.note ? ` <span class="muted">(${esc(cp.note)})</span>` : '')).join(', ')}. Used at checkout.</p>` : ''}
-    <div><p class="eyebrow" style="margin-bottom:6px">Visit history</p>${hist.length ? `<ul class="list pg">${hist.map(s => `<li><span class="t">${shortDate(s.date)}</span><span class="grow"><span>${esc((s.lines || []).map(l => l.name).join(', '))}</span><span class="sub" style="display:block">${esc(staffName(s.barberId))} · ${esc(s.method)}</span></span><b class="num">${money(s.total)}</b></li>`).join('')}</ul>` : '<p class="empty">No visits recorded yet.</p>'}</div>
+    <div><p class="eyebrow" style="margin-bottom:6px">Visit history</p>${hist.length ? `<ul class="list pg">${hist.map(s => `<li><span class="t">${shortDate(s.date)}</span><span class="grow"><span>${esc((s.lines || []).map(l => l.name).join(', '))}</span><span class="sub" style="display:block">${esc(staffName(s.barberId))} · ${esc(payLabel(s))}</span></span><b class="num">${money(s.total)}</b></li>`).join('')}</ul>` : '<p class="empty">No visits recorded yet.</p>'}</div>
     <div class="modal-f"><button type="button" class="btn" data-act="editClient" data-id="${esc(c.id)}">Edit client</button><button type="button" class="btn btn-primary" data-act="checkoutClient" data-id="${esc(c.id)}">Start checkout</button></div>
   </div>`, true);
 }
@@ -199,8 +199,8 @@ export function receiptModal(s, fresh) {
     ${s.discount ? `<div><span>Discount${s.discountNote ? ' (' + esc(s.discountNote) + ')' : ''}</span><span>${money(-s.discount, 1)}</span></div>` : ''}
     ${s.tip ? `<div><span>Tip</span><span>${money(s.tip, 1)}</span></div>` : ''}
     <div style="font-weight:700;font-size:16px"><span>TOTAL</span><span>${money(s.total, 1)}</span></div>
-    ${s.depositCredit ? `<div><span>Deposit paid online</span><span>${money(-s.depositCredit, 1)}</span></div><div><span>Paid at shop (${esc(s.method)})</span><span>${money(s.total - s.depositCredit, 1)}</span></div>` : `<div><span>Paid by</span><span>${esc(s.method)}</span></div>`}
-    ${s.cash ? `<div><span>Cash received</span><span>${money(s.cash, 1)}</span></div><div><span>Change</span><span>${money(s.cash - (s.total - (s.depositCredit || 0)), 1)}</span></div>` : ''}
+    ${s.depositCredit ? `<div><span>Deposit paid online</span><span>${money(-s.depositCredit, 1)}</span></div><div><span>Paid at shop (${esc(payLabel(s))})</span><span>${money(s.total - s.depositCredit, 1)}</span></div>` : `<div><span>Paid by</span><span>${esc(payLabel(s))}</span></div>`}
+    ${s.cash ? `<div><span>Cash received</span><span>${money(s.cash, 1)}</span></div><div><span>Change</span><span>${money(s.cash - paidIn(s, 'Cash'), 1)}</span></div>` : ''}
     ${loyaltyLine(s)}
     <hr><div style="justify-content:center;flex-direction:column;align-items:center;text-align:center" class="muted">${esc(shop.tagline || 'Thank you!')}${shop.birPermit ? `<small>${esc(shop.birPermit)}</small>` : ''}</div>
   </div>${receiptSend(s, fresh)}<div class="modal-f" style="margin-top:14px"><button type="button" class="btn btn-primary" data-act="closeModal">Done</button></div>`);

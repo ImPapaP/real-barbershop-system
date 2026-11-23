@@ -17,6 +17,7 @@ import './dash/tables.js';
 import './dash/payroll.js';
 import './dash/reports.js';
 import './dash/data.js';
+import './dash/alerts.js';
 import { call, db, onAuth } from './fb.js';
 import { ACT, CHG, FORM, OWNER_ACTS, S } from './dash/state.js';
 import { $, NAV, info, num, render, schedule, toast, trackNav } from './dash/core.js';
