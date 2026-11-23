@@ -1634,3 +1634,5 @@ input[data-cust][aria-expanded="true"]{background-image:url("data:image/svg+xml,
 /* dark mode heatmap: a deep blue scale so the light numbers stay readable on every cell */
 :root[data-theme="dark"] .heat .hc{background:color-mix(in srgb,#2f5fd0 calc(var(--k) * 100%),var(--surface-2));color:var(--ink)}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .heat .hc{background:color-mix(in srgb,#2f5fd0 calc(var(--k) * 100%),var(--surface-2));color:var(--ink)}}
+:root[data-theme="dark"] .heat-key i{background:linear-gradient(90deg,var(--surface-2),#2f5fd0)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .heat-key i{background:linear-gradient(90deg,var(--surface-2),#2f5fd0)}}
