@@ -8,8 +8,10 @@ Run from the repo root (or with the public folder as the first argument). The Pa
 import hashlib, json, pathlib, re, sys
 
 pub = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else 'public')
-assets = sorted(p for p in (pub / 'assets').iterdir() if p.suffix in ('.js', '.css'))
-ver = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()[:10] for p in assets}
+A = pub / 'assets'
+# top-level files plus the dashboard's modules in assets/dash/
+assets = sorted([p for p in A.iterdir() if p.suffix in ('.js', '.css')] + list((A / 'dash').glob('*.js')))
+ver = {p.relative_to(A).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()[:10] for p in assets}
 
 # Guard: an unclosed { in the stylesheet silently breaks every style after it, so stop the publish instead
 css = (pub / 'assets' / 'styles.css').read_text(); depth = 0
@@ -38,7 +40,7 @@ for page in pages:
     key = pre if pre.startswith('.') else './' + pre  # import map keys must look like URLs
     # the public pages don't mention the dashboard's own files, so its address isn't in their source
     admin_only = {'admin.js', 'xlsx.js', 'signin.js'} if page.parent.name != DASH else set()
-    imap = {'imports': {f'{key}{n}': f'{key}{n}?v={v}' for n, v in ver.items() if n.endswith('.js') and n not in admin_only}}
+    imap = {'imports': {f'{key}{n}': f'{key}{n}?v={v}' for n, v in ver.items() if n.endswith('.js') and n not in admin_only and not (admin_only and n.startswith('dash/'))}}
     block = f'<script type="importmap" id="asset-versions">{json.dumps(imap, separators=(",", ":"))}</script>\n'
     html = re.sub(r'<script type="importmap" id="asset-versions">.*?</script>\n', '', html, flags=re.S)
     # stylesheet and entry script get the version directly
