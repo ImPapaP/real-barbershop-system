@@ -5,17 +5,15 @@ import { $, activeStaff, av, chip, cur, daysIn, field, fmtDate, icon, info, kpi,
 import { saveBlob } from './money.js';
 import { mFoot, openModal } from './modals.js';
 import { myRole } from './access.js';
+import { cutoffOf, cutoffRange, cutoffShift, cutoffIdx, slipNet } from './calc.js';
+export { cutoffOf, cutoffRange, cutoffShift, cutoffIdx };
 
 // ================= PAYROLL, PAYSLIPS, CASH ADVANCES =================
 // Cutoffs: the 1st–15th and the 16th–end of month. A payslip is worked out live from the pay rules until the
 // owner marks it paid; then it's saved (payslips/{cutoff}_{staffId}) with a payout for the net amount.
 // Cash advances (vale): advances/{id} { staffId, amount, date, parts, start (cutoff), note }. Each payslip from
 // the start cutoff takes back amount ÷ parts (catching up if a cutoff was skipped) until it's all back.
-export const cutoffOf = d => `${d.slice(0, 7)}-${+d.slice(8, 10) <= 15 ? 1 : 2}`;
-export function cutoffRange(c) { const ym = c.slice(0, 7), half = c.slice(8); const [y, m] = ym.split('-').map(Number), last = new Date(y, m, 0).getDate(); return half === '1' ? [`${ym}-01`, `${ym}-15`] : [`${ym}-16`, `${ym}-${pad(last)}`]; }
 export const cutoffLabel = c => { const [a, b] = cutoffRange(c); return `${MONTHS[+a.slice(5, 7) - 1]} ${+a.slice(8)}–${+b.slice(8)}, ${a.slice(0, 4)}`; };
-export function cutoffShift(c, n) { let [y, m] = c.slice(0, 7).split('-').map(Number), h = +c.slice(8); let k = (y * 12 + m - 1) * 2 + (h - 1) + n; return `${Math.floor(k / 24)}-${pad(Math.floor(k / 2) % 12 + 1)}-${k % 2 + 1}`; }
-export const cutoffIdx = c => { const [y, m] = c.slice(0, 7).split('-').map(Number); return (y * 12 + m - 1) * 2 + (+c.slice(8) - 1); };
 export const slipFor = (c, id) => S.payslips.find(p => p.id === `${c}_${id}`);
 // how much of each advance this cutoff takes back
 export function advanceDue(staffId, c) {
@@ -32,11 +30,11 @@ export function leaveCount(b, r) { const ds = daysIn(r); let paid = 0, unpaid = 
 export function payslip(b, c) {
   const saved = slipFor(c, b.id); if (saved) return saved;
   const r = cutoffRange(c), P = payFor(b, r), lv = leaveCount(b, r), adv = advanceDue(b.id, c);
-  const gross = round2(P.base + P.comm + P.dep + P.tips), advTotal = round2(sum(adv, x => x.amount));
+  const { gross, net } = slipNet({ base: P.base, comm: P.comm, dep: P.dep, tips: P.tips, fines: P.fines || 0, adv });
   return { id: `${c}_${b.id}`, cutoff: c, staffId: b.id, name: b.name, title: b.title || roleName(b), payType: P.t, rule: payRule(b), from: r[0], to: r[1],
     days: P.days, daily: P.daily, base: P.base, topUps: P.topUps || 0, svc: round2(P.svc), rate: Number(b.rate) || 0, comm: P.comm, dep: P.dep, tips: round2(P.tips), clients: P.x.length,
     paidLeave: lv.paid, unpaidLeave: lv.unpaid, lates: P.lates || 0, fines: P.fines || 0, adv: adv.map(x => ({ id: x.id, amount: x.amount, note: x.a.note || '', left: round2(x.left - x.amount) })),
-    gross, net: round2(gross - (P.fines || 0) - advTotal), draft: true };
+    gross, net, draft: true };
 }
 export function vPayroll() {
   const c = S.cutoff || (S.cutoff = cutoffShift(cutoffOf(today()), -1)); // default: the last cutoff that has ended

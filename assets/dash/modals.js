@@ -17,18 +17,41 @@ export function drawModal() {
   m.innerHTML = `<div class="scrim" data-act="scrim"><div class="modal${wide ? ' wide' : ''}" role="dialog" aria-modal="true" aria-labelledby="mt"><div class="modal-h"><button type="button" class="back-btn" data-act="modalBack" aria-label="${back ? 'Back to ' + esc(back) : 'Back'}">${icon('back')}<span>Back</span></button><h2 id="mt">${esc(title)}</h2><button type="button" class="icon-btn" data-act="closeModal" aria-label="Close">✕</button></div><div class="modal-b">${body}</div></div></div>`;
   m.hidden = false; applyPaging();
   const sf = m.querySelector('form[data-form=staff]'); if (sf) payFormSync(sf);
-  setTimeout(() => { const f = m.querySelector('.modal-b input:not([type=checkbox]),.modal-b select,.modal-b textarea'); if (f) f.focus(); }, 30);
+  // keyboard and screen readers: move focus into the pop-up (first field, else the pop-up itself)
+  setTimeout(() => { const f = m.querySelector('.modal-b input:not([type=checkbox]):not([type=hidden]),.modal-b select,.modal-b textarea'); if (f) f.focus(); else { const d = m.querySelector('.modal'); if (d) { d.tabIndex = -1; d.focus(); } } }, 30);
 }
+// remember what opened the pop-up so focus can go back there when it closes
+function rememberOpener() {
+  const a = document.activeElement; if (!a || a === document.body || $('#modal').contains(a)) { MODAL.opener = null; return; }
+  MODAL.opener = { el: a, act: a.dataset && a.dataset.act, id: a.dataset && a.dataset.id };
+}
+function restoreFocus() {
+  const o = MODAL.opener; MODAL.opener = null; if (!o) return;
+  setTimeout(() => {
+    let el = o.el && o.el.isConnected ? o.el : null; // the page may have redrawn: find the same button again
+    if (!el && o.act) el = document.querySelector(`[data-act="${CSS.escape(o.act)}"]${o.id ? `[data-id="${CSS.escape(o.id)}"]` : ''}`);
+    if (el) el.focus({ preventScroll: true });
+  }, 40);
+}
+// Tab and Shift+Tab stay inside the open pop-up
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Tab') return; const m = $('#modal'); if (!m || m.hidden) return;
+  const f = [...m.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')].filter(x => x.offsetParent !== null);
+  if (!f.length) return; const first = f[0], last = f[f.length - 1];
+  if (!m.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+  else if (e.shiftKey && (document.activeElement === first || document.activeElement === m.querySelector('.modal'))) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
 export function openModal(title, body, wide) {
   const open = !$('#modal').hidden && MODAL.cur;
   if (open && MODAL.cur.title !== title) MODAL.stack.push(MODAL.cur);
-  if (!open) { MODAL.stack = []; if (!MODAL.hist) { history.pushState({ rbModal: 1 }, ''); MODAL.hist = true; MODAL.hash = location.hash; } }
+  if (!open) { rememberOpener(); MODAL.stack = []; if (!MODAL.hist) { history.pushState({ rbModal: 1 }, ''); MODAL.hist = true; MODAL.hash = location.hash; } }
   MODAL.cur = { title, body, wide }; drawModal();
 }
 export function modalBack() { cpClose(); if (MODAL.stack.length) { MODAL.cur = MODAL.stack.pop(); drawModal(); } else closeModal(); }
 // keepHist: we're navigating away, so don't step the browser back
 export function closeModal(keepHist) {
-  cpClose(); const m = $('#modal'); m.hidden = true; m.innerHTML = ''; MODAL.cur = null; MODAL.stack = [];
+  cpClose(); const m = $('#modal'); m.hidden = true; m.innerHTML = ''; MODAL.cur = null; MODAL.stack = []; restoreFocus();
   if (MODAL.hist) { MODAL.hist = false; if (keepHist === true) history.replaceState(null, ''); else { MODAL.skipPop = true; history.back(); } }
 }
 export const svcChecks = sel => { const groups = [...new Set(activeServices().map(s => s.cat || 'Services'))]; return groups.map(g => `<p class="eyebrow" style="margin:4px 0">${esc(g)}</p><div class="checks">${activeServices().filter(s => (s.cat || 'Services') === g).map(s => `<label class="check"><input type="checkbox" name="svc" value="${esc(s.id)}" ${(sel || []).includes(s.id) ? 'checked' : ''}>${esc(s.name)}<span class="p">${esc(priceLabel(s, cur()))}</span></label>`).join('')}</div>`).join(''); };

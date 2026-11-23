@@ -9,6 +9,8 @@ import { applyPaging } from './tables.js';
 import { riskChip } from './reports.js';
 import { alertBtn } from './alerts.js';
 import { noteWrite } from './offline.js';
+import { round2, num, atShopOf, paidParts, paidIn, usedMethod } from './calc.js';
+export { round2, num, atShopOf, paidParts, paidIn, usedMethod }; // the money math lives in calc.js (tested on its own)
 
 // ---------- helpers ----------
 export const $ = (s, r = document) => r.querySelector(s);
@@ -18,8 +20,6 @@ export const parseYmd = s => { const [y, m, d] = String(s).split('-').map(Number
 export const addDays = (s, n) => { const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); };
 export const nowHM = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 export const newId = () => db.collection('x').doc().id;
-export const round2 = n => Math.round(n * 100) / 100;
-export const num = v => { const n = parseFloat(String(v).replace(/,/g, '')); return isFinite(n) ? n : 0; };
 export const normPhone = p => String(p || '').replace(/\D/g, '').replace(/^63/, '0');
 export function fmtDate(s, withYear) { if (!s) return ''; const d = parseYmd(s); return `${DAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}${withYear ? ' ' + d.getFullYear() : ''}`; }
 export function shortDate(s) { const d = parseYmd(s); return `${d.getDate()} ${MONTHS[d.getMonth()]}`; }
@@ -47,10 +47,6 @@ export const custById = id => S.customers.find(c => c.id === id);
 export const methodName = k => METHOD_NAMES[k] || k || 'Online';
 // How a sale was paid at the shop. A split bill (part cash, part GCash...) keeps its parts in sale.split: [{ m, amt }]
 // and counts in each method, so the cash drawer and Close the day only count the cash part.
-export const atShopOf = s => (s.total || 0) - (s.depositCredit || 0);
-export const paidParts = s => s.split && s.split.length ? s.split.map(x => [x.m, Number(x.amt) || 0]) : [[s.method || 'Cash', atShopOf(s)]];
-export const paidIn = (s, m) => paidParts(s).reduce((t, x) => t + (x[0] === m ? x[1] : 0), 0);
-export const usedMethod = (s, m) => paidParts(s).some(x => x[0] === m);
 export const payLabel = s => s.split && s.split.length ? s.split.map(x => `${x.m} ${money(x.amt)}`).join(' + ') : (s.method || 'Cash');
 export const depositPaid = a => a && a.deposit && a.deposit.status === 'paid' ? (a.deposit.amount || 0) : 0;
 // GCash screenshot payments waiting for the owner to check
@@ -148,7 +144,8 @@ export function render() {
   if (id && !$('#modal').contains(a)) { const n = document.getElementById(id); if (n && n !== document.activeElement) { n.focus({ preventScroll: true }); try { if (s != null) n.setSelectionRange(s, e); } catch (_) {} } }
   if (CP.input && !document.body.contains(CP.input)) cpClose();
 }
-export function view() { return demoBar() + inner(); }
+// the skip button comes first so keyboard and screen-reader users can jump past the menu
+export function view() { const v = inner(); return (v.startsWith('<div class="admin">') ? '<button type="button" class="skip-link" data-act="skipMain">Skip to page content</button>' : '') + demoBar() + v; }
 export function inner() {
   if (!S.ready) return `<div class="center"><div><span class="spinner"></span><p class="muted">Opening the dashboard…</p></div></div>`;
   if (!S.user) { location.replace('login.html' + (location.hash && location.hash !== '#' ? '?next=' + encodeURIComponent(location.hash) : '')); return '<div class="center"><span class="spinner"></span></div>'; } // signed out: the staff sign-in page
@@ -163,7 +160,7 @@ export function inner() {
       <nav class="side-nav" aria-label="Dashboard">${navTabs().map(([id, l, locked]) => `<a href="#${id}" ${id === tab ? 'aria-current="page"' : ''}${locked ? ' class="locked"' : ''}>${icon(id)}<span class="lbl">${l}</span>${locked ? `<span class="lock-ic" aria-label="Needs the owner PIN">${icon('lock')}</span>` : badges[id] ? `<span class="badge" aria-label="${badges[id]} need attention">${badges[id]}</span>` : ''}</a>`).join('')}</nav>
       <div class="side-foot">${whoChip()}${themeBtn('btn btn-sm btn-ghost', true)}${alertBtn()}<a class="btn btn-sm btn-ghost" href="../" target="_blank" rel="noopener">${icon('site')}<span class="lbl">Website</span></a><button class="btn btn-sm btn-ghost" data-act="logout">${icon('out')}<span class="lbl">Sign out</span></button></div>
     </aside>
-    <main class="main"><div class="main-in${S.enter ? ' enter' : ''}">${loadingNote()}${S.infoMissing && isBoss() ? setupBanner() : ''}${elevBanner()}${OWNER_TABS.includes(tab) && !isBoss() ? vLocked(tab) : TAB_VIEWS[tab]()}</div></main>
+    <main class="main" id="main" tabindex="-1"><div class="main-in${S.enter ? ' enter' : ''}">${loadingNote()}${S.infoMissing && isBoss() ? setupBanner() : ''}${elevBanner()}${OWNER_TABS.includes(tab) && !isBoss() ? vLocked(tab) : TAB_VIEWS[tab]()}</div></main>
   </div>`;
 }
 export function gate(title, msg, signOut) { return `<div class="center"><div><img class="logo-hero" src="${LOGO_LG}" alt="" width="180" height="180"><h1 style="font:400 30px/1.1 var(--f-slab)">${esc(title)}</h1><p class="muted">${esc(msg)}</p>${signOut ? '<button class="btn" data-act="logout">Sign out</button>' : ''}</div></div>`; }

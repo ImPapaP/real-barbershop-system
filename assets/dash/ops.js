@@ -6,6 +6,9 @@ import { isBoss } from './access.js';
 import { clockLine } from './staffapp.js';
 import { cpLabel, filterDD, liveCoupons } from './tables.js';
 import { riskOf } from './reports.js';
+import { posTotals, splitOf as splitCalc } from './calc.js';
+export { posTotals };
+export const splitOf = (p, T) => splitCalc(p, T, n => money(n, 1));
 
 // ---------- tab: overview ----------
 export function vOverview() {
@@ -167,21 +170,7 @@ export function waitlistPanel(d) {
 }
 
 // ---------- tab: checkout ----------
-// A split bill: the cash part is typed in, the rest goes to the other method. Both parts must be more than zero.
-export function splitOf(p, T) {
-  const total = round2(T.collect), cash = round2(num(p.splitCash)), rest = round2(total - cash);
-  if (!(total > 0)) return { ok: false, cash: 0, rest: 0, why: 'Nothing to collect, so there is nothing to split.' };
-  if (!(cash > 0)) return { ok: false, cash: 0, rest: total, why: 'Type how much of the bill is paid in cash.' };
-  if (rest <= 0) return { ok: false, cash, rest: 0, why: `The cash part must be less than ${money(total, 1)}. For all cash, choose Cash.` };
-  return { ok: true, cash, rest };
-}
 export function blankPos() { return { lines: [], name: '', phone: '', barberId: '', discount: '', discountNote: '', tip: '', method: 'Cash', cash: '', splitCash: '', split2: 'GCash', apptId: '', deposit: 0, depositMethod: '', pick: 'services', save: true }; }
-export function posTotals(p) {
-  const svc = sum(p.lines.filter(l => l.kind === 'service'), l => l.price * l.qty), prod = sum(p.lines.filter(l => l.kind === 'product'), l => l.price * l.qty);
-  const disc = Math.min(num(p.discount), svc + prod), tip = Math.max(0, num(p.tip));
-  const total = round2(svc + prod - disc + tip), deposit = Math.min(p.deposit || 0, total);
-  return { svc, prod, sub: svc + prod, disc, tip, total, deposit, collect: round2(total - deposit) };
-}
 // Birthday within a week of today (the client's on file, or the one given on the booking): days away, or null
 export function posBday(p) {
   const appt = p.apptId ? S.appointments.find(a => a.id === p.apptId) : null, c = matchCustomer(p.name, p.phone);
