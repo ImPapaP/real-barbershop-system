@@ -11,6 +11,12 @@ pub = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else 'public')
 assets = sorted(p for p in (pub / 'assets').iterdir() if p.suffix in ('.js', '.css'))
 ver = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()[:10] for p in assets}
 
+# Guard: an unclosed { in the stylesheet silently breaks every style after it, so stop the publish instead
+css = (pub / 'assets' / 'styles.css').read_text(); depth = 0
+for i, ch in enumerate(css):
+    depth += (ch == '{') - (ch == '}')
+    if depth < 0: sys.exit(f'styles.css: extra }} near line {css[:i].count(chr(10)) + 1}')
+if depth: sys.exit(f'styles.css: {depth} unclosed {{ — check the last edit')
 build = hashlib.sha256(''.join(f'{n}{v}' for n, v in sorted(ver.items())).encode()).hexdigest()[:10]
 DASH = 'r3al-hq-7m2k'  # the dashboard's unlisted folder (change it here and rename the folder to move it)
 pages = [pub / 'index.html', pub / 'booking.html', pub / 'terms.html', pub / 'privacy.html', pub / 'receipt.html', pub / 'account.html', pub / 'clock.html', pub / DASH / 'index.html', pub / DASH / 'login.html']
