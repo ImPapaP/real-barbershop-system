@@ -565,6 +565,7 @@ export function onAuth(fn) { authFns.add(fn); setTimeout(() => fn(user), 0); ret
 export async function login(email) { user = { ...demoUser(email), at: Date.now() }; try { localStorage.setItem(USER_KEY, user.email); localStorage.setItem(AT_KEY, String(user.at)); } catch (_) {} authFns.forEach(f => f(user)); }
 export async function logout() { user = null; try { localStorage.setItem(USER_KEY, 'out'); } catch (_) {} authFns.forEach(f => f(null)); }
 export async function resetPassword() {}
+export const synced = () => Promise.resolve(); // demo data lives in this browser, so there's nothing to send
 
 // ---------- photos (demo: kept as small data URLs in this browser) ----------
 export async function uploadImage(blob) {

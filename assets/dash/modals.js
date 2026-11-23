@@ -192,7 +192,7 @@ export function receiptModal(s, fresh) {
   openModal('Receipt', `<div class="receipt">
     <div style="justify-content:center;font:800 22px/1 var(--f-display);text-transform:uppercase">${esc(shop.wordmark || shop.name)}</div>
     <div style="justify-content:center" class="muted">${esc(shop.address)}</div>${shop.tin ? `<div style="justify-content:center" class="muted">TIN ${esc(shop.tin)}</div>` : ''}<hr>
-    ${s.orNo ? `<div style="font-weight:700"><span>Official receipt</span><span>${esc(s.orNo)}</span></div>` : ''}
+    ${s.orNo ? `<div style="font-weight:700"><span>Official receipt</span><span>${esc(s.orNo)}</span></div>` : s.orPending ? `<div><span>Official receipt</span><span>Number given when back online</span></div>` : ''}
     <div><span>${fmtDate(s.date, true)}</span><span>${fmtTime(s.time)}</span></div>
     <div><span>Client</span><span>${esc(s.name || 'Walk-in')}</span></div><div><span>Barber</span><span>${esc(staffName(s.barberId))}</span></div><hr>
     ${(s.lines || []).map(l => `<div><span>${esc(l.name)}${l.qty > 1 ? ' ×' + l.qty : ''}</span><span>${money(l.price * l.qty, 1)}</span></div>`).join('')}<hr>

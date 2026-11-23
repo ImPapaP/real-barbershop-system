@@ -1618,3 +1618,8 @@ input[data-cust][aria-expanded="true"]{background-image:url("data:image/svg+xml,
 .si-help{margin:0;color:var(--muted);font-size:13px;line-height:1.5}
 .si-check{display:flex;align-items:center;gap:8px;font-size:14px}
 .si-check input{width:18px;height:18px;accent-color:var(--ink)}
+/* offline bar (dashboard) */
+.netbar{position:fixed;left:0;right:0;bottom:0;z-index:75;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;padding:10px max(16px,env(safe-area-inset-right,0px)) max(10px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));box-shadow:0 -2px 12px rgba(0,0,0,.12);background:var(--warn);color:#1a1300;font-size:14px;line-height:1.4}
+.netbar.syncing{background:var(--good);color:#fff}
+.is-offline .toast{bottom:max(84px,calc(env(safe-area-inset-bottom,0px) + 70px))}
+.is-offline body{padding-bottom:64px}

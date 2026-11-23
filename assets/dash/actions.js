@@ -6,6 +6,7 @@ import { call, db, deleteImage, logout, resetDemo, resetPassword, uploadImage } 
 import { ACT, APPT, CHG, S } from './state.js';
 import { $, addDays, ago, armed, custById, del, delta, depositPaid, ensureCustomer, fmtDate, groupOf, info, money, NAV, newId, nowHM, num, parseYmd, patch, payLabel, periodRange, pol, put, render, round2, services, staffById, staffName, svcById, svcNames, toast, today, waitingWalkins, ymd } from './core.js';
 import { blankPos, posTotals, splitOf } from './ops.js';
+import { isOffline } from './offline.js';
 import { exportRows, exportXlsx, fileBase, leaveModal, saveBlob } from './money.js';
 import { BACKUP_COLS, allRecords, faqModal, happenModal, happenPreview, printPoster, promoModal, qrModal, reviewModal, walkinUrl } from './setup.js';
 import { MODAL, adjustModal, apptModal, clientDrawer, clientModal, closeModal, expenseModal, itemModal, modalBack, newToken, openModal, payModal, receiptModal, serviceModal, staffModal } from './modals.js';
@@ -197,11 +198,12 @@ Object.assign(ACT, {
       const id = newId(), rtoken = newToken();
       // official receipt number, from the counter on the server so two phones never get the same one
       let orNo = '';
-      if (info().shop.orEnabled) { try { const r = await call('nextReceiptNo', {}); orNo = `${info().shop.orPrefix || ''}${String(r.no).padStart(6, '0')}`; } catch (e) { toast('Couldn’t get a receipt number. The sale is saved without one.'); } }
+      const orLater = info().shop.orEnabled && isOffline(); // offline: the receipt number comes when the internet is back
+      if (info().shop.orEnabled && !orLater) { try { const r = await call('nextReceiptNo', {}); orNo = `${info().shop.orPrefix || ''}${String(r.no).padStart(6, '0')}`; } catch (e) { toast('Couldn’t get a receipt number. The sale is saved without one.'); } }
       const sale = {
         date: today(), time: nowHM(), at: Date.now(), customerId, name: p.name.trim() || 'Walk-in', phone: p.phone.trim(), phoneKey: phoneKey(p.phone), barberId: p.barberId,
         lines: p.lines.map(l => ({ ...l, price: Number(l.price) || 0 })), svcTotal: T.svc, prodTotal: T.prod, discount: T.disc, discountNote: T.disc ? (p.discountNote || '') : '',
-        tip: T.tip, total: T.total, depositCredit: T.deposit, ...(p.couponId && T.disc ? { couponId: p.couponId } : {}), method: p.method, cash: p.method === 'Cash' || sp ? num(p.cash) : 0, ...(sp ? { split: [{ m: 'Cash', amt: sp.cash }, { m: p.split2 || 'GCash', amt: sp.rest }] } : {}), apptId: p.apptId || '', rate, commission, productFees, rtoken, ...(orNo ? { orNo } : {}), ...(p.lateFee ? { lateFee: true } : {}), ...(p.servedLate ? { servedLate: true } : {})
+        tip: T.tip, total: T.total, depositCredit: T.deposit, ...(p.couponId && T.disc ? { couponId: p.couponId } : {}), method: p.method, cash: p.method === 'Cash' || sp ? num(p.cash) : 0, ...(sp ? { split: [{ m: 'Cash', amt: sp.cash }, { m: p.split2 || 'GCash', amt: sp.rest }] } : {}), apptId: p.apptId || '', rate, commission, productFees, rtoken, ...(orNo ? { orNo } : {}), ...(orLater ? { orPending: true } : {}), ...(p.lateFee ? { lateFee: true } : {}), ...(p.servedLate ? { servedLate: true } : {})
       };
       if (!await put('sales', id, sale)) return;
       for (const l of p.lines.filter(x => x.kind === 'product')) {

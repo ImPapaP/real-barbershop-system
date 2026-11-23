@@ -8,6 +8,7 @@ export const demo = !configured;
 const B = await import(demo ? './demo-backend.js' : './firebase-backend.js');
 export const { db, call, login, logout, resetPassword, onAuth, uploadImage, deleteImage } = B;
 export const resetDemo = B.resetDemo || (() => {});
+export const synced = B.synced || (() => Promise.resolve());
 
 export function demoBar(adminLink) {
   if (!demo) return '';

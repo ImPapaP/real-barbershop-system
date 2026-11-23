@@ -2,14 +2,24 @@
 // db exposes a small chainable API: db.collection('x').where(...).onSnapshot(...), db.doc('x/y').set(...)
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {
-  getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, orderBy, limit
+  getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, waitForPendingWrites, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, orderBy, limit
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js';
 import { firebaseConfig, FUNCTIONS_REGION } from './firebase-config.js';
 
 const app = initializeApp(firebaseConfig);
-const fs = getFirestore(app);
+// Pages that ask for it (the dashboard sets window.rbOffline) keep a copy of the data on the device, so they open and
+// keep working without internet; changes made offline are sent when the connection is back.
+const fs = (() => {
+  if (typeof window !== 'undefined' && window.rbOffline) { try { return initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) }); } catch (_) {} }
+  return getFirestore(app);
+})();
+// A write only finishes when the server confirms it. Offline that never happens until the internet is back, so don't wait:
+// Firestore keeps the change on the device and sends it later.
+const offline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
+const queued = p => { if (!offline()) return p; p.catch(e => console.error('sync failed', e)); return Promise.resolve(); };
+export const synced = () => waitForPendingWrites(fs);
 const fns = getFunctions(app, FUNCTIONS_REGION);
 export const auth = getAuth(app);
 
@@ -22,9 +32,9 @@ function docRef(path) {
   return {
     id: r.id, path,
     get: async () => wrapDoc(await getDoc(r)),
-    set: data => setDoc(r, data),
-    update: data => updateDoc(r, data),
-    delete: () => deleteDoc(r),
+    set: data => queued(setDoc(r, data)),
+    update: data => queued(updateDoc(r, data)),
+    delete: () => queued(deleteDoc(r)),
     onSnapshot: (next, err) => onSnapshot(r, s => next(wrapDoc(s)), err)
   };
 }
