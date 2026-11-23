@@ -8,6 +8,7 @@ import { finesIn } from './staffapp.js';
 import { applyPaging } from './tables.js';
 import { riskChip } from './reports.js';
 import { alertBtn } from './alerts.js';
+import { noteWrite } from './offline.js';
 
 // ---------- helpers ----------
 export const $ = (s, r = document) => r.querySelector(s);
@@ -123,9 +124,9 @@ export function errText(e) {
   if (c.includes('resource-exhausted')) return 'Too many changes at once. Wait a moment and try again.';
   return 'That didn’t save. Check your connection and try again.';
 }
-export async function put(col, id, data) { try { await db.collection(col).doc(id).set(data); return true; } catch (e) { console.error(e); toast(errText(e), 'bad'); return false; } }
-export async function patch(col, id, data) { try { await db.collection(col).doc(id).update(data); return true; } catch (e) { console.error(e); toast(errText(e), 'bad'); return false; } }
-export async function del(col, id) { try { await db.collection(col).doc(id).delete(); return true; } catch (e) { console.error(e); toast(errText(e), 'bad'); return false; } }
+export async function put(col, id, data) { noteWrite(); try { await db.collection(col).doc(id).set(data); return true; } catch (e) { console.error(e); toast(errText(e), 'bad'); return false; } }
+export async function patch(col, id, data) { noteWrite(); try { await db.collection(col).doc(id).update(data); return true; } catch (e) { console.error(e); toast(errText(e), 'bad'); return false; } }
+export async function del(col, id) { noteWrite(); try { await db.collection(col).doc(id).delete(); return true; } catch (e) { console.error(e); toast(errText(e), 'bad'); return false; } }
 export function armed(el) { if (el.dataset.armed) return true; const t = el.textContent; el.dataset.armed = '1'; el.textContent = 'Tap again to confirm'; setTimeout(() => { if (el.isConnected) { delete el.dataset.armed; el.textContent = t; } }, 3500); return false; }
 
 // ---------- routing & render ----------

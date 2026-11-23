@@ -18,6 +18,8 @@ import './dash/payroll.js';
 import './dash/reports.js';
 import './dash/data.js';
 import './dash/alerts.js';
+import './dash/offline.js';
+import { init as init_offline } from './dash/offline.js';
 import { call, db, onAuth } from './fb.js';
 import { ACT, CHG, FORM, OWNER_ACTS, S } from './dash/state.js';
 import { $, NAV, info, num, render, schedule, toast, trackNav } from './dash/core.js';
@@ -37,6 +39,7 @@ init_setup();
 init_modals();
 init_staffapp();
 init_tables();
+init_offline();
 
 // ================= EVENTS =================
 function setPath(path, val) { const k = path.split('.'); let o = S; for (let i = 0; i < k.length - 1; i++) { o = o[k[i]] = o[k[i]] || {}; } o[k[k.length - 1]] = val; }
