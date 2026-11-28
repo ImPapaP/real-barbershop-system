@@ -2,7 +2,7 @@
 // The page is drawn once; the booking panel, menu tabs and lightbox redraw on their own so animations don't replay.
 import { db, call, demo, demoBar, resetDemo } from './fb.js';
 import {
-  $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, DAYS_LONG, MONTHS, sum, phNow, dowOf, policyOf, openStatus,
+  $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, DAYS_LONG, MONTHS, sum, phNow, dowOf, policyOf, openStatus, hoursFor,
   availableTimes, bookableDates, timeChips, initials, canServe, comboError, TIERS, STARTER, STARTER_STAFF, publicBarber, revealOnScroll, morph, brand, LOGO_LG, dur, isServiceStaff, toMin, fromMin, addDays, blockTimes, slotId, messengerLink, defaultFaq, monthGrid, shiftMonth, BACK_IC, bdaySelects, cleanBday, BDAY_TITLE, BDAY_HINT, queueEstimate, resizeImage, depositFor
 } from './shared.js';
 import { paintBanners } from './banner.js';
@@ -105,7 +105,7 @@ function ratingChip(sh, light) {
 function page() {
   const I = info(), shop = I.shop, st = openStatus(I), today = phNow(), an = I.announcement || {};
   if (!S.loaded) return `<div class="center"><div><span class="wordmark">${brand(shop.wordmark || shop.name)}</span><p class="muted">${S.slow ? `We can’t load the booking calendar right now. Call us at <b>${esc(shop.phone)}</b>.` : '<span class="spinner"></span>'}</p></div></div>`;
-  const th = I.hours.find(h => h.d === today.dow);
+  const th = hoursFor(I, today.date); // holiday hours count
   const inToday = (I.barbers || []).filter(b => (b.days || []).includes(today.dow));
   const cuts = svcs().filter(s => (s.group || 'him') === 'him' && /haircut$/i.test(s.name)).sort((x, y) => x.price - y.price);
   const cut = cuts[0] ? { name: cuts.length > 1 ? 'Haircuts from' : cuts[0].name, price: cuts[0].price } : svcs()[0];
@@ -149,7 +149,7 @@ function page() {
       <div class="hero-side">
       <aside class="hero-card" aria-label="Today at the shop">
         <p class="eyebrow">Today, ${DAYS_LONG[today.dow]}</p>
-        <p class="today-hours">${th && !th.closed ? `${fmtTime(th.open)} – ${fmtTime(th.close)}` : 'Closed today'}</p>
+        <p class="today-hours">${th && !th.closed ? `${fmtTime(th.open)} – ${fmtTime(th.close)}` : 'Closed today'}${th && th.label ? ` <span class="muted small">· ${esc(th.label)}</span>` : ''}</p>
         ${th && !th.closed && inToday.length ? `<div class="faces">${inToday.slice(0, 6).map(b => b.photo ? `<img src="${esc(b.photo)}" alt="${esc(b.name)}" title="${esc(b.name)}">` : `<span title="${esc(b.name)}">${esc(initials(b.name))}</span>`).join('')}<small>${inToday.length} in today</small></div>` : ''}
         <p class="row small">${ic('pin')}${esc(shop.address)}</p>
         <p class="row small">${ic('phone')}<b>${esc(shop.phone)}</b><button class="btn btn-sm btn-ghost" data-act="copy" data-text="${esc(shop.phone)}">Copy</button></p>
@@ -192,7 +192,7 @@ function page() {
       <article class="member reveal" style="--d:${(i % 4) * 80}ms">
         <button type="button" class="m-photo m-open" data-act="profile" data-id="${esc(b.id)}" aria-label="See ${esc(b.name)}’s profile">${b.photo ? `<img src="${esc(b.photo)}" alt="${esc(b.name)}" loading="lazy">` : `<span class="m-mono" aria-hidden="true">${esc(initials(b.name))}</span>`}${b.chair ? `<small>Chair ${esc(b.chair)}</small>` : ''}</button>
         <div class="m-body"><h3>${esc(b.name)}</h3><p class="muted small">${esc(b.title || '')}${b.specialty ? ' · ' + esc(b.specialty) : ''}</p>${b.ratingCount ? `<p class="m-rate">${ic('star', 'star')}<b>${Number(b.rating).toFixed(1)}</b><span>${b.ratingCount} rating${b.ratingCount === 1 ? '' : 's'}</span></p>` : ''}
-        <div class="days" aria-label="Days in">${[1, 2, 3, 4, 5, 6, 0].map(d => `<span class="${(b.days || []).includes(d) ? 'on' : ''}" title="${DAYS_LONG[d]}">${DAYS[d].slice(0, 2)}</span>`).join('')}</div>
+        <div class="days">${dayPills(b)}</div>
         <div class="row m-acts">${bookable(b) ? `<button class="btn btn-sm" data-act="bookWith" data-id="${esc(b.id)}">Book with ${esc(b.name)} ${ic('arrow')}</button>` : `<span class="muted small">${b.role === 'nails' ? 'Nail services coming soon' : 'Booking coming soon'}</span>`}<button class="link-btn" data-act="profile" data-id="${esc(b.id)}">Profile</button></div></div>
       </article>`).join('')}</div>
   </div></section>
@@ -210,7 +210,7 @@ function page() {
   <section id="visit" class="sec"><div class="wrap">
     <div class="sec-head reveal"><div><p class="eyebrow">Visit</p><h2 class="sec-title">Find us</h2></div><a class="btn btn-primary" href="${esc(mapUrl)}" target="_blank" rel="noopener">${ic('pin')} Get directions</a></div>
     <div class="visit reveal">
-      <table class="hours"><tbody>${[1, 2, 3, 4, 5, 6, 0].map(d => { const h = I.hours.find(x => x.d === d); return `<tr class="${d === today.dow ? 'now' : ''}"><td>${DAYS_LONG[d]}</td><td>${h && !h.closed ? `${fmtTime(h.open)} – ${fmtTime(h.close)}` : 'Closed'}</td></tr>`; }).join('')}</tbody></table>
+      <table class="hours"><tbody>${[1, 2, 3, 4, 5, 6, 0].map(d => { const h = I.hours.find(x => x.d === d); return `<tr class="${d === today.dow ? 'now' : ''}"><td>${DAYS_LONG[d]}</td><td>${h && !h.closed ? `${fmtTime(h.open)} – ${fmtTime(h.close)}` : 'Closed'}</td></tr>`; }).join('')}${(() => { const up = (I.specialHours || []).filter(x => x.date >= today.date && x.date <= addDays(today.date, 45)).sort((a, b) => a.date.localeCompare(b.date)); return up.length ? `<tr class="hol-h"><td colspan="2">Holiday hours</td></tr>${up.map(x => `<tr class="hol"><td>${esc(fmtDate(x.date))}${x.label && x.label !== 'Closed' ? ` <span class="muted small">${esc(x.label)}</span>` : ''}</td><td>${x.closed ? 'Closed' : `${fmtTime(x.open)} – ${fmtTime(x.close)}`}</td></tr>`).join('')}` : ''; })()}</tbody></table>
       <div class="stack">
         <div class="vrow">${ic('pin')}<div><p class="eyebrow">Address</p><p class="big">${esc(shop.address)}</p></div></div>
         <div class="vrow">${ic('phone')}<div><p class="eyebrow">Call or text</p><p class="row"><span class="big">${esc(shop.phone)}</span><button class="btn btn-sm" data-act="copy" data-text="${esc(shop.phone)}">Copy</button></p></div></div>
@@ -295,7 +295,7 @@ function profile() {
     <div class="pf-top"><div class="pf-photo">${b.photo ? `<img src="${esc(b.photo)}" alt="">` : `<span>${esc(initials(b.name))}</span>`}</div>
       <div><p class="eyebrow">${esc(b.title || '')}</p><h3 id="pf-name">${esc(b.name)}</h3>${b.ratingCount ? `<p class="m-rate">${ic('star', 'star')}<b>${Number(b.rating).toFixed(1)}</b><span>${b.ratingCount} rating${b.ratingCount === 1 ? '' : 's'} from booked clients</span></p>` : ''}${b.specialty ? `<p class="muted small">${esc(b.specialty)}</p>` : ''}</div></div>
     ${b.bio ? `<p class="pf-bio">${esc(b.bio)}</p>` : ''}
-    <div class="pf-row"><p class="eyebrow">Days in</p><div class="days">${[1, 2, 3, 4, 5, 6, 0].map(d => `<span class="${(b.days || []).includes(d) ? 'on' : ''}" title="${DAYS_LONG[d]}">${DAYS[d].slice(0, 2)}</span>`).join('')}</div></div>
+    <div class="pf-row"><p class="eyebrow">Schedule</p><div class="days">${dayPills(b)}</div>${b.shifts && Object.keys(b.shifts).length ? `<ul class="pf-shifts">${[1, 2, 3, 4, 5, 6, 0].map(d => { const sh = b.shifts[d]; return `<li><span>${DAYS_LONG[d]}</span><span>${sh ? `${fmtTime(sh[0])} – ${fmtTime(sh[1])}` : 'Day off'}</span></li>`; }).join('')}</ul>` : ''}</div>
     ${bases.length ? `<div class="pf-row"><p class="eyebrow">${esc((b.tiers || []).map(t => TIERS[t] || t).join(' and '))} haircuts</p><p>Price starts at <b>${m(Math.min(...bases.map(x => x.price)))}</b></p></div>` : ''}
     ${photos.length ? `<div class="pf-row"><p class="eyebrow">Recent work</p><div class="pf-gal">${photos.map(g => `<img src="${esc(g.url)}" alt="${esc(g.caption || g.style || 'Haircut')}" loading="lazy">`).join('')}</div></div>` : ''}
     ${bookable(b) ? `<button type="button" class="btn btn-accent btn-lg" data-act="bookWith" data-id="${esc(b.id)}">Book with ${esc(b.name)} ${ic('arrow')}</button>` : `<p class="muted">${b.role === 'nails' ? 'Nail services are coming to online booking soon.' : 'Online booking with ' + esc(b.name) + ' is coming soon.'}</p>`}
@@ -321,6 +321,8 @@ document.addEventListener('change', async e => {
 // Sends the photo once the booking exists (the photo is optional, so a failure doesn't stop the booking)
 const sendRef = async (o, r) => { if (o.ref && r && r.id && r.token) { try { await call('addRefPhoto', { id: r.id, token: r.token, image: o.ref }); } catch (_) {} } };
 // Optional birthday (month and day) for the free birthday haircut. `k` is the state key: 'bk' or 'q'.
+// the week as small pills (days in filled, days off struck through), with the days off said in words for screen readers
+const dayPills = b => { const off = [1, 2, 3, 4, 5, 6, 0].filter(d => !(b.days || []).includes(d)); return `${[1, 2, 3, 4, 5, 6, 0].map(d => `<span class="${(b.days || []).includes(d) ? 'on' : 'off'}" title="${DAYS_LONG[d]}${(b.days || []).includes(d) ? '' : ': day off'}" aria-hidden="true">${DAYS[d].slice(0, 2)}</span>`).join('')}<span class="sr-only">${off.length ? `Day off: ${off.map(d => DAYS_LONG[d]).join(', ')}` : 'In every day'}</span>`; };
 const bdayOf = o => cleanBday(o.bm && o.bd ? `${o.bm}-${o.bd}` : '');
 function bdayBox(k) {
   const o = S[k], half = (o.bm || o.bd) && !bdayOf(o);
@@ -699,10 +701,10 @@ function bill(picked, gpk, people, due = dueFor(gpk)) {
     ${gpk ? `<p class="bill-sub">${S.bk.guest.self ? 'Also for you' : esc(S.bk.guest.name.trim() || 'Second person')}</p>${gs.map(x => line(esc(x.name), esc(priceLabel(x, cur())))).join('')}` : ''}
     ${off ? line(`Promo ${esc(S.promo.applied.code)} (${esc(S.promo.applied.label)})`, '−' + m(off), 'disc') : ''}
     ${prodList.length ? `<p class="bill-sub">Set aside for you (pay at the shop)</p>${prodList.map(p => line(esc(p.name) + (p.n > 1 ? ' ×' + p.n : ''), p.price ? m(p.price * p.n) : 'price at the shop')).join('')}` : ''}
-    ${line('Estimated total', (from ? 'from ' : '') + m(total - off), 'tot')}</div>
+    ${line('Estimated total', (from ? 'starts at ' : '') + m(total - off), 'tot')}</div>
     ${promoBox()}
     <div class="due"><span>Down payment now${dep > policyOf(info()).deposit ? ' (2 people)' : ''}</span><b>${dep ? m(dep) : 'None, pay at the shop'}</b></div>
-    ${line('Pay at the shop', (from ? 'from ' : '') + m(Math.max(0, total - off - dep)), 'rest')}
+    ${line('Pay at the shop', (from ? 'starts at ' : '') + m(Math.max(0, total - off - dep)), 'rest')}
     ${from ? '<p class="muted small">Prices marked “from” depend on hair length and products. Your barber or stylist confirms the price first.</p>' : ''}`;
 }
 function promoBox() {

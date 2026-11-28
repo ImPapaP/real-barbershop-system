@@ -1,8 +1,8 @@
 // Dashboard · Pop-up forms (modals).
-import { DAYS, PRODUCT_FEE, ROLES, bdayDays, esc, fmtBday, fmtTime, lateFine, lateRateOf, priceLabel } from '../shared.js';
+import { bdayDays, DAYS, esc, fmtBday, fmtTime, lateFine, lateRateOf, loyaltyReward, loyaltyState, loyaltySummary, priceLabel, PRODUCT_FEE, ROLES } from '../shared.js';
 import { db, demo } from '../fb.js';
 import { APPT, EXP_CATS, METHODS, S, STATUS_CHOICES } from './state.js';
-import { $, activeServices, bdayField, bdayPromoText, bdayWhen, cur, custById, custOf, custStats, field, fmtDate, icon, info, kpi, loyaltyN, mark, methodName, money, normPhone, num, opt, paidIn, payExample, payLabel, payRule, payType, pol, services, serviceStaff, shortDate, staffName, today, usualBarber, ymd } from './core.js';
+import { $, activeServices, bdayField, bdayPromoText, bdayWhen, cur, custById, custOf, custStats, field, fmtDate, icon, info, kpi, loyaltyN, loyaltyNow, mark, methodName, money, normPhone, num, opt, paidIn, payExample, payLabel, payRule, payType, pol, services, serviceStaff, shortDate, staffName, today, usualBarber, ymd } from './core.js';
 import { owedFor } from './money.js';
 import { cpClose, payFormSync, siteUrl } from './setup.js';
 import { loginFields } from './staffapp.js';
@@ -94,6 +94,8 @@ export function cutField(c) {
     ${img && img !== 'none' ? `<button type="button" class="btn btn-sm btn-ghost" data-act="cutToGallery" data-id="${esc(c.id)}">Add to gallery</button>` : ''}</div>
     <p class="muted small">The client sees it on their booking page, so they can ask for the same cut next time.</p></div>`;
 }
+// a person's shift on a weekday: ['09:00', '18:00'] or null (older records: their days with the shop's hours)
+const shiftOfDay = (c, d) => { if (c.shifts && Object.keys(c.shifts).length) return c.shifts[d] || null; if (!(c.days || [0, 1, 2, 3, 4, 5, 6]).includes(d)) return null; const h = (info().hours || []).find(x => x.d === d) || {}; return [c.shiftStart || h.open || '09:00', h.close || '20:00']; };
 export function staffModal(b) {
   const c = b || { role: 'barber', payType: 'quota', rate: 40, dailyPay: 500, days: [0, 1, 2, 3, 4, 5, 6], groups: ['him'], tiers: ['regular'], active: true };
   const f = c.productFee || PRODUCT_FEE;
@@ -115,8 +117,10 @@ export function staffModal(b) {
       <p class="muted small">Example with ₱50 / ₱100 at ₱1,500 and 55%: a ₱1,200 color → shop ₱50 first, then 55% of ₱1,150 = ₱632 for the stylist. Services without products are a straight split. Mark which services use products in Shop setup → Services.</p></fieldset>
     <fieldset class="field svc-only"><legend>Takes bookings for</legend><div class="row">${[['him', 'Men’s services'], ['her', 'Women’s services'], ['nails', 'Nails'], ['braids', 'Braids']].map(([k, l]) => `<label class="check"><input type="checkbox" name="groups" value="${k}" ${(c.groups || ['him']).includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</div></fieldset>
     <fieldset class="field svc-only barber-only"><legend>Men’s haircuts they do</legend><div class="row">${[['deluxe', 'Deluxe (senior barber)'], ['regular', 'Regular']].map(([k, l]) => `<label class="check"><input type="checkbox" name="tiers" value="${k}" ${(c.tiers || []).includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</div><p class="muted small">Online, clients can only book this barber for these haircuts. Add-ons work with either.</p></fieldset>
-    <div class="fgrid">${field('Late deduction per 15 minutes (₱)', `<input id="m-slate" name="lateFine" type="number" min="0" step="1" value="${esc(c.lateFine ?? '')}" placeholder="${lateRateOf({ ...c, lateFine: null })}">`, 'm-slate')}${field('Time in by (empty = shop’s time)', `<input id="m-sshift" name="shiftStart" type="time" value="${esc(c.shiftStart || '')}">`, 'm-sshift')}</div>
-    <fieldset class="field"><legend>Days in</legend><div class="row">${[1, 2, 3, 4, 5, 6, 0].map(d => `<label class="check"><input type="checkbox" name="days" value="${d}" ${(c.days || []).includes(d) ? 'checked' : ''}>${DAYS[d]}</label>`).join('')}</div></fieldset>
+    <div class="fgrid">${field('Late deduction per 15 minutes (₱)', `<input id="m-slate" name="lateFine" type="number" min="0" step="1" value="${esc(c.lateFine ?? '')}" placeholder="${lateRateOf({ ...c, lateFine: null })}">`, 'm-slate')}</div>
+    <fieldset class="field"><legend>Weekly schedule</legend>
+      <div class="shift-grid">${[1, 2, 3, 4, 5, 6, 0].map(d => { const sh = shiftOfDay(c, d); return `<div class="shift-row"><label class="check"><input type="checkbox" name="in-${d}" ${sh ? 'checked' : ''}><b>${DAYS[d]}</b></label><input type="time" name="start-${d}" value="${esc(sh ? sh[0] : '09:00')}" aria-label="${DAYS[d]} starts"><span aria-hidden="true">–</span><input type="time" name="end-${d}" value="${esc(sh ? sh[1] : '18:00')}" aria-label="${DAYS[d]} ends"></div>`; }).join('')}</div>
+      <p class="muted small">Unticked = day off. Late counts from 1 minute after each day’s start. Online, junior barbers take bookings until 2 hours before their shift ends; everyone else until the service would end with their shift.</p></fieldset>
     <p class="muted small support-only">Receptionists and maintenance staff don’t take bookings or earn commission. They get their daily pay for each day in (Schedule → Who’s in).</p>
     ${b ? `<label class="row small"><input type="checkbox" name="active" ${c.active !== false ? 'checked' : ''}> Currently working here (unticked: hidden from the website and booking)</label>` : ''}
     ${loginFields(b)}
@@ -171,14 +175,14 @@ export function clientModal(c) {
     <p class="err" id="m-err" hidden></p>${mFoot(c ? 'Save changes' : 'Add client', c ? `<button type="button" class="btn btn-danger" data-act="delClient" data-id="${esc(x.id)}" style="margin-right:auto">Delete</button>` : '')}</form>`);
 }
 export function clientDrawer(c) {
-  const st = custStats()[c.id] || { visits: 0, spent: 0, last: '', barbers: {} }, N = loyaltyN();
+  const st = custStats()[c.id] || { visits: 0, spent: 0, last: '', barbers: {} }, LP = loyaltyNow();
   const hist = S.sales.filter(s => s.customerId === c.id).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
   const next = S.appointments.filter(a => (a.customerId === c.id || (c.phone && normPhone(a.phone) === normPhone(c.phone))) && a.date >= today() && a.status === 'booked').sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
   openModal(c.name, `<div class="stack">
     <div class="kpis">${kpi('Visits', st.visits)}${kpi('Spent', money(st.spent))}${kpi('Last visit', st.last ? shortDate(st.last) : '—')}</div>
     <p class="row"><b>${esc(c.phone || 'No phone')}</b>${c.email ? `<span class="muted">${esc(c.email)}</span>` : ''}${usualBarber(st) ? `<span class="muted">· Usually with ${esc(usualBarber(st))}</span>` : ''}</p>
     ${c.birthday ? (n => `<p class="${Math.abs(n) <= 7 ? 'hint' : 'muted small'}">Birthday: <b>${esc(fmtBday(c.birthday))}</b>${Math.abs(n) <= 7 ? ` · ${bdayWhen(n)}. ${esc(bdayPromoText())}` : ''}</p>`)(bdayDays(c.birthday, today())) : ''}
-    ${N ? `<p class="hint">${(st.visits + 1) % N === 0 ? `<b>Next visit is free</b> (visit #${st.visits + 1}).` : `${N - ((st.visits + 1) % N)} more visit${N - ((st.visits + 1) % N) === 1 ? '' : 's'} after the next one to a free cut.`}</p>` : ''}
+    ${LP ? `<p class="hint">${esc(loyaltyState(LP, st.visits).line)} (visit #${st.visits + 1}). ${esc(loyaltySummary(LP).replace(/^v/, 'V'))}.</p>` : ''}
     ${next ? `<p class="note">Next booking: <b>${fmtDate(next.date)} at ${fmtTime(next.time)}</b> with ${esc(staffName(next.barberId))}</p>` : ''}
     ${c.notes ? `<div class="note">${esc(c.notes)}</div>` : ''}
     ${liveCoupons(c).length ? `<p class="hint"><b>Coupon${liveCoupons(c).length > 1 ? 's' : ''} ready:</b> ${liveCoupons(c).map(cp => esc(cpLabel(cp)) + (cp.note ? ` <span class="muted">(${esc(cp.note)})</span>` : '')).join(', ')}. Used at checkout.</p>` : ''}
@@ -229,9 +233,9 @@ export function receiptModal(s, fresh) {
   </div>${receiptSend(s, fresh)}<div class="modal-f" style="margin-top:14px"><button type="button" class="btn btn-primary" data-act="closeModal">Done</button></div>`);
 }
 export function loyaltyLine(s) {
-  const N = loyaltyN(); if (!N || !s.customerId) return '';
-  const visits = S.sales.filter(x => x.customerId === s.customerId && x.id !== s.id).length + 1, left = N - (visits % N);
-  return `<hr><div style="justify-content:center;flex-direction:column;align-items:center;gap:6px"><span class="meter">${Array.from({ length: Math.min(N, 12) }, (_, i) => `<i class="${i < (visits % N || (visits ? N : 0)) ? 'on' : ''}"></i>`).join('')}</span><span>${visits % N === 0 ? 'Free visit used. A new loyalty card starts next time' : `Visit ${visits % N} of ${N} · ${left === 1 ? 'next visit is free' : left - 1 + ' more to a free cut'}`}</span></div>`;
+  const L = loyaltyNow(); if (!L || !s.customerId) return '';
+  const visits = S.sales.filter(x => x.customerId === s.customerId && x.id !== s.id).length + 1, st = loyaltyState(L, visits), got = loyaltyReward(L, visits), on = st.k || L.every;
+  return `<hr><div style="justify-content:center;flex-direction:column;align-items:center;gap:6px"><span class="meter">${Array.from({ length: Math.min(L.every, 12) }, (_, i) => `<i class="${i < on ? 'on' : ''}"></i>`).join('')}</span><span>${got && got.kind === 'free' ? 'Free visit used. A new loyalty card starts next time.' : `Visit ${on} of ${L.every}${got ? ` (${esc(got.label)})` : ''} · ${esc(st.line.replace(/^Your next visit: /, 'next visit: '))}`}</span></div>`;
 }
 export function modalErr(f, msg) { const e = f.querySelector('#m-err'); if (e) { e.textContent = msg; e.hidden = false; } }
 

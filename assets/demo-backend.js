@@ -3,12 +3,12 @@
 import {
   windowOfTime, STARTER, STARTER_STAFF, STARTER_PRODUCTS, publicBarber, comboError, commissionFor, isServiceStaff, rebookLink, slotId, blockTimes, isActiveSlot, availableTimes, policyOf,
   startMs, phNow, addDays, sum, promoCheck, cleanCode, cleanBday, queueItems, accountView, depositFor, cleanOptions, withOption, lateLimit, refundOnCancel,
-  lateFine, lateRateOf, shiftStartOf, roleOf, ACCESS, CLOCK_START
+  lateFine, lateRateOf, shiftStartOf, roleOf, ACCESS, CLOCK_START, hoursFor, loyaltyPlan, loyaltyReward
 } from './shared.js';
 
 // The saved demo is keyed by a fingerprint of the starter data, so changing the menu or team
 // (or a browser briefly mixing old and new files) never leaves stale sample data behind.
-const SEED_REV = 36; // bump when seed() itself changes
+const SEED_REV = 37; // bump when seed() itself changes
 const fingerprint = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const KEY = `rb-demo-${SEED_REV}-${fingerprint(JSON.stringify([STARTER, STARTER_STAFF]))}`, USER_KEY = 'rb-demo-user';
 try { Object.keys(localStorage).filter(k => k.startsWith('rb-demo-') && k !== KEY && k !== USER_KEY).forEach(k => localStorage.removeItem(k)); } catch (_) {}
@@ -57,11 +57,13 @@ function seed() {
     for (let n = -12; n <= 0; n++) {
       const dt = day(n);
       STARTER_STAFF.forEach(b => {
-        if ((b.id === 'mac' && (n === -6 || n === -5)) || rnd() < 0.08) return; // leave / day off
-        if (n === 0 && (now.time < '09:05' || ['jay', 'luz'].includes(b.id))) return; // not in yet
-        const start = shiftStartOf(b, pol0), r0 = rnd(), late = r0 < 0.18 ? 1 + Math.floor(rnd() * 40) : 0, early = late ? 0 : Math.floor(rnd() * 25);
-        const inMin = 9 * 60 + late - early, inHM = `${String(Math.floor(inMin / 60)).padStart(2, '0')}:${String(inMin % 60).padStart(2, '0')}`, L = lateFine(inHM, start, lateRateOf(b));
-        const outMin = 20 * 60 + Math.floor(rnd() * 20), outHM = `${Math.floor(outMin / 60)}:${String(outMin % 60).padStart(2, '0')}`;
+        if ((b.id === 'mac' && (n === -6 || n === -5)) || rnd() < 0.08) return; // leave
+        const sh = b.shifts && b.shifts[new Date(dt + 'T00:00:00Z').getUTCDay()]; if (b.shifts && !sh) return; // day off
+        const start = shiftStartOf(b, pol0, dt), sMin = +start.slice(0, 2) * 60 + +start.slice(3), eMin = sh ? +sh[1].slice(0, 2) * 60 + +sh[1].slice(3) : 20 * 60;
+        if (n === 0 && (now.min < sMin + 5 || ['jay', 'luz'].includes(b.id))) return; // not in yet
+        const r0 = rnd(), late = r0 < 0.18 ? 1 + Math.floor(rnd() * 40) : 0, early = late ? 0 : Math.floor(rnd() * 25);
+        const inMin = sMin + late - early, inHM = `${String(Math.floor(inMin / 60)).padStart(2, '0')}:${String(inMin % 60).padStart(2, '0')}`, L = lateFine(inHM, start, lateRateOf(b));
+        const outMin = eMin + Math.floor(rnd() * 20), outHM = `${Math.floor(outMin / 60)}:${String(outMin % 60).padStart(2, '0')}`;
         m.set(`timeclock/${dt}_${b.id}`, { date: dt, staffId: b.id, in: startMs(dt, inHM), inHM, start, lateMin: L.mins, fine: L.fine, rate: lateRateOf(b), ...(n < 0 ? { out: startMs(dt, outHM), outHM } : {}) });
       });
     } }
@@ -349,13 +351,13 @@ const FUNCS = {
     return { id, token, checkoutUrl: `booking.html?id=${id}&t=${token}${free ? '&booked=1' : manual ? '' : '&paid=1'}` };
   },
   getBooking(d) {
-    const a = byToken(d), I = info(), every = Math.max(0, parseInt(I.shop.loyaltyEvery, 10) || 0);
+    const a = byToken(d), I = info();
     let cid = a.customerId;
     if (!cid && a.phone) { const key = String(a.phone).replace(/\D/g, '').replace(/^63/, '0'); const c = [...store].find(([k, v]) => k.startsWith('customers/') && v.phoneKey === key); cid = c ? c[0].split('/')[1] : ''; }
     const visits = cid ? [...store].filter(([k, v]) => k.startsWith('sales/') && v.customerId === cid).length : 0;
     const guests = (a.guests || []).map(gid => { const g = store.get('appointments/' + gid); return g && { id: gid, token: g.token, name: g.name, status: g.status, date: g.date, time: g.time, barberName: g.anyBarber ? '' : (I.barbers.find(b => b.id === g.barberId) || {}).name || '', services: (g.serviceIds || []).map(s => I.services.find(x => x.id === s)).filter(Boolean).map(x => withOption(x, g.options).name), addOn: !!g.addOnOf, prices: (g.serviceIds || []).map(s => I.services.find(x => x.id === s)).filter(Boolean).map(x => { const o = withOption(x, g.options); return { name: o.name, price: o.price, priceFrom: !!x.priceFrom }; }) }; }).filter(Boolean);
     const cut = store.get('cuts/' + d.id);
-    return { ...publicView(d.id), loyalty: every ? { every, visits, nextFree: (visits + 1) % every === 0 } : null, guests, rebook: rebookLink('.', a, I), queue: queueFor(a), cutPhoto: a.status === 'done' && cut ? cut.img : '' };
+    return { ...publicView(d.id), loyalty: loyaltyOf(I, visits), guests, rebook: rebookLink('.', a, I), queue: queueFor(a), cutPhoto: a.status === 'done' && cut ? cut.img : '' };
   },
   checkPromo(d) {
     const I = info(), code = cleanCode(d.code); if (!code) fail('invalid-argument', 'Type a promo code.');
@@ -432,9 +434,9 @@ const FUNCS = {
     const key = (store.get('private/clock') || {}).key; if (!key || String(d.k || '') !== key) fail('permission-denied', 'This QR code is old. Scan the one at the shop.');
     const b = store.get('staff/' + me.staffId); if (!b) fail('not-found', 'Staff member not found.');
     const pol = policyOf(info()), now = Date.now(), { date, time } = phNow(now), k = `timeclock/${date}_${me.staffId}`, cur = store.get(k);
-    if (d.peek) return { name: b.name, state: !cur ? 'out' : cur.out ? 'done' : 'in', rec: cur || null, start: shiftStartOf(b, pol) };
+    if (d.peek) return { name: b.name, state: !cur ? 'out' : cur.out ? 'done' : 'in', rec: cur || null, start: shiftStartOf(b, pol, date) };
     if (!cur) {
-      const start = shiftStartOf(b, pol), rate = lateRateOf(b), L = lateFine(time, start, rate), rec = { date, staffId: me.staffId, in: now, inHM: time, start, lateMin: L.mins, fine: L.fine, rate };
+      const start = shiftStartOf(b, pol, date), rate = lateRateOf(b), L = lateFine(time, start, rate), rec = { date, staffId: me.staffId, in: now, inHM: time, start, lateMin: L.mins, fine: L.fine, rate };
       store.set(k, rec); actLog(u, 'clock', `${b.name} timed in at ${time}${L.mins ? ` (${L.mins} min late, −₱${L.fine})` : ''}`); changed(); return { action: 'in', name: b.name, rec };
     }
     if (cur.out) fail('failed-precondition', `You already timed out at ${cur.outHM}. Ask the owner if this is wrong.`);
@@ -507,7 +509,7 @@ const FUNCS = {
   },
   syncFacebookNow() { fail('failed-precondition', 'The demo can’t reach Facebook. This works once the site is live and the Page access token is saved.'); },
   joinQueue(d) {
-    const I = info(), t = phNow(), h = I.hours.find(x => x.d === t.dow), toM = s => { const [a, b] = String(s).split(':').map(Number); return a * 60 + b; };
+    const I = info(), t = phNow(), h = hoursFor(I, t.date), toM = s => { const [a, b] = String(s).split(':').map(Number); return a * 60 + b; };
     if (!h || h.closed || t.min < toM(h.open) - 15 || t.min > toM(h.close) - 30) fail('failed-precondition', 'The walk-in queue is closed right now. Book online for another day.');
     const name = String(d.name || '').trim(), phone = String(d.phone || '').replace(/\D/g, '').replace(/^63/, '0');
     if (name.length < 2) fail('invalid-argument', 'Enter your name.');
@@ -532,12 +534,12 @@ const FUNCS = {
   getReceipt(d) {
     const s = store.get('sales/' + String(d.id || ''));
     if (!s || !s.rtoken || s.rtoken !== d.t) fail('not-found', 'Receipt not found. Check the link.');
-    const I = info(), sh = I.shop || {}, every = Math.max(0, parseInt(sh.loyaltyEvery, 10) || 0);
+    const I = info(), sh = I.shop || {};
     const visits = s.customerId ? [...store].filter(([k, v]) => k.startsWith('sales/') && v.customerId === s.customerId).length : 0;
     return { id: d.id, date: s.date, time: s.time, name: s.name && s.name !== 'Walk-in' ? s.name : '', barberName: (I.barbers.find(b => b.id === s.barberId) || {}).name || '',
       lines: (s.lines || []).map(l => ({ name: l.name, qty: Number(l.qty) || 1, price: Number(l.price) || 0 })), discount: s.discount || 0, discountNote: s.discountNote || '', tip: s.tip || 0, total: s.total || 0,
       depositCredit: s.depositCredit || 0, paidAtShop: Math.max(0, (s.total || 0) - (s.depositCredit || 0)), method: Array.isArray(s.split) && s.split.length ? s.split.map(x => `${x.m} ₱${(Math.round((Number(x.amt) || 0) * 100) / 100).toLocaleString('en-PH')}`).join(' + ') : (s.method || ''), cash: s.cash || 0,
-      orNo: s.orNo || '', shop: { name: sh.name || '', wordmark: sh.wordmark || '', address: sh.address || '', phone: sh.phone || '', tagline: sh.tagline || '', tin: sh.tin || '', birPermit: sh.birPermit || '' }, loyalty: every && s.customerId ? { every, visits } : null };
+      orNo: s.orNo || '', shop: { name: sh.name || '', wordmark: sh.wordmark || '', address: sh.address || '', phone: sh.phone || '', tagline: sh.tagline || '', tin: sh.tin || '', birPermit: sh.birPermit || '' }, loyalty: s.customerId ? loyaltyOf(I, visits) : null };
   },
   rateVisit(d) {
     const a = byToken(d);
@@ -580,6 +582,7 @@ const FUNCS = {
     return publicView(d.id);
   }
 };
+const loyaltyOf = (I, visits) => { const L = loyaltyPlan(I.shop || {}, I.services || []); return L ? { ...L, visits, nextFree: (loyaltyReward(L, visits + 1) || {}).kind === 'free' } : null; };
 const adminDoc = u => u && store.get('admins/' + u.uid) ? { uid: u.uid, ...store.get('admins/' + u.uid) } : null;
 const isBossNow = u => { const a = adminDoc(u); return !!a && (roleOf(a) === 'owner' || ((store.get('elevations/' + u.uid) || {}).until || 0) > Date.now()); };
 function actLog(u, kind, text) { const a = adminDoc(u); store.set('activity/a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), { at: Date.now(), by: (a && a.uid) || 'server', who: (a && (a.name || a.email)) || 'System', role: a ? roleOf(a) : 'system', kind, text }); }

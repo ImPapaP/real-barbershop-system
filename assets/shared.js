@@ -2,7 +2,7 @@
 export const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 5, lateMinutesDeposit: 20, cancelHours: 48, leadMinutes: 60, bookAheadDays: 365, step: 60, maxReschedules: 2, rebookDays: 28, onlineBooking: true, receiptTexts: true, birthdaySvc: 'h8', birthdayPrice: 249, regularVisits: 3, lastBooking: '19:00', clockStart: '09:00' };
+export const DEFAULT_POLICY = { deposit: 200, holdMinutes: 15, rescheduleHours: 48, lateMinutes: 5, lateMinutesDeposit: 20, cancelHours: 48, leadMinutes: 60, bookAheadDays: 60, birthdayDays: 0, juniorStopMins: 120, step: 60, maxReschedules: 2, rebookDays: 28, onlineBooking: true, receiptTexts: true, birthdaySvc: 'h8', birthdayPrice: 249, regularVisits: 3, lastBooking: '19:00', clockStart: '09:00' };
 
 export const $ = (s, r = document) => r.querySelector(s);
 export const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -24,18 +24,17 @@ export function money(n, cur = '₱', dp = false) {
   const v = Number(n) || 0;
   return (v < 0 ? '−' : '') + cur + Math.abs(v).toLocaleString('en-PH', { minimumFractionDigits: dp ? 2 : 0, maximumFractionDigits: 2 });
 }
-export const priceLabel = (s, cur = '₱') => (s.priceFrom ? 'from ' : '') + money(s.price, cur);
+export const priceLabel = (s, cur = '₱') => (s.priceFrom ? 'starts at ' : '') + money(s.price, cur);
 export const policyOf = info => ({ ...DEFAULT_POLICY, ...(info && info.policy || {}) });
 export const initials = n => String(n || '?').split(/\s+/).filter(Boolean).slice(-2).map(w => w[0]).join('').toUpperCase();
 
 export function openStatus(info, ms = Date.now()) {
-  const now = phNow(ms), hrs = info.hours || [];
-  const h = hrs.find(x => x.d === now.dow);
+  const now = phNow(ms), h = hoursFor(info, now.date);
   if (h && !h.closed) {
     if (now.min >= toMin(h.open) && now.min < toMin(h.close)) return { open: true, text: `Open now · until ${fmtTime(h.close)}` };
     if (now.min < toMin(h.open)) return { open: false, text: `Opens today at ${fmtTime(h.open)}` };
   }
-  for (let i = 1; i <= 7; i++) { const d = (now.dow + i) % 7; const x = hrs.find(y => y.d === d); if (x && !x.closed) return { open: false, text: `Closed now · opens ${i === 1 ? 'tomorrow' : DAYS_LONG[d]} at ${fmtTime(x.open)}` }; }
+  for (let i = 1; i <= 7; i++) { const dt = addDays(now.date, i), x = hoursFor(info, dt); if (x && !x.closed) return { open: false, text: `Closed now${h && h.closed && h.label ? ` (${h.label})` : ''} · opens ${i === 1 ? 'tomorrow' : DAYS_LONG[dowOf(dt)]} at ${fmtTime(x.open)}` }; }
   return { open: false, text: 'Closed' };
 }
 
@@ -59,9 +58,28 @@ export function comboError(info, services) {
   const dup = services.find(s => (bases[0].includes || []).includes(s.id));
   return dup ? `${dup.name} is already part of ${bases[0].name.split(' · ')[0]}.` : '';
 }
-export function eligibleBarbers(info, services, date, barberId) {
+// ---------- opening hours and staff shifts (mirrors functions/src/core.js) ----------
+// info.specialHours: [{ date: 'YYYY-MM-DD', closed: true } or { date, open, close }, label] for holidays; else the weekday's hours.
+export function hoursFor(info, date) {
+  const sp = (info.specialHours || []).find(x => x.date === date), h = (info.hours || []).find(x => x.d === dowOf(date));
+  return sp ? { ...(h || {}), ...sp, closed: !!sp.closed } : h;
+}
+// staff.shifts: { 0: ['11:00', '20:00'], 1: ['09:00', '18:00'], ... } (0 = Sunday). A weekday without a shift is a day off.
+// Older records without shifts use `days` with the shop's hours.
+export function shiftOf(b, date, info = {}) {
   const d = dowOf(date);
-  return (info.barbers || []).filter(b => b.active !== false && (b.days || []).includes(d) && !(b.off || []).includes(date)) // off = leave days
+  if (b.shifts && Object.keys(b.shifts).length) { const s = b.shifts[d]; return s && s[0] && s[1] ? { start: s[0], end: s[1] } : null; }
+  if (!(b.days || []).includes(d)) return null;
+  const h = hoursFor(info, date) || {}; return { start: b.shiftStart || h.open || '09:00', end: h.close || '20:00' };
+}
+export const daysFromShifts = shifts => Object.keys(shifts || {}).filter(k => shifts[k] && shifts[k][0]).map(Number).sort();
+// Junior barbers take bookings until 2 hours before their shift ends (the last hour is for walk-ins);
+// everyone else until the service would end with their shift.
+export const isJunior = b => (b.role || 'barber') === 'barber' && (b.tiers || []).length > 0 && !(b.tiers || []).includes('deluxe');
+export function lastStartFor(b, shift, mins, pol) { const end = toMin(shift.end); return isJunior(b) ? Math.min(end - mins, end - (pol.juniorStopMins ?? 120)) : end - mins; }
+export function inShift(b, date, time, mins, info, pol) { const s = shiftOf(b, date, info); if (!s) return false; const m = toMin(time); return m >= toMin(s.start) && m <= lastStartFor(b, s, mins, pol); }
+export function eligibleBarbers(info, services, date, barberId) {
+  return (info.barbers || []).filter(b => b.active !== false && shiftOf(b, date, info) && !(b.off || []).includes(date)) // off = leave days
     .filter(b => canServe(b, services))
     .filter(b => !barberId || b.id === barberId)
     .sort((a, b) => (a.chair || 99) - (b.chair || 99));
@@ -69,7 +87,7 @@ export function eligibleBarbers(info, services, date, barberId) {
 // slots: map of slot id -> slot doc for that date. Returns [{time, barbers:[id]}] for every start time that fits.
 export function availableTimes(info, { services, date, barberId, ignoreBookingId }, slots, ms = Date.now()) {
   const pol = policyOf(info);
-  const h = (info.hours || []).find(x => x.d === dowOf(date));
+  const h = hoursFor(info, date);
   if (!h || h.closed || !services.length) return [];
   const mins = Math.max(pol.step, sum(services, s => (s.mins ?? pol.step))); // add-ons with 0 min fit inside the hour
   const bars = eligibleBarbers(info, services, date, barberId);
@@ -78,7 +96,7 @@ export function availableTimes(info, { services, date, barberId, ignoreBookingId
   for (let m = toMin(h.open); m + mins <= toMin(h.close) && m <= last; m += pol.step) {
     const t = fromMin(m);
     if (startMs(date, t) < ms + pol.leadMinutes * 60e3) continue;
-    const free = bars.filter(b => blockTimes(t, mins, pol.step).every(bt => { const s = slots[slotId(b.id, date, bt)]; return !isActiveSlot(s, ms) || (ignoreBookingId && s.bookingId === ignoreBookingId); }));
+    const free = bars.filter(b => inShift(b, date, t, mins, info, pol) && blockTimes(t, mins, pol.step).every(bt => { const s = slots[slotId(b.id, date, bt)]; return !isActiveSlot(s, ms) || (ignoreBookingId && s.bookingId === ignoreBookingId); }));
     out.push({ time: t, barbers: free.map(b => b.id) });
   }
   return out;
@@ -86,8 +104,8 @@ export function availableTimes(info, { services, date, barberId, ignoreBookingId
 export function bookableDates(info, ms = Date.now()) {
   const pol = policyOf(info), today = phNow(ms).date, out = [];
   for (let i = 0; i <= pol.bookAheadDays; i++) {
-    const d = addDays(today, i), h = (info.hours || []).find(x => x.d === dowOf(d));
-    out.push({ date: d, closed: !h || h.closed });
+    const d = addDays(today, i), h = hoursFor(info, d);
+    out.push({ date: d, closed: !h || h.closed, label: h && h.label ? h.label : '' });
   }
   return out;
 }
@@ -109,8 +127,8 @@ export const STARTER = {
     address: 'C&B Circle Mall, cor. L. Sumulong Memorial Circle, Antipolo, Rizal 1870',
     phone: '0906 567 4507', email: 'r3albarbers@gmail.com', facebook: 'https://www.facebook.com/R3ALBarbers', googleUrl: 'https://share.google/erBDaygzMDDSmdahv',
     directions: 'Ground floor of C&B Circle Mall, in front of Unciano Colleges. Free parking at the side of the building and in the basement.', instagram: 'https://www.instagram.com/real__barbers',
-    gcashNumber: '0966 368 7856', gcashName: 'Alexandra C.',
-    currency: '₱', loyaltyEvery: 11, heroPhoto: '', googleRating: 5.0, googleCount: 45, ratingSource: 'Setmore'
+    gcashNumber: '0966 368 7856', gcashName: 'AL******A C.', ownerPhone: '0906 567 4507', legalName: 'R3AL BARBERS', dpoName: 'Alexandra Cabang', dpoEmail: 'r3albarbers@gmail.com',
+    currency: '₱', loyaltyEvery: 12, loyaltyMidAt: 6, loyaltyMidPct: 20, loyaltyFreeService: 'h9', heroPhoto: '', googleRating: 5.0, googleCount: 45, ratingSource: 'Setmore'
   },
   announcement: { active: false, text: '', link: '' },
   gallery: [
@@ -124,14 +142,23 @@ export const STARTER = {
   // Real reviews from REAL Barbers' two Setmore pages (5.0 from 30 + 15 reviews)
   reviews: [
     { id: 'rv1', name: 'Miguel A.', rating: 5, source: 'Setmore', text: 'Excellent service! Barber Lyndon is very professional and gives suggestions for better hairstyle. Will book again for future haircuts!' },
-    { id: 'rv2', name: 'Jerome Ramos', rating: 5, source: 'Setmore', text: 'Would like to commend Barber Mac for his excellent service.' },
-    { id: 'rv3', name: 'Vic Titong', rating: 5, source: 'Setmore', text: 'Good job sir Ed!' },
-    { id: 'rv4', name: 'Justin Bonso', rating: 5, source: 'Setmore', text: 'Best barbershop' },
+    { id: 'rv2', name: 'Jerome R.', rating: 5, source: 'Setmore', text: 'Would like to commend Barber Mac for his excellent service.' },
+    { id: 'rv3', name: 'Vic T.', rating: 5, source: 'Setmore', text: 'Good job sir Ed!' },
+    { id: 'rv4', name: 'Justin B.', rating: 5, source: 'Setmore', text: 'Best barbershop' },
     { id: 'rv5', name: 'Joshua', rating: 5, source: 'Setmore', text: 'Good haircut & service' },
     { id: 'rv6', name: 'Andrei', rating: 5, source: 'Setmore', text: 'Good service' }
   ],
   policy: { ...DEFAULT_POLICY, onlineBooking: false }, // turned on in Shop setup once the paid backend is deployed
   hours: [0, 1, 2, 3, 4, 5, 6].map(d => ({ d, open: '09:00', close: '20:00', closed: false })),
+  // holiday hours (owner, Nov 2026)
+  specialHours: [
+    { date: '2026-12-24', open: '09:00', close: '15:00', label: 'Christmas Eve' },
+    { date: '2026-12-25', closed: true, label: 'Christmas Day' },
+    { date: '2026-12-26', closed: true, label: 'Closed' },
+    { date: '2026-12-31', open: '09:00', close: '15:00', label: 'New Year’s Eve' },
+    { date: '2027-01-01', closed: true, label: 'New Year’s Day' },
+    { date: '2027-01-02', closed: true, label: 'Closed' }
+  ],
   services: [
     // Men: pick ONE haircut (kind 'base'), Deluxe or Regular, then any add-ons (kind 'extra').
     // tier decides which barbers can take it: deluxe = senior barbers, regular = regular barbers.
@@ -145,36 +172,37 @@ export const STARTER = {
     S60('h2', 'Hair Spa', 550, 'him', 'Add-ons', '', { usesProduct: true, mins: 0, kind: 'extra' }),
     S60('h3', 'Dandruff Control', 650, 'him', 'Add-ons', '', { usesProduct: true, mins: 0, kind: 'extra' }),
     S60('h4', 'Hair Color (L’Oréal)', 750, 'him', 'Add-ons', '', { usesProduct: true, mins: 0, kind: 'extra' }),
-    S60('h5', 'Basic Hair Art', 549, 'him', 'Add-ons', '', { mins: 0, kind: 'extra' }),
+    S60('h5', 'Basic Hair Art', 150, 'him', 'Add-ons', '', { mins: 0, kind: 'extra' }),
     S60('h6', 'Beard Shave with Cream', 200, 'him', 'Add-ons', '', { mins: 0, kind: 'extra' }),
     S60('h7', 'Beard Sculpting', 230, 'him', 'Add-ons', '', { mins: 0, kind: 'extra' }),
     S60('f1', 'Hair and Makeup', 1500, 'her', 'For her', '', { mins: 90 }),
     S60('f2', 'Women’s Regular Haircut', 275, 'her', 'For her', '', { mins: 60 }),
     S60('f3', 'Blow Dry with Shampoo', 230, 'her', 'For her', '', { mins: 60 }),
     S60('f4', 'Hair Styling', 470, 'her', 'For her', 'Curled or straightened', { mins: 60 }),
-    S60('f5', 'Hair Color (Organique)', 1000, 'her', 'Color & treatments', '', { usesProduct: true, mins: 120, priceFrom: true }),
-    S60('f6', 'Hair Color (Revlon)', 1200, 'her', 'Color & treatments', '', { usesProduct: true, mins: 120, priceFrom: true }),
-    S60('f7', 'Hair Color (L’Oréal)', 1500, 'her', 'Color & treatments', '', { usesProduct: true, mins: 120, priceFrom: true }),
-    S60('f8', 'Root Touch Up', 1000, 'her', 'Color & treatments', '', { usesProduct: true, mins: 90 }),
-    S60('f9', 'Highlights', 1500, 'her', 'Color & treatments', '', { usesProduct: true, mins: 150, priceFrom: true }),
-    S60('f10', 'Balayage', 3000, 'her', 'Color & treatments', '', { usesProduct: true, mins: 180, priceFrom: true }),
-    S60('f11', 'Keratin Blow-out', 1500, 'her', 'Color & treatments', '', { usesProduct: true, mins: 120 }),
-    S60('f12', 'Nano-Protein Treatment', 2500, 'her', 'Color & treatments', '', { usesProduct: true, mins: 150 }),
-    S60('f13', 'Hair Rebond', 1500, 'her', 'Color & treatments', '', { usesProduct: true, mins: 240, priceFrom: true }),
+    S60('f5', 'Hair Color (Organique)', 1000, 'her', 'Color & treatments', '', { usesProduct: true, mins: 60, priceFrom: true }),
+    S60('f6', 'Hair Color (Revlon)', 1200, 'her', 'Color & treatments', '', { usesProduct: true, mins: 60, priceFrom: true }),
+    S60('f7', 'Hair Color (L’Oréal)', 1500, 'her', 'Color & treatments', '', { usesProduct: true, mins: 60, priceFrom: true }),
+    S60('f8', 'Root Touch Up', 1000, 'her', 'Color & treatments', '', { usesProduct: true, mins: 60 }),
+    S60('f9', 'Highlights', 1500, 'her', 'Color & treatments', '', { usesProduct: true, mins: 60, priceFrom: true }),
+    S60('f10', 'Balayage', 3000, 'her', 'Color & treatments', '', { usesProduct: true, mins: 60, priceFrom: true }),
+    S60('f11', 'Keratin Blow-out', 1500, 'her', 'Color & treatments', '', { usesProduct: true, mins: 60 }),
+    S60('f12', 'Nano-Protein Treatment', 2500, 'her', 'Color & treatments', '', { usesProduct: true, mins: 60 }),
+    S60('f13', 'Hair Rebond', 1500, 'her', 'Color & treatments', '', { usesProduct: true, mins: 60, priceFrom: true }),
     S60('f14', 'Moroccan Hot Oil Treatment', 450, 'her', 'Color & treatments', '', { usesProduct: true, mins: 60 }),
     S60('f15', 'Semi Di Lino Hot Oil Treatment', 550, 'her', 'Color & treatments', '', { usesProduct: true, mins: 60 }),
     S60('f16', 'Eyebrow Shaping', 120, 'her', 'For her', '', { mins: 60 }),
+    S60('f17', 'Hair Perming', 1300, 'her', 'Color & treatments', 'For men and women. Final price depends on hair length.', { usesProduct: true, mins: 60, priceFrom: true }),
     // Nails (REAL Barbers' menu from the owner, Nov 2026). Polish is an option the client picks; it changes the price.
     S60('n1', 'Manicure', 160, 'nails', 'Nails', 'Clean and shape', { options: [{ id: 'reg', name: 'Regular polish', add: 30 }, { id: 'orly', name: 'L’Oréal/Orly polish', add: 50 }] }),
     S60('n2', 'Pedicure', 180, 'nails', 'Nails', 'Clean and shape', { options: [{ id: 'reg', name: 'Regular polish', add: 30 }, { id: 'orly', name: 'L’Oréal/Orly polish', add: 50 }] }),
-    S60('n3', 'Gel Manicure', 450, 'nails', 'Gel', 'Long-lasting gel polish', { usesProduct: true }),
-    S60('n4', 'Gel Pedicure', 550, 'nails', 'Gel', 'Long-lasting gel polish', { usesProduct: true }),
-    S60('n5', 'Gel Polish Removal (done here)', 150, 'nails', 'Gel', 'For gel done at REAL Barbers'),
-    S60('n6', 'Gel Polish Removal (done elsewhere)', 200, 'nails', 'Gel', 'For gel done at another salon'),
+    S60('n3', 'Gel Manicure', 450, 'nails', 'Gel', 'Long-lasting gel polish', { usesProduct: true, mins: 120 }),
+    S60('n4', 'Gel Pedicure', 550, 'nails', 'Gel', 'Long-lasting gel polish', { usesProduct: true, mins: 120 }),
+    S60('n5', 'Gel Polish Removal (done here)', 150, 'nails', 'Gel', 'For gel done at REAL Barbers', { mins: 120 }),
+    S60('n6', 'Gel Polish Removal (done elsewhere)', 200, 'nails', 'Gel', 'For gel done at another salon', { mins: 120 }),
     S60('n7', 'Foot Spa', 350, 'nails', 'Spa', 'Soak, scrub and massage'),
-    S60('dn1', 'DN1 · Manicure and Pedicure', 320, 'nails', 'Promo packages', '', { options: [{ id: 'reg', name: 'Regular polish', add: 60 }, { id: 'orly', name: 'L’Oréal/Orly polish', add: 100 }, { id: 'gel', name: 'Gel polish', add: 630 }] }),
-    S60('dn2', 'DN2 · Pedicure and Foot Spa', 500, 'nails', 'Promo packages', '', { options: [{ id: 'reg', name: 'Regular polish', add: 30 }, { id: 'orly', name: 'L’Oréal/Orly polish', add: 50 }, { id: 'gel', name: 'Gel polish', add: 370 }] }),
-    S60('dn3', 'DN3 · Manicure, Pedicure and Foot Spa', 660, 'nails', 'Promo packages', '', { options: [{ id: 'reg', name: 'Regular polish', add: 50 }, { id: 'orly', name: 'L’Oréal/Orly polish', add: 50 }, { id: 'gel', name: 'Gel polish', add: 640 }] }),
+    S60('dn1', 'DN1 · Manicure and Pedicure', 320, 'nails', 'Promo packages', '', { mins: 120, options: [{ id: 'reg', name: 'Regular polish', add: 60 }, { id: 'orly', name: 'L’Oréal/Orly polish', add: 100 }, { id: 'gel', name: 'Gel polish', add: 630 }] }),
+    S60('dn2', 'DN2 · Pedicure and Foot Spa', 500, 'nails', 'Promo packages', '', { mins: 120, options: [{ id: 'reg', name: 'Regular polish', add: 30 }, { id: 'orly', name: 'L’Oréal/Orly polish', add: 50 }, { id: 'gel', name: 'Gel polish', add: 370 }] }),
+    S60('dn3', 'DN3 · Manicure, Pedicure and Foot Spa', 660, 'nails', 'Promo packages', '', { mins: 120, options: [{ id: 'reg', name: 'Regular polish', add: 50 }, { id: 'orly', name: 'L’Oréal/Orly polish', add: 50 }, { id: 'gel', name: 'Gel polish', add: 640 }] }),
     // Braids (Airyl and Lyndon). Prices start here; the final price depends on length and style.
     S60('b1', 'Top Head Braids', 1000, 'braids', 'Braids', '', { mins: 120, priceFrom: true }),
     S60('b2', 'Full Head Braids', 1300, 'braids', 'Braids', '', { mins: 180, priceFrom: true }),
@@ -189,6 +217,15 @@ export const STARTER_PRODUCTS = [
   { id: 'styling-powder', name: 'Styling Powder', price: 250, size: '20 g', unit: 'bottles', desc: 'Firm hold, matte finish. Adds volume and texture at the roots.', tag: '', photo: 'assets/products/styling-powder.jpg' },
   { id: 'sea-salt-spray', name: 'Sea Salt Spray', price: 370, size: '100 ml', unit: 'bottles', desc: 'Medium hold, medium shine. Spray on damp hair for a loose, textured look.', tag: '', photo: 'assets/products/sea-salt-spray.jpg' }
 ];
+// Weekly shifts from the owner's schedule (Nov 2026), Sunday first. '' = day off.
+const A = '09:00-18:00', B = '10:00-19:00', C = '11:00-20:00', X = '';
+const WEEK = {
+  lyndon: [B, X, B, B, B, B, B], rod: [B, B, B, B, X, B, B], reymart: [B, B, X, B, B, B, B], angelo: [B, B, B, X, B, B, B],
+  ed: [C, A, A, X, C, A, C], renz: [C, A, X, A, C, A, A], jay: [B, C, A, A, X, C, A], vince: [A, X, C, A, A, C, '10:00-19:00'],
+  mac: ['09:00-20:00', C, C, C, A, X, C], dave: [B, X, B, B, B, B, B], liza: [C, C, B, X, A, A, A], luz: [A, A, X, B, C, C, C],
+  airyl: [B, B, B, B, X, B, B], alex: ['09:00-20:00', '09:00-20:00', X, '09:00-20:00', '09:00-20:00', '09:00-20:00', '09:00-20:00']
+};
+const shiftsOf = id => Object.fromEntries((WEEK[id] || []).map((v, d) => [d, v ? v.split('-') : null]).filter(([, v]) => v));
 export const STARTER_STAFF = [
   { id: 'lyndon', photo: 'assets/staff/lyndon.jpg', name: 'Lyndon', role: 'barber', title: 'Senior barber', specialty: 'Classic and modern cuts, and braids', groups: ['him', 'braids'], tiers: ['deluxe'], payType: 'quota', rate: 50, dailyPay: 700, lateFine: 50, chair: 1 },
   { id: 'rod', photo: 'assets/staff/rod.jpg', name: 'Roderick', role: 'barber', title: 'Senior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['deluxe'], payType: 'quota', rate: 50, dailyPay: 700, lateFine: 50, chair: 2 },
@@ -199,13 +236,13 @@ export const STARTER_STAFF = [
   { id: 'jay', photo: 'assets/staff/jay.jpg', name: 'Jay', role: 'barber', title: 'Junior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['regular'], payType: 'quota', rate: 40, dailyPay: 500, lateFine: 15, noDeposit: true, chair: 7 },
   { id: 'vince', photo: 'assets/staff/vince.jpg', name: 'Vince', role: 'barber', title: 'Junior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['regular'], payType: 'quota', rate: 40, dailyPay: 500, lateFine: 15, noDeposit: true, chair: 8 },
   { id: 'mac', photo: 'assets/staff/mac.jpg', name: 'Mac', role: 'barber', title: 'Junior barber', specialty: 'Classic cuts and fades', groups: ['him'], tiers: ['regular'], payType: 'quota', rate: 40, dailyPay: 500, lateFine: 15, noDeposit: true, chair: 9 },
-  { id: 'dave', photo: 'assets/staff/dave.jpg', name: 'Dave', role: 'stylist', title: 'Stylist', specialty: 'Women’s services: hair color, rebonding, styling and perming', groups: ['her'], rate: 45, dailyPay: 1000, productFee: { threshold: 1500, low: 50, high: 100 }, noDeposit: true, chair: 10 },
-  { id: 'luz', photo: 'assets/staff/luz.jpg', name: 'Luz', role: 'nails', title: 'Nail technician', specialty: 'Nail care', groups: ['nails'], payType: 'quota', rate: 40, dailyPay: 500, noDeposit: true, chair: 11 },
-  { id: 'liza', photo: 'assets/staff/liza.jpg', name: 'Liza', role: 'nails', title: 'Nail technician', specialty: 'Nail care', groups: ['nails'], payType: 'quota', rate: 40, dailyPay: 500, noDeposit: true, chair: 12 },
-  { id: 'alex', name: 'Alex', role: 'reception', title: 'Owner', specialty: '', groups: [], payType: 'monthly', monthlyPay: 20000, rate: 0, dailyPay: 0 },
-  { id: 'airyl', name: 'Airyl', role: 'stylist', title: 'Receptionist · braids', specialty: 'Braids', groups: ['braids'], rate: 70, dailyPay: 700, noDeposit: true, chair: 13 },
-].map(b => ({ ...b, phone: '', days: [0, 1, 2, 3, 4, 5, 6], active: true }));
-export const publicBarber = b => ({ id: b.id, name: b.name, noDeposit: !!b.noDeposit, off: b.off || [], role: b.role || 'barber', title: b.title || '', specialty: b.specialty || '', groups: b.groups || ['him'], tiers: b.tiers || [], days: b.days || [], chair: b.chair || '', photo: b.photo || '', bio: b.bio || '', rating: b.rating || 0, ratingCount: b.ratingCount || 0 });
+  { id: 'dave', photo: 'assets/staff/dave.jpg', name: 'Dave', role: 'stylist', title: 'Stylist', specialty: 'Women’s services: hair color, rebonding, styling and perming', groups: ['her'], rate: 45, dailyPay: 1000, productFee: { threshold: 1500, low: 50, high: 100 }, noDeposit: true, lateFine: 50, chair: 10 },
+  { id: 'luz', photo: 'assets/staff/luz.jpg', name: 'Luz', role: 'nails', title: 'Nail technician', specialty: 'Nail care', groups: ['nails'], payType: 'quota', rate: 40, dailyPay: 500, noDeposit: true, lateFine: 15, chair: 11 },
+  { id: 'liza', photo: 'assets/staff/liza.jpg', name: 'Liza', role: 'nails', title: 'Nail technician', specialty: 'Nail care', groups: ['nails'], payType: 'quota', rate: 40, dailyPay: 500, noDeposit: true, lateFine: 15, chair: 12 },
+  { id: 'alex', name: 'Alex', role: 'reception', title: 'Owner', specialty: '', groups: [], payType: 'monthly', monthlyPay: 20000, rate: 0, dailyPay: 0, lateFine: 15 },
+  { id: 'airyl', name: 'Airyl', role: 'stylist', title: 'Receptionist · braids', specialty: 'Braids', groups: ['braids'], rate: 70, dailyPay: 700, noDeposit: true, lateFine: 15, chair: 13 },
+].map(b => { const shifts = shiftsOf(b.id); return { ...b, phone: '', shifts, days: daysFromShifts(shifts), active: true }; });
+export const publicBarber = b => ({ id: b.id, name: b.name, noDeposit: !!b.noDeposit, off: b.off || [], shifts: b.shifts || null, role: b.role || 'barber', title: b.title || '', specialty: b.specialty || '', groups: b.groups || ['him'], tiers: b.tiers || [], days: b.days || [], chair: b.chair || '', photo: b.photo || '', bio: b.bio || '', rating: b.rating || 0, ratingCount: b.ratingCount || 0 });
 
 // Shrinks a photo in the browser before upload: longest side `max` px, JPEG. Returns a Blob.
 export async function resizeImage(file, max = 1600, quality = 0.82) {
@@ -282,8 +319,8 @@ export const LOGO = new URL('./logo-192.png', import.meta.url).href;
 // Client-facing receipt (booking page and receipt page). `r` comes from getReceipt.
 export function receiptHTML(r, cur = '₱') {
   const m = n => money(n, cur, true), sh = r.shop || {}, row = (k, v, cls = '') => `<div class="${cls}"><span>${k}</span><span>${v}</span></div>`;
-  // loyalty: every Nth visit is free (same rule as the dashboard), so after visit k there are N-1-k paid visits to go
-  const L = r.loyalty, k = L ? L.visits % L.every : 0, onCard = L ? (k || (L.visits ? L.every : 0)) : 0, left = L ? L.every - 1 - k : 0;
+  // loyalty card after this visit (same rules as the dashboard)
+  const L = r.loyalty && r.loyalty.every ? r.loyalty : null, LS = L ? loyaltyState(L, L.visits) : null, onCard = L ? (LS.k || (L.visits ? L.every : 0)) : 0, got = L ? loyaltyReward(L, L.visits) : null;
   return `<div class="receipt rcpt">
     <div class="rc-shop">${esc(sh.wordmark || sh.name || 'Receipt')}</div>${sh.address ? `<div class="rc-mid muted">${esc(sh.address)}</div>` : ''}${sh.tin ? `<div class="rc-mid muted">TIN ${esc(sh.tin)}</div>` : ''}<hr>
     ${r.orNo ? row('<b>Official receipt</b>', `<b>${esc(r.orNo)}</b>`) : ''}
@@ -292,7 +329,7 @@ export function receiptHTML(r, cur = '₱') {
     ${r.discount ? row(`Discount${r.discountNote ? ' (' + esc(r.discountNote) + ')' : ''}`, '−' + m(r.discount)) : ''}${r.tip ? row('Tip', m(r.tip)) : ''}
     ${row('TOTAL', m(r.total), 'rc-tot')}
     ${r.depositCredit ? row('Deposit paid online', '−' + m(r.depositCredit)) : ''}${row(`Paid at the shop${r.method ? ' (' + esc(r.method) + ')' : ''}`, m(r.paidAtShop))}
-    ${L ? `<hr><div class="rc-mid rc-loy"><span class="meter">${Array.from({ length: Math.min(L.every, 12) }, (_, i) => `<i class="${i < onCard ? 'on' : ''}"></i>`).join('')}</span><span>${k === 0 ? 'Free visit used. A new card starts next time' : left === 0 ? `Visit ${k} of ${L.every} · your next visit is free` : `Visit ${k} of ${L.every} · ${left} more to a free cut`}</span></div>` : ''}
+    ${L ? `<hr><div class="rc-mid rc-loy"><span class="meter">${Array.from({ length: Math.min(L.every, 12) }, (_, i) => `<i class="${i < onCard ? 'on' : ''}"></i>`).join('')}</span><span>${got && got.kind === 'free' ? 'Free visit used. A new card starts next time' : `Visit ${onCard} of ${L.every}${got ? ` (${got.label})` : ''} · ${esc(LS.line.replace(/^Your next visit: /, 'next visit: '))}`}</span></div>` : ''}
     <hr><div class="rc-mid muted">${esc(sh.tagline || 'Thank you!')}${sh.phone ? `<br>${esc(sh.phone)}` : ''}${sh.birPermit ? `<br><small>${esc(sh.birPermit)}</small>` : ''}</div></div>`;
 }
 export const BACK_IC = '<svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5"/></svg>';
@@ -387,7 +424,7 @@ export function bdaySelects(value, idBase, attr) {
     <select id="${idBase}-d" ${attr('d')} aria-label="Birthday day"><option value="">Day</option>${Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}" ${d === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select></div>`;
 }
 export const BDAY_TITLE = 'Birthday treat: Signature Haircut for ₱249';
-export const BDAY_HINT = 'Tell us your birthday (just the month and day). During your birthday week, our Signature Haircut with shampoo and rinse is ₱249 instead of ₱299.';
+export const BDAY_HINT = 'Tell us your birthday (just the month and day). On your birthday, our Signature Haircut with shampoo and rinse is ₱249 instead of ₱299.';
 export const cleanCode = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20);
 // Messenger link from the Facebook page address (facebook.com/R3ALBarbers -> m.me/R3ALBarbers)
 export function messengerLink(shop) {
@@ -422,7 +459,7 @@ export function monthGrid({ dates, selected, act, month, navAct, disabled = fals
   for (let i = 0; i < start; i++) cells.push('<span class="cal-x" aria-hidden="true"></span>');
   for (let d = 1; d <= days; d++) {
     const iso = `${m}-${String(d).padStart(2, '0')}`, x = by[iso], can = x && !x.closed && !x.off && !disabled;
-    const why = !x ? '' : x.closed ? ' (closed)' : x.off ? ' (day off)' : '';
+    const why = !x ? '' : x.closed ? ` (closed${x.label && x.label !== 'Closed' ? ', ' + x.label : ''})` : x.off ? ' (day off)' : '';
     cells.push(`<button type="button" class="cal-d${iso === today ? ' today' : ''}${x && (x.closed || x.off) ? ' shut' : ''}" data-act="${act}" data-v="${iso}" aria-pressed="${iso === selected}" aria-label="${fmtDate(iso)}${why}" ${can ? '' : 'disabled'}>${d}</button>`);
   }
   return `<div class="cal" role="group" aria-label="${label}">
@@ -449,7 +486,7 @@ export function queueItems(appts, info, date) {
 export function queueEstimate(q, info, ms = Date.now()) {
   if (!openStatus(info, ms).open) return null;
   const t = phNow(ms), now = t.min, items = q && q.date === t.date ? q.items || [] : [];
-  const chairs = Math.max(1, (info.barbers || []).filter(b => (b.days || []).includes(t.dow) && (b.groups || ['him']).includes('him')).length);
+  const chairs = Math.max(1, (info.barbers || []).filter(b => { const sh = shiftOf(b, t.date, info); return sh && now >= toMin(sh.start) && now < toMin(sh.end) && (b.groups || ['him']).includes('him') && !(b.off || []).includes(t.date); }).length);
   const busy = items.filter(i => i.t === 'c' || (i.t === 'b' && i.s <= now && now < i.s + i.m)).length;
   const waiting = items.filter(i => i.t === 'w'), free = Math.max(0, chairs - busy);
   if (waiting.length < free) return { mins: 0, waiting: waiting.length, chairs };
@@ -458,13 +495,41 @@ export function queueEstimate(q, info, ms = Date.now()) {
   return { mins, waiting: waiting.length, chairs };
 }
 
+// ---------- loyalty card (mirrors functions/src/core.js) ----------
+// shop.loyaltyEvery: visits per card (0 = no card). loyaltyMidAt + loyaltyMidPct: one visit on the card gets a discount.
+// loyaltyFreeService: the service the last visit of the card gets free ('' = their haircut).
+// Owner, Nov 2026: 12 visits; visit 6 gets 20% off, visit 12 is a free Regular Haircut.
+export function loyaltyPlan(shop = {}, services = []) {
+  const every = Math.max(0, parseInt(shop.loyaltyEvery, 10) || 0); if (!every) return null;
+  const at = Math.max(0, parseInt(shop.loyaltyMidAt, 10) || 0), pct = Math.max(0, Math.min(100, Number(shop.loyaltyMidPct) || 0)), sv = services.find(x => x.id === shop.loyaltyFreeService);
+  return { every, midAt: at > 0 && at < every && pct > 0 ? at : 0, midPct: pct, freeId: sv ? sv.id : '', freeName: sv ? sv.name : 'haircut' };
+}
+// the reward on visit number n (1 = first visit ever), or null
+export function loyaltyReward(L, n) {
+  if (!L || !L.every || n < 1) return null;
+  const k = (n - 1) % L.every + 1;
+  if (k === L.every) return { kind: 'free', k, label: `free ${L.freeName || 'haircut'}` };
+  if (L.midAt && k === L.midAt) return { kind: 'percent', k, value: L.midPct, label: `${L.midPct}% off` };
+  return null;
+}
+// where a client stands after `visits` paid visits: stamps on the card now, the reward on the next visit, the next reward
+export function loyaltyState(L, visits) {
+  const k = visits % L.every, next = loyaltyReward(L, visits + 1);
+  let ahead = null; for (let i = 1; i <= L.every; i++) { const r = loyaltyReward(L, visits + i); if (r) { ahead = { in: i, ...r }; break; } }
+  const line = next ? `Your next visit: ${next.label}` : ahead ? `${ahead.in - 1} more visit${ahead.in - 1 === 1 ? '' : 's'}, then ${ahead.label}` : '';
+  return { k, next, ahead, line };
+}
+// the stamps on a card: done ones ticked, the reward visits labelled
+export const loyaltyStamps = (L, done, tag = 'span') => Array.from({ length: Math.min(L.every, 12) }, (_, i) => { const r = loyaltyReward(L, i + 1); return `<${tag} class="${i < done ? 'on' : ''}${r ? ` rw rw-${r.kind}` : ''}" style="--i:${i}">${r ? (r.kind === 'free' ? 'FREE' : `${r.value}%`) : i < done ? '✓' : i + 1}</${tag}>`; }).join('');
+export const loyaltySummary = L => !L ? '' : [L.midAt ? `visit ${L.midAt} gets ${L.midPct}% off` : '', `visit ${L.every} is a free ${L.freeName || 'haircut'}`].filter(Boolean).join(', and ');
+
 // ---------- client accounts ----------
 // What a client sees when they log in with their number: their bookings, visits, receipts and loyalty.
 // Same code on the server (functions/src/core.js) and in the demo (public/assets/shared.js).
 export function accountView({ phone, customers = [], appts = [], sales = [], info, today }) {
   const svcName = id => ((info.services || []).find(s => s.id === id) || {}).name || 'Service';
   const bName = id => ((info.barbers || []).find(b => b.id === id) || {}).name || '';
-  const c = customers.find(x => x.name) || {}, every = Math.max(0, parseInt((info.shop || {}).loyaltyEvery, 10) || 0);
+  const c = customers.find(x => x.name) || {}, plan = loyaltyPlan(info.shop || {}, info.services || []);
   const cIds = new Set(customers.map(x => x.id));
   const upcoming = appts.filter(a => ['booked', 'pending_payment', 'waiting', 'inchair'].includes(a.status) && a.date >= today)
     .sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time)).slice(0, 10)
@@ -478,7 +543,7 @@ export function accountView({ phone, customers = [], appts = [], sales = [], inf
     name: c.name || (appts[0] && appts[0].name) || '', phone, birthday: c.birthday || '',
     upcoming, visits, visitCount: paid.length,
     coupons: customers.flatMap(x => x.coupons || []).filter(cp => couponLive(cp, today)).map(cp => ({ id: cp.id, label: couponLabel(cp, info.services || [], (info.shop || {}).currency || '₱'), note: cp.note || '', expires: cp.expires || '' })),
-    loyalty: every ? { every, visits: paid.length, nextFree: (paid.length + 1) % every === 0 } : null,
+    loyalty: plan ? { ...plan, visits: paid.length, nextFree: (loyaltyReward(plan, paid.length + 1) || {}).kind === 'free' } : null,
     again: last ? { svc: (last.lines || []).filter(l => l.kind === 'service').map(l => l.ref).filter(id => (info.services || []).some(s => s.id === id && s.active !== false)), barber: (info.barbers || []).some(b => b.id === last.barberId) ? last.barberId : '' } : null
   };
 }
@@ -518,7 +583,8 @@ export function lateFine(inHM, startHM, rate) {
   return { mins, blocks, fine: blocks * Math.max(0, Number(rate) || 0) };
 }
 export const lateRateOf = b => (b && b.lateFine != null && b.lateFine !== '') ? Math.max(0, Number(b.lateFine) || 0) : (b && (b.role || 'barber') === 'barber' ? ((b.tiers || []).includes('deluxe') ? 50 : 15) : 0);
-export const shiftStartOf = (b, pol) => (b && b.shiftStart) || (pol && pol.clockStart) || CLOCK_START;
+// time-in for the late rule: that day's shift start when the person has shifts, else their usual time, else the shop's
+export const shiftStartOf = (b, pol, date) => (b && date && b.shifts && b.shifts[dowOf(date)] && b.shifts[dowOf(date)][0]) || (b && b.shiftStart) || (pol && pol.clockStart) || CLOCK_START;
 // Who can do what in the dashboard (admins/{uid}.role). A missing role means owner (accounts made before roles).
 export const ACCESS = { owner: 'Owner (everything)', desk: 'Receptionist (bookings, checkout, clients)', staff: 'Own schedule and pay only' };
 export const roleOf = a => (a && ACCESS[a.role]) ? a.role : 'owner';

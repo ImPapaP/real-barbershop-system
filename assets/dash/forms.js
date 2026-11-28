@@ -1,5 +1,5 @@
 // Dashboard · Form submissions (data-form).
-import { STARTER, cleanCode, defaultFaq, fmtTime, isServiceStaff, lateFine, lateRateOf, phoneKey, publicBarber, startMs, sum, toMin } from '../shared.js';
+import { DAYS_LONG, STARTER, cleanCode, defaultFaq, fmtTime, isServiceStaff, lateFine, lateRateOf, phoneKey, publicBarber, startMs, sum, toMin } from '../shared.js';
 import { FORM, S } from './state.js';
 import { $, addDays, bdayFrom, delta, ensureCustomer, fmtDate, info, mark, matchCustomer, money, newId, nowHM, num, patch, payRule, payType, pol, put, render, round2, services, short, staffById, staffName, svcMins, toast, today } from './core.js';
 import { MODAL, closeModal, modalErr } from './modals.js';
@@ -118,8 +118,9 @@ Object.assign(FORM, {
     if (!name) return modalErr(f, 'Enter a name.');
     if (rate < 0 || rate > 100) return modalErr(f, 'Commission must be between 0 and 100%.');
     const groups = svcRole ? fd.getAll('groups') : []; if (svcRole && !groups.length) return modalErr(f, 'Pick which services they take bookings for.');
+    const shifts = {}; for (const d of [0, 1, 2, 3, 4, 5, 6]) if (fd.has('in-' + d)) { const a = String(fd.get('start-' + d) || ''), b = String(fd.get('end-' + d) || ''); if (!a || !b || toMin(b) <= toMin(a)) return modalErr(f, `${DAYS_LONG[d]}: the shift must end after it starts.`); shifts[d] = [a, b]; }
     const productFee = svcRole && fd.has('pf') ? { threshold: Math.max(0, num(fd.get('pfThreshold'))), low: Math.max(0, num(fd.get('pfLow'))), high: Math.max(0, num(fd.get('pfHigh'))) } : null;
-    const data = { name, title: String(fd.get('title') || '').trim(), phone: String(fd.get('phone') || '').trim(), specialty: String(fd.get('specialty') || '').trim(), bio: String(fd.get('bio') || '').trim().slice(0, 300), role, rate, productFee, noDeposit: svcRole && fd.has('noDeposit'), dailyPay: Math.max(0, Number(fd.get('dailyPay')) || 0), payType: ['quota', 'monthly'].includes(fd.get('payType')) ? fd.get('payType') : 'daily', monthlyPay: Math.max(0, Number(fd.get('monthlyPay')) || 0), groups, tiers: svcRole ? fd.getAll('tiers') : [], chair: fd.get('chair') ? +fd.get('chair') : '', days: fd.getAll('days').map(Number).sort(), lateFine: String(fd.get('lateFine') ?? '').trim() === '' ? null : Math.max(0, num(fd.get('lateFine'))), shiftStart: String(fd.get('shiftStart') || '') };
+    const data = { name, title: String(fd.get('title') || '').trim(), phone: String(fd.get('phone') || '').trim(), specialty: String(fd.get('specialty') || '').trim(), bio: String(fd.get('bio') || '').trim().slice(0, 300), role, rate, productFee, noDeposit: svcRole && fd.has('noDeposit'), dailyPay: Math.max(0, Number(fd.get('dailyPay')) || 0), payType: ['quota', 'monthly'].includes(fd.get('payType')) ? fd.get('payType') : 'daily', monthlyPay: Math.max(0, Number(fd.get('monthlyPay')) || 0), groups, tiers: svcRole ? fd.getAll('tiers') : [], chair: fd.get('chair') ? +fd.get('chair') : '', shifts, days: Object.keys(shifts).map(Number).sort(), lateFine: String(fd.get('lateFine') ?? '').trim() === '' ? null : Math.max(0, num(fd.get('lateFine'))), shiftStart: '' };
     const id = f.dataset.id, old = id ? staffById(id) : null;
     const ok = id ? await patch('staff', id, { ...data, active: fd.has('active') }) : await put('staff', newId(), { ...data, active: true, since: today() });
     if (ok) {
@@ -173,7 +174,7 @@ Object.assign(FORM, {
     const fd = new FormData(f), name = String(fd.get('name') || '').trim();
     if (!name) { toast('Enter the shop name.', 'bad'); return; }
     const g = k => String(fd.get(k) || '').trim();
-    const shop = { ...info().shop, name, wordmark: g('wordmark'), tagline: g('tagline'), about: g('about'), address: g('address'), phone: g('phone'), facebook: g('facebook'), instagram: g('instagram'), messenger: g('messenger'), directions: g('directions'), gcashNumber: g('gcashNumber'), gcashName: g('gcashName'), currency: g('currency') || '₱', loyaltyEvery: Math.max(0, parseInt(fd.get('loyaltyEvery'), 10) || 0), orEnabled: fd.has('orEnabled'), orPrefix: g('orPrefix'), tin: g('tin'), birPermit: g('birPermit'), ownerPhone: g('ownerPhone') };
+    const shop = { ...info().shop, name, wordmark: g('wordmark'), tagline: g('tagline'), about: g('about'), address: g('address'), phone: g('phone'), facebook: g('facebook'), instagram: g('instagram'), messenger: g('messenger'), directions: g('directions'), gcashNumber: g('gcashNumber'), gcashName: g('gcashName'), currency: g('currency') || '₱', loyaltyEvery: Math.max(0, parseInt(fd.get('loyaltyEvery'), 10) || 0), loyaltyMidAt: Math.max(0, parseInt(fd.get('loyaltyMidAt'), 10) || 0), loyaltyMidPct: Math.min(100, Math.max(0, num(fd.get('loyaltyMidPct')))), loyaltyFreeService: g('loyaltyFreeService'), legalName: g('legalName'), dpoName: g('dpoName'), dpoEmail: g('dpoEmail'), orEnabled: fd.has('orEnabled'), orPrefix: g('orPrefix'), tin: g('tin'), birPermit: g('birPermit'), ownerPhone: g('ownerPhone') };
     const orNext = parseInt(fd.get('orNext'), 10); if (orNext > 0) { await put('private', 'receipts', { next: orNext, at: Date.now() }); S.orNext = orNext; }
     if (shop.facebook && !/^https:\/\//.test(shop.facebook)) shop.facebook = 'https://' + shop.facebook.replace(/^http:\/\//, '');
     if (await saveInfo({ shop })) { logAct('price', 'Changed the shop details'); toast('Shop details saved'); }
@@ -183,6 +184,13 @@ Object.assign(FORM, {
     const hours = [0, 1, 2, 3, 4, 5, 6].map(d => ({ d, open: String(fd.get('open-' + d) || '09:00'), close: String(fd.get('close-' + d) || '20:00'), closed: fd.has('closed-' + d) }));
     if (hours.some(h => !h.closed && toMin(h.close) <= toMin(h.open))) { toast('Closing time must be after opening time.', 'bad'); return; }
     if (await saveInfo({ hours })) { logAct('price', 'Changed the opening hours'); toast('Hours saved'); }
+  },
+  async special(f) { // holiday hours
+    const fd = new FormData(f), date = String(fd.get('date') || ''), closed = fd.has('closed'), open = String(fd.get('open') || ''), close = String(fd.get('close') || ''), label = String(fd.get('label') || '').trim().slice(0, 40);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { toast('Pick the date.', 'bad'); return; }
+    if (!closed && (!open || !close || toMin(close) <= toMin(open))) { toast('Closing time must be after opening time.', 'bad'); return; }
+    const list = (info().specialHours || []).filter(x => x.date !== date).concat([closed ? { date, closed: true, label } : { date, open, close, label }]).sort((a, b) => a.date.localeCompare(b.date));
+    if (await saveInfo({ specialHours: list })) { logAct('price', `Set ${date}${label ? ` (${label})` : ''}: ${closed ? 'closed' : `${open}–${close}`}`); toast('Holiday hours saved'); f.reset(); }
   },
   async announce(f) {
     const fd = new FormData(f), text = String(fd.get('text') || '').trim(); let link = String(fd.get('link') || '').trim();
@@ -202,7 +210,7 @@ Object.assign(FORM, {
   },
   async policy(f) {
     const fd = new FormData(f), n = (k, min, max) => Math.min(max, Math.max(min, parseInt(fd.get(k), 10) || 0));
-    const policy = { ...pol(), deposit: n('deposit', 100, 100000), holdMinutes: n('holdMinutes', 5, 60), rescheduleHours: n('rescheduleHours', 0, 168), lateMinutes: n('lateMinutes', 0, 120), lateMinutesDeposit: n('lateMinutesDeposit', 0, 120), cancelHours: n('cancelHours', 0, 336), leadMinutes: n('leadMinutes', 0, 1440), bookAheadDays: n('bookAheadDays', 1, 365), rebookDays: n('rebookDays', 0, 120), manualGcash: fd.has('manualGcash'), receiptTexts: fd.has('receiptTexts'), lastBooking: /^\d{2}:\d{2}$/.test(String(fd.get('lastBooking') || '')) ? String(fd.get('lastBooking')) : '', onlineBooking: fd.has('onlineBooking') };
+    const policy = { ...pol(), deposit: n('deposit', 100, 100000), holdMinutes: n('holdMinutes', 5, 60), rescheduleHours: n('rescheduleHours', 0, 168), lateMinutes: n('lateMinutes', 0, 120), lateMinutesDeposit: n('lateMinutesDeposit', 0, 120), cancelHours: n('cancelHours', 0, 336), leadMinutes: n('leadMinutes', 0, 1440), bookAheadDays: n('bookAheadDays', 1, 365), birthdayDays: n('birthdayDays', 0, 31), rebookDays: n('rebookDays', 0, 120), manualGcash: fd.has('manualGcash'), receiptTexts: fd.has('receiptTexts'), lastBooking: /^\d{2}:\d{2}$/.test(String(fd.get('lastBooking') || '')) ? String(fd.get('lastBooking')) : '', onlineBooking: fd.has('onlineBooking') };
     if (await saveInfo({ policy })) { logAct('price', 'Changed the online booking rules'); toast('Booking rules saved'); }
   }
 });

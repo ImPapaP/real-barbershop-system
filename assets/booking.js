@@ -1,7 +1,7 @@
 // "Your booking" page, opened from the confirmation email or after paying on PayMongo.
 // Shows the booking status and lets the customer reschedule or cancel within the policy.
 import { db, call, demoBar, resetDemo } from './fb.js';
-import { $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, MONTHS, dowOf, sum, policyOf, availableTimes, bookableDates, timeChips, STARTER, icsFor, brand, LOGO_LG, resizeImage, phNow, monthGrid, shiftMonth, BACK_IC, receiptHTML } from './shared.js';
+import { $, esc, money, priceLabel, fmtTime, fmtDate, DAYS, MONTHS, dowOf, sum, policyOf, availableTimes, bookableDates, timeChips, STARTER, icsFor, brand, LOGO_LG, resizeImage, phNow, monthGrid, shiftMonth, BACK_IC, receiptHTML, loyaltyState, loyaltyStamps, loyaltySummary } from './shared.js';
 
 const q = new URLSearchParams(location.search);
 const ID = q.get('id') || '', TOKEN = q.get('t') || '';
@@ -50,9 +50,9 @@ function guestsCard(b) {
 }
 function loyaltyCard(b) {
   const L = b.loyalty; if (!L || !L.every) return '';
-  const pos = L.visits % L.every, next = (L.visits + 1) % L.every === 0, left = L.every - ((L.visits + 1) % L.every);
-  return `<section class="loyalty"><div><p class="eyebrow">Loyalty card</p><h2>${next ? 'Your next cut is free' : `${pos} of ${L.every} visits`}</h2><p class="muted small">${next ? 'Show this page at checkout.' : `${left} more visit${left === 1 ? '' : 's'} after this one and you get a free cut.`} Visits count once your cut is rung up at the shop.</p></div>
-    <div class="stamps" aria-hidden="true">${Array.from({ length: Math.min(L.every, 12) }, (_, i) => `<span class="${i < pos ? 'on' : ''}${i === L.every - 1 ? ' free' : ''}" style="--i:${i}">${i === L.every - 1 ? 'FREE' : i < pos ? '✓' : i + 1}</span>`).join('')}</div></section>`;
+  const st = loyaltyState(L, L.visits);
+  return `<section class="loyalty"><div><p class="eyebrow">Loyalty card</p><h2>${st.next ? esc(st.line) : `${st.k} of ${L.every} visits`}</h2><p class="muted small">${st.next ? 'Show this page at checkout.' : esc(st.line) + '.'} ${esc(loyaltySummary(L).replace(/^v/, 'V'))}. Visits count once you’ve paid at the shop.</p></div>
+    <div class="stamps" aria-hidden="true">${loyaltyStamps(L, st.k)}</div></section>`;
 }
 const methodName = k => ({ gcash: 'GCash', paymaya: 'Maya', card: 'card', qrph: 'QR Ph', grab_pay: 'GrabPay' }[k] || k);
 // ---------- pay by GCash: send, then upload the screenshot ----------
