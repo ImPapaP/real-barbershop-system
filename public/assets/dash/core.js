@@ -1,5 +1,5 @@
 // Dashboard · Helpers, saving to the database, routing and drawing, metrics, staff pay and pay plans, clients, appointment rows.
-import { DAYS, DEFAULT_POLICY, LOGO_LG, MONTHS, ROLES, STARTER, bdayDays, bdaySelects, brand, canServe, cleanBday, esc, fmtTime, hasDeposit, initials, isServiceStaff, lateLimit, morph, pad, phoneKey, startMs, sum, themeBtn, toMin, withOption } from '../shared.js';
+import { bdayDays, bdaySelects, brand, canServe, cleanBday, DAYS, DEFAULT_POLICY, esc, fmtTime, hasDeposit, initials, isServiceStaff, lateLimit, LOGO_LG, loyaltyPlan, MONTHS, morph, pad, phoneKey, ROLES, STARTER, startMs, sum, themeBtn, toMin, withOption } from '../shared.js';
 import { db, demoBar, login, logout } from '../fb.js';
 import { APPT, COLS, METHOD_NAMES, OWNER_TABS, S, STATUS_CHOICES, TABS, TAB_VIEWS } from './state.js';
 import { CP, cpClose, siteUrl } from './setup.js';
@@ -325,6 +325,7 @@ export function custStats() {
 }
 export function usualBarber(st) { if (!st) return ''; const e = Object.entries(st.barbers).sort((a, b) => b[1] - a[1])[0]; return e ? staffName(e[0]) : ''; }
 export const loyaltyN = () => Math.max(0, parseInt(info().shop.loyaltyEvery, 10) || 0);
+export const loyaltyNow = () => loyaltyPlan(info().shop || {}, info().services || []); // visits per card and the rewards (shared.js)
 export function matchCustomer(name, phone) {
   const p = normPhone(phone);
   if (p.length >= 7) { const c = S.customers.find(c => normPhone(c.phone) === p); if (c) return c; }

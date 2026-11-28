@@ -175,6 +175,23 @@ async def keyboard_and_screen_reader(c):
 
 # WCAG contrast for every visible piece of text: 4.5:1, or 3:1 for large text (24px, or 18.7px bold)
 @t
+async def schedules_and_holidays(c):
+    pg = await c.new_page(); await pg.goto(BASE); await pg.wait_for_timeout(1500)
+    r = await pg.evaluate("""async () => { const fb = await import('./assets/fb.js'), sh = await import('./assets/shared.js');
+      const I = (await fb.db.doc('public/info').get()).data(), reg = I.services.filter(s => s.id === 'h9'), dlx = I.services.filter(s => s.id === 'h1');
+      const next = dow => { for (let i = 1; i <= 14; i++) { const d = sh.addDays(sh.phNow().date, i); if (sh.dowOf(d) === dow && !(sh.hoursFor(I, d) || {}).closed && !(I.specialHours || []).some(x => x.date === d)) return d; } };
+      const times = (svc, b, d) => sh.availableTimes(I, { services: svc, date: d, barberId: b }, {}, Date.parse(d + 'T00:00:00+08:00') - 864e5).filter(x => x.barbers.includes(b)).map(x => x.time);
+      return { edMon: times(reg, 'ed', next(1)), edWed: times(reg, 'ed', next(3)), angMon: times(dlx, 'angelo', next(1)), angWed: times(dlx, 'angelo', next(3)),
+        xmas: sh.hoursFor(I, '2026-12-25'), eve: sh.hoursFor(I, '2026-12-24'), ahead: sh.bookableDates(I).length, fee: I.services.find(s => s.id === 'h5').price, perm: I.services.find(s => s.id === 'f17') }; }""")
+    check(r['edMon'] and r['edMon'][0] == '09:00' and r['edMon'][-1] == '16:00', f"Joe Ed Monday 9–6: bookable 9 AM to 4 PM, got {r['edMon']}")
+    check(r['edWed'] == [], f"Joe Ed is off on Wednesday, got {r['edWed']}")
+    check(r['angMon'] and r['angMon'][0] == '10:00' and r['angMon'][-1] == '18:00', f"Angelo 10–7: bookable 10 AM to 6 PM, got {r['angMon']}")
+    check(r['angWed'] == [], 'Angelo is off on Wednesday')
+    check(r['xmas']['closed'] and r['eve']['close'] == '15:00', f"holiday hours wrong: {r['xmas']}, {r['eve']}")
+    check(r['ahead'] == 61, f"booking window should be 60 days, got {r['ahead']}")
+    check(r['fee'] == 150 and r['perm'] and r['perm']['priceFrom'], 'Basic Hair Art ₱150 and Hair Perming (starts at) expected')
+
+@t
 async def evaluation_survey_and_results(c):
     pg = await c.new_page(); await pg.goto(BASE + 'evaluate.html'); await pg.wait_for_timeout(1200)
     await pg.locator('input[name=group][value=staff]').check(); await pg.wait_for_timeout(200)

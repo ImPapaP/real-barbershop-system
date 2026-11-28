@@ -1,9 +1,9 @@
 // Dashboard · Shop setup, backups, Facebook photos, promos and promo codes, walk-in QR, Website page, client search.
-import { DAYS_LONG, bdayDays, cleanBday, defaultFaq, esc, initials, priceLabel, resizeImage, sum } from '../shared.js';
+import { bdayDays, cleanBday, DAYS_LONG, defaultFaq, esc, fmtTime, initials, loyaltyPlan, loyaltySummary, priceLabel, resizeImage, sum } from '../shared.js';
 import { call, db, deleteImage, demo, uploadImage } from '../fb.js';
 import { drawBanner } from '../banner.js';
 import { qrSvg } from '../qr.js';
-import { S, STYLES, TAB_VIEWS } from './state.js';
+import { ACT, S, STYLES, TAB_VIEWS } from './state.js';
 import { $, ago, bdayWhen, chip, cur, custStats, field, fmtDate, icon, info, mark, money, newId, normPhone, opt, pageHead, patch, payExample, payRule, payType, pol, put, render, schedule, serviceStaff, services, short, shortDate, staffById, staffName, summary, toast, today } from './core.js';
 import { vCheckout, vOverview, vSchedule } from './ops.js';
 import { vMoney, vTeam } from './money.js';
@@ -11,6 +11,7 @@ import { vClients, vStock } from './clients.js';
 import { cutField, mFoot, openModal } from './modals.js';
 import { saveInfo, syncPublicBarbers } from './forms.js';
 import { clockSetupPanel, pinPanel, signinsPanel, twoStepPanel } from './staffapp.js';
+import { logAct } from './access.js';
 
 // ---------- tab: setup ----------
 // ---------- backups ----------
@@ -49,13 +50,27 @@ export function vSetup() {
           <div class="fgrid three">${field('Number starts with', `<input id="sh-orp" name="orPrefix" value="${esc(sh.orPrefix || 'OR-')}" maxlength="10">`, 'sh-orp')}${field('Next number', `<input id="sh-orn" name="orNext" type="number" min="1" placeholder="${esc(S.orNext || 1)}">`, 'sh-orn')}${field('TIN', `<input id="sh-tin" name="tin" value="${esc(sh.tin || '')}" placeholder="000-000-000-000">`, 'sh-tin')}</div>
           ${field('Line printed on receipts (e.g. BIR permit / ATP number)', `<input id="sh-permit" name="birPermit" value="${esc(sh.birPermit || '')}" maxlength="120">`, 'sh-permit')}
           <p class="muted small" style="margin:0">Leave “Next number” empty to keep counting. Ask the shop’s accountant which details BIR needs on your receipts; this system isn’t a BIR-accredited cash register.</p></fieldset>
-        <div class="fgrid">${field('Currency symbol', `<input id="sh-cur" name="currency" value="${esc(sh.currency || '₱')}" maxlength="4">`, 'sh-cur')}${field('Free cut every N visits (0 = off)', `<input id="sh-loy" name="loyaltyEvery" type="number" min="0" max="50" value="${esc(sh.loyaltyEvery ?? 10)}">`, 'sh-loy')}</div>
+        <div class="fgrid">${field('Currency symbol', `<input id="sh-cur" name="currency" value="${esc(sh.currency || '₱')}" maxlength="4">`, 'sh-cur')}</div>
+        <fieldset class="field"><legend>Loyalty card</legend>
+          <div class="fgrid">${field('Visits per card (0 = no card)', `<input id="sh-loy" name="loyaltyEvery" type="number" min="0" max="50" value="${esc(sh.loyaltyEvery ?? 12)}">`, 'sh-loy')}${field('Last visit of the card is free', `<select id="sh-loyf" name="loyaltyFreeService"><option value="">Their haircut</option>${(I.services || []).filter(x => x.active !== false && x.group === 'him' && x.kind === 'base').map(x => opt(x.id, x.name, sh.loyaltyFreeService === x.id)).join('')}</select>`, 'sh-loyf')}</div>
+          <div class="fgrid">${field('Discount on visit number (0 = none)', `<input id="sh-loym" name="loyaltyMidAt" type="number" min="0" max="49" value="${esc(sh.loyaltyMidAt ?? 0)}">`, 'sh-loym')}${field('Discount (%)', `<input id="sh-loyp" name="loyaltyMidPct" type="number" min="0" max="100" value="${esc(sh.loyaltyMidPct ?? 0)}">`, 'sh-loyp')}</div>
+          <p class="muted small" style="margin:0">Now: ${esc(loyaltySummary(loyaltyPlan({ ...sh }, I.services || [])) || 'no loyalty card')}.</p></fieldset>
+        <fieldset class="field"><legend>For the Privacy Policy</legend>
+          <div class="fgrid">${field('Registered business name (DTI/SEC)', `<input id="sh-legal" name="legalName" value="${esc(sh.legalName || '')}" maxlength="120">`, 'sh-legal')}${field('Privacy contact (Data Protection Officer)', `<input id="sh-dpo" name="dpoName" value="${esc(sh.dpoName || '')}" maxlength="80">`, 'sh-dpo')}</div>
+          ${field('Privacy contact email', `<input id="sh-dpoe" name="dpoEmail" type="email" value="${esc(sh.dpoEmail || '')}" maxlength="120">`, 'sh-dpoe')}</fieldset>
         <div class="modal-f"><button class="btn btn-primary" type="submit">Save details</button></div>
       </form></section>
     <section class="panel"><div class="panel-h"><h2>Opening hours</h2></div>
       <form class="stack" data-form="hours">
         <div class="tbl-wrap"><table class="tbl"><tbody>${[1, 2, 3, 4, 5, 6, 0].map(d => { const h = I.hours.find(x => x.d === d) || { open: '09:00', close: '20:00', closed: false }; return `<tr><td><b>${DAYS_LONG[d]}</b></td><td><input type="time" id="h-open-${d}" name="open-${d}" value="${esc(h.open)}" aria-label="${DAYS_LONG[d]} opens"></td><td><input type="time" id="h-close-${d}" name="close-${d}" value="${esc(h.close)}" aria-label="${DAYS_LONG[d]} closes"></td><td><label class="row small"><input type="checkbox" id="h-closed-${d}" name="closed-${d}" ${h.closed ? 'checked' : ''}> Closed</label></td></tr>`; }).join('')}</tbody></table></div>
         <div class="modal-f"><button class="btn btn-primary" type="submit">Save hours</button></div>
+      </form>
+      <h3 class="acc-h">Holidays and special days</h3>
+      <form class="stack" data-form="special">
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Label</th><th>Hours</th><th></th></tr></thead><tbody>${[...(I.specialHours || [])].sort((a, b) => a.date.localeCompare(b.date)).map(x => `<tr><td class="nowrap">${esc(fmtDate(x.date))}</td><td>${esc(x.label || '')}</td><td>${x.closed ? '<b>Closed</b>' : `${esc(fmtTime(x.open))} – ${esc(fmtTime(x.close))}`}</td><td class="r"><button type="button" class="btn btn-sm btn-ghost" data-act="specialDel" data-id="${esc(x.date)}" aria-label="Remove ${esc(fmtDate(x.date))}">Remove</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">None yet.</td></tr>'}</tbody></table></div>
+        <div class="fgrid three">${field('Date', '<input id="sp-date" name="date" type="date" required>', 'sp-date')}${field('Label', '<input id="sp-label" name="label" placeholder="Christmas Eve" maxlength="40">', 'sp-label')}${field('Opens', '<input id="sp-open" name="open" type="time" value="09:00">', 'sp-open')}</div>
+        <div class="fgrid three">${field('Closes', '<input id="sp-close" name="close" type="time" value="15:00">', 'sp-close')}<label class="row small" style="align-self:end"><input type="checkbox" name="closed"> Closed all day</label><div class="modal-f" style="align-self:end;margin:0"><button class="btn btn-primary" type="submit">Add day</button></div></div>
+        <p class="muted small" style="margin:0">On these dates the website and booking use these hours instead of the usual ones. Bookings already made aren’t moved; check them in Schedule.</p>
       </form></section>
   </div>
   <section class="panel"><div class="panel-h"><h2>Online booking rules</h2></div>
@@ -67,6 +82,7 @@ export function vSetup() {
         ${field('Junior barbers: slot can go to a walk-in after (min late)', `<input id="po-late" name="lateMinutes" type="number" min="0" max="120" value="${esc(p.lateMinutes)}">`, 'po-late')}${field('Senior barbers: down payment kept and full price owed after (min late)', `<input id="po-late2" name="lateMinutesDeposit" type="number" min="0" max="120" value="${esc(p.lateMinutesDeposit ?? 20)}">`, 'po-late2')}${field('Down payment back if they cancel at least (hours before)', `<input id="po-cancel" name="cancelHours" type="number" min="0" max="336" value="${esc(p.cancelHours ?? 48)}">`, 'po-cancel')}
         ${field('Earliest booking from now (min)', `<input id="po-lead" name="leadMinutes" type="number" min="0" max="1440" value="${esc(p.leadMinutes)}">`, 'po-lead')}
         ${field('Book up to (days ahead)', `<input id="po-ahead" name="bookAheadDays" type="number" min="1" max="365" value="${esc(p.bookAheadDays)}">`, 'po-ahead')}
+        ${field('Birthday promo: days around the birthday (0 = the day only)', `<input id="po-bday" name="birthdayDays" type="number" min="0" max="31" value="${esc(p.birthdayDays ?? 0)}">`, 'po-bday')}
         ${field('Last booking starts at', `<input id="po-last" name="lastBooking" type="time" step="3600" value="${esc(p.lastBooking ?? '19:00')}">`, 'po-last', 'Online bookings can’t start later than this. Leave empty to allow any time that finishes by closing.')}
         ${field('“Time for a trim” text after (days, 0 = off)', `<input id="po-rebook" name="rebookDays" type="number" min="0" max="120" value="${esc(p.rebookDays ?? 28)}">`, 'po-rebook')}
       </div>
@@ -377,3 +393,9 @@ export function init() {
   document.addEventListener('input', e => { if (e.target.closest('form[data-form=happen]')) { if (e.target.id === 'hp-code') autoBadge(); happenPreview(); } });
   document.addEventListener('change', e => { if (e.target.closest('form[data-form=happen]')) { if (e.target.id === 'hp-code') autoBadge(); happenPreview(); } });
 }
+Object.assign(ACT, {
+  async specialDel(el) { // remove a holiday date
+    const list = (info().specialHours || []).filter(x => x.date !== el.dataset.id);
+    if (await saveInfo({ specialHours: list })) { logAct('price', `Removed the special hours on ${el.dataset.id}`); toast('Removed'); }
+  },
+});

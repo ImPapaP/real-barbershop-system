@@ -1,7 +1,7 @@
 // My visits: clients log in with their mobile number and a code sent by text, then see their bookings,
 // past visits, receipts and loyalty card, and can book the same again in one tap.
 import { db, call, demo, demoBar } from './fb.js';
-import { $, esc, money, fmtDate, fmtTime, MONTHS, STARTER, brand, BACK_IC, fmtBday, phNow } from './shared.js';
+import { $, esc, money, fmtDate, fmtTime, MONTHS, STARTER, brand, BACK_IC, fmtBday, phNow, loyaltyState, loyaltySummary } from './shared.js';
 
 const KEY = 'rb-session';
 const S = { info: { ...STARTER }, allVisits: false, session: '', step: 'phone', phone: '', code: '', busy: false, err: '', demoCode: '', data: null, loading: false };
@@ -44,11 +44,11 @@ function home() {
   const d = S.data, first = String(d.name || '').split(' ')[0] || 'there', L = d.loyalty;
   const again = d.again && (d.again.svc.length || d.again.barber) ? `./?${d.again.svc.length ? 'svc=' + d.again.svc.join(',') + '&' : ''}${d.again.barber ? 'barber=' + encodeURIComponent(d.again.barber) : ''}#book`.replace('&#book', '#book') : '';
   let loy = '';
-  if (L) {
-    const k = L.visits % L.every, left = L.every - 1 - k;
-    loy = `<section class="acct-card"><h2>Loyalty card</h2><div class="loy-big"><span class="meter">${Array.from({ length: Math.min(L.every, 12) }, (_, i) => `<i class="${i < k ? 'on' : ''}"></i>`).join('')}</span>
-      <b>${L.nextFree ? 'Your next visit is free' : k === 0 && L.visits ? 'Free visit used. New card started' : `${left} more visit${left === 1 ? '' : 's'} to a free cut`}</b></div>
-      <p class="muted small">Every ${L.every}th visit is on us. ${d.visitCount} visit${d.visitCount === 1 ? '' : 's'} so far.</p></section>`;
+  if (L && L.every) {
+    const st = loyaltyState(L, L.visits);
+    loy = `<section class="acct-card"><h2>Loyalty card</h2><div class="loy-big"><span class="meter">${Array.from({ length: Math.min(L.every, 12) }, (_, i) => `<i class="${i < st.k ? 'on' : ''}"></i>`).join('')}</span>
+      <b>${esc(st.line)}</b></div>
+      <p class="muted small">${esc(loyaltySummary(L).replace(/^v/, 'V'))} of every ${L.every}-visit card. ${d.visitCount} visit${d.visitCount === 1 ? '' : 's'} so far.</p></section>`;
   }
   const upcoming = d.upcoming.length ? d.upcoming.map(u => {
     const dt = new Date(u.date + 'T00:00:00'), link = u.token ? `booking.html?id=${encodeURIComponent(u.id)}&t=${encodeURIComponent(u.token)}` : '';

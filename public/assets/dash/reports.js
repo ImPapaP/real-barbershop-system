@@ -75,7 +75,7 @@ export function dPct(cur, prev, invert) {
 export function heatmap(cells, max, hours) {
   const dows = [1, 2, 3, 4, 5, 6, 0];
   return `<div class="tbl-wrap"><div class="heat" style="--cols:${hours.length}"><span></span>${hours.map(h => `<span class="hh">${h % 12 || 12}${h < 12 ? 'a' : 'p'}</span>`).join('')}
-    ${dows.map(d => `<span class="hd">${DAYS[d]}</span>${hours.map(h => { const v = cells[d][h] || 0, k = max ? v / max : 0; return `<span class="hc" style="--k:${k.toFixed(2)}" data-tip="${esc(`${DAYS_LONG[d]} ${fmtTime(pad(h) + ':00')}\nabout ${v.toFixed(1)} client${v === 1 ? '' : 's'}`)}">${v >= 0.5 ? v.toFixed(v < 10 ? 1 : 0) : ''}</span>`; }).join('')}`).join('')}</div></div>
+    ${dows.map(d => `<span class="hd">${DAYS[d]}</span>${hours.map(h => { const v = cells[d][h] || 0, k = max ? v / max : 0; return `<span class="hc" style="--k:${k.toFixed(2)};--m:${(k < 0.5 ? k * 0.6 : 0.6 + (k - 0.5) * 0.8).toFixed(2)}" data-tip="${esc(`${DAYS_LONG[d]} ${fmtTime(pad(h) + ':00')}\nabout ${v.toFixed(1)} client${v === 1 ? '' : 's'}`)}">${v >= 0.5 ? v.toFixed(v < 10 ? 1 : 0) : ''}</span>`; }).join('')}`).join('')}</div></div>
     <div class="heat-key"><span>Quiet</span><i></i><span>Busy</span></div>`;
 }
 // average clients per hour by weekday, over the range

@@ -1,10 +1,10 @@
 // Dashboard · Button actions (data-act) and change handlers (data-change).
-import { STARTER, STARTER_PRODUCTS, STARTER_STAFF, canServe, commissionFor, esc, fmtBday, fmtTime, isServiceStaff, phoneKey, publicBarber, startMs, withOption } from '../shared.js';
+import { STARTER, STARTER_PRODUCTS, STARTER_STAFF, canServe, commissionFor, esc, fmtBday, fmtTime, isServiceStaff, phoneKey, publicBarber, startMs, sum, withOption } from '../shared.js';
 import { bannerBlob } from '../banner.js';
 import { buildXlsx } from '../xlsx.js';
 import { call, db, deleteImage, logout, resetDemo, resetPassword, uploadImage } from '../fb.js';
 import { ACT, APPT, CHG, S } from './state.js';
-import { $, addDays, ago, armed, custById, del, delta, depositPaid, ensureCustomer, fmtDate, groupOf, info, money, NAV, newId, nowHM, num, parseYmd, patch, payLabel, periodRange, pol, put, render, round2, services, staffById, staffName, svcById, svcNames, toast, today, waitingWalkins, ymd } from './core.js';
+import { $, addDays, ago, armed, custById, del, delta, depositPaid, ensureCustomer, fmtDate, groupOf, info, loyaltyNow, money, NAV, newId, nowHM, num, parseYmd, patch, payLabel, periodRange, pol, put, render, round2, services, staffById, staffName, svcById, svcNames, toast, today, waitingWalkins, ymd } from './core.js';
 import { blankPos, posTotals, splitOf } from './ops.js';
 import { isOffline } from './offline.js';
 import { exportRows, exportXlsx, fileBase, leaveModal, saveBlob } from './money.js';
@@ -176,7 +176,12 @@ Object.assign(ACT, {
     const p = S.pos, T = posTotals(p), v = el.dataset.v;
     if (v === 'sc') { p.discount = String(round2(T.sub * 0.2)); p.discountNote = 'Senior / PWD 20%'; }
     if (v === 'student') { p.discount = String(round2(T.sub * 0.1)); p.discountNote = 'Student 10%'; }
-    if (v === 'free') { p.discount = String(Math.max(0, ...p.lines.filter(l => l.kind === 'service').map(l => l.price))); p.discountNote = 'Loyalty free cut'; }
+    if (v === 'free') { // the card's free service (Regular Haircut), else their priciest service
+      const L = loyaltyNow(), sv = L && L.freeId ? svcById(L.freeId) : null;
+      if (sv && !p.lines.some(l => l.kind === 'service' && l.ref === sv.id)) p.lines.push({ kind: 'service', ref: sv.id, name: sv.name, price: Number(sv.price) || 0, qty: 1 });
+      p.discount = String(sv ? Number(sv.price) || 0 : Math.max(0, ...p.lines.filter(l => l.kind === 'service').map(l => l.price))); p.discountNote = `Loyalty: free ${sv ? sv.name : 'cut'}`;
+    }
+    if (v === 'loyal') { const L = loyaltyNow(), pct = L ? L.midPct : 0; p.discount = String(round2(sum(p.lines.filter(l => l.kind === 'service'), l => l.price * l.qty) * pct / 100)); p.discountNote = `Loyalty ${pct}% off (visit ${L ? L.midAt : ''})`; }
     if (v === 'bday') { // birthday promo: Signature Haircut (shampoo and rinse) at the Regular price
       const sv = svcById(pol().birthdaySvc || 'h8'); if (!sv) { toast('Set the birthday promo service in Shop setup'); return; }
       if (!p.lines.some(l => l.kind === 'service' && l.ref === sv.id)) p.lines.push({ kind: 'service', ref: sv.id, name: sv.name, price: Number(sv.price) || 0, qty: 1 });

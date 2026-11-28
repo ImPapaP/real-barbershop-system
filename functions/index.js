@@ -40,7 +40,7 @@ import {
   verifyPaymongoSignature, rebookLink, newToken, tokenMatches, bookingCode, smsText, emailContent, eligibleBarbers,
   servicesById, blockTimes, phNow, addDays, normalizePhone, validEmail, parseSlotId, waitlistMatches,
   maskEmail, maskPhone, cleanEvaluation, promoCheck, cleanCode, validProofImage, cleanBday, receiptView, receiptSms, receiptEmail, queueItems, accountView, depositFor, cleanOptions, withOption, hasDeposit, lateLimit, refundOnCancel,
-  lateFine, lateRateOf, shiftStartOf, roleOf, ACCESS
+  lateFine, lateRateOf, shiftStartOf, roleOf, ACCESS, loyaltyFor, hoursFor
 } from './src/core.js';
 import { createCheckout, expireCheckout, sendSms, sendEmail } from './src/providers.js';
 
@@ -110,13 +110,12 @@ async function isAdmin(req) {
 }
 
 // Loyalty: completed visits for the client behind a booking (matched by customer id, then phone).
-async function loyaltyFor(a, info) {
-  const every = Math.max(0, parseInt(info.shop && info.shop.loyaltyEvery, 10) || 0);
-  if (!every) return null;
+async function loyaltyOf(a, info) {
+  if (!loyaltyFor(info, 0)) return null;
   let cid = a.customerId;
   if (!cid && a.phone) { const c = await db.collection('customers').where('phoneKey', '==', normalizePhone(a.phone)).limit(1).get(); cid = c.empty ? '' : c.docs[0].id; }
   const visits = cid ? (await db.collection('sales').where('customerId', '==', cid).count().get()).data().count : 0;
-  return { every, visits, nextFree: (visits + 1) % every === 0 };
+  return loyaltyFor(info, visits);
 }
 
 async function bookingFromToken(data) {
@@ -356,7 +355,7 @@ export const getBooking = onCall(async req => {
     guests.push({ id: gid, token: ga.token, name: ga.name, status: ga.status, date: ga.date, time: ga.time, barberName: apptBarber(info, ga), services: servicesById(info, ga.serviceIds).filter(Boolean).map(x => withOption(x, ga.options).name), addOn: !!ga.addOnOf, prices: servicesById(info, ga.serviceIds).filter(Boolean).map(x => { const o = withOption(x, ga.options); return { name: o.name, price: o.price, priceFrom: !!x.priceFrom }; }) });
   }
   const cut = a.status === 'done' ? await db.doc(`cuts/${id}`).get() : null;
-  return { ...publicView(id, a, info), loyalty: await loyaltyFor(a, info), guests, rebook: rebookLink('.', a, info), queue: await queueFor(a), cutPhoto: cut && cut.exists ? cut.data().img || '' : '' };
+  return { ...publicView(id, a, info), loyalty: await loyaltyOf(a, info), guests, rebook: rebookLink('.', a, info), queue: await queueFor(a), cutPhoto: cut && cut.exists ? cut.data().img || '' : '' };
 });
 
 // =============== promo codes ===============
@@ -467,7 +466,7 @@ export const removeRefPhoto = onCall(async req => {
 // Walk-in QR: someone standing in the shop joins today's queue. No deposit; the front desk calls them in order.
 export const joinQueue = onCall(async req => {
   const info = await loadInfo(), now = Date.now(), t = phNow(now);
-  const dow = new Date(`${t.date}T00:00:00Z`).getUTCDay(), h = (info.hours || []).find(x => x.d === dow);
+  const h = hoursFor(info, t.date); // holiday hours count too
   const toM = s => { const [a, b] = String(s).split(':').map(Number); return a * 60 + b; };
   if (!h || h.closed || t.min < toM(h.open) - 15 || t.min > toM(h.close) - 30) throw new HttpsError('failed-precondition', 'The walk-in queue is closed right now. Book online for another day.');
   const name = String(req.data && req.data.name || '').trim().slice(0, 60), phone = normalizePhone(req.data && req.data.phone);
@@ -508,7 +507,7 @@ export const rateVisit = onCall(async req => {
   const text = String(req.data && req.data.text || '').trim().slice(0, 400);
   const rating = { stars, text, at: Date.now() };
   await apptRef(id).update({ rating });
-  return { ...publicView(id, { ...a, rating }, info), loyalty: await loyaltyFor(a, info), rebook: rebookLink('.', a, info) };
+  return { ...publicView(id, { ...a, rating }, info), loyalty: await loyaltyOf(a, info), rebook: rebookLink('.', a, info) };
 });
 
 // =============== waitlist ===============
@@ -990,9 +989,9 @@ export const clockPunch = onCall(async req => {
   const shop = info.shop || {}, here = Number.isFinite(+d.lat) && Number.isFinite(+d.lng) ? { lat: +d.lat, lng: +d.lng } : null;
   const dist = here && Number.isFinite(+shop.lat) && Number.isFinite(+shop.lng) && shop.lat !== '' ? distM(here, { lat: +shop.lat, lng: +shop.lng }) : null;
   const away = dist != null && dist > 300;
-  if (d.peek) return { name: b.name, state: !cur ? 'out' : cur.out ? 'done' : 'in', rec: cur || null, start: shiftStartOf(b, pol) };
+  if (d.peek) return { name: b.name, state: !cur ? 'out' : cur.out ? 'done' : 'in', rec: cur || null, start: shiftStartOf(b, pol, date) };
   if (!cur) {
-    const start = shiftStartOf(b, pol), rate = lateRateOf(b), L = lateFine(time, start, rate);
+    const start = shiftStartOf(b, pol, date), rate = lateRateOf(b), L = lateFine(time, start, rate);
     const rec = { date, staffId: me.staffId, in: now, inHM: time, start, lateMin: L.mins, fine: L.fine, rate, ...(dist != null ? { inDist: dist } : {}), ...(away ? { away: true } : {}) };
     await ref.set(rec);
     await logActivity(me, 'clock', `${b.name} timed in at ${time}${L.mins ? ` (${L.mins} min late, −₱${L.fine})` : ''}${away ? ` · ${dist} m from the shop` : ''}`);

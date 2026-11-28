@@ -209,7 +209,7 @@ test('receipts show the client only what they paid, never commission', async () 
     total: 399, depositCredit: 200, method: 'Cash', commission: 199, rate: 50 }, info, 'Reymart', 4);
   assert.equal(r.paidAtShop, 199);
   assert.equal(r.commission, undefined);
-  assert.deepEqual(r.loyalty, { every: 10, visits: 4 });
+  assert.equal(r.loyalty.every, 10); assert.equal(r.loyalty.visits, 4); assert.equal(r.loyalty.midAt, 0);
   const t = receiptSms(r, info);
   assert.match(t, /Deluxe Haircut P399/); assert.match(t, /paid P199 Cash \+ P200 deposit/); assert.doesNotMatch(t, /http/);
   assert.equal(receiptView('s2', { name: 'Walk-in', lines: [] }, info).name, '');
@@ -320,4 +320,35 @@ test('system evaluation: answers are checked before saving', async () => {
   const r = cleanEvaluation({ group: 'it', answers: { ...answers, se1: 5, fs1: 9, bad_key: 5, 'x1': '3' }, name: 'A'.repeat(99), comment: 'ok\u0007', consent: true });
   assert.equal(r.rec.answers.fs1, undefined); assert.equal(r.rec.answers.bad_key, undefined); assert.equal(r.rec.answers.x1, undefined);
   assert.equal(r.rec.name.length, 60); assert.equal(r.rec.comment, 'ok');
+});
+
+test('staff shifts: bookings only inside each person’s shift; juniors stop 2 hours before the end', async () => {
+  const { validateRequest, eligibleBarbers, shiftOf, hoursFor, shiftStartOf } = await import('../src/core.js');
+  const info = { policy: { onlineBooking: true, leadMinutes: 0, step: 60 }, hours: [0, 1, 2, 3, 4, 5, 6].map(d => ({ d, open: '09:00', close: '20:00' })),
+    specialHours: [{ date: '2027-12-24', open: '09:00', close: '15:00' }, { date: '2027-12-25', closed: true }],
+    services: [{ id: 'h9', name: 'Regular Haircut', price: 249, mins: 60, group: 'him', kind: 'base', tier: 'regular' }, { id: 'h1', name: 'Deluxe Haircut', price: 399, mins: 60, group: 'him', kind: 'base', tier: 'deluxe' }],
+    barbers: [{ id: 'ed', name: 'Joe Ed', role: 'barber', tiers: ['regular'], shifts: { 1: ['09:00', '18:00'], 3: null } }, { id: 'angelo', name: 'Angelo', role: 'barber', tiers: ['deluxe'], shifts: { 1: ['10:00', '19:00'] } }] };
+  const base = { name: 'A', phone: '09171234567', email: 'a@b.co', consent: true };
+  const at = (svc, b, date, time) => validateRequest(info, { ...base, serviceIds: [svc], barberId: b, date, time }, Date.parse('2027-12-01T00:00:00+08:00'));
+  assert.equal(at('h9', 'ed', '2027-12-06', '16:00').ok, true);  // Monday 9–6: last booking 4 PM
+  assert.equal(at('h9', 'ed', '2027-12-06', '17:00').ok, false); // the last hour is for walk-ins
+  assert.equal(at('h9', 'ed', '2027-12-06', '09:00').ok, true);
+  assert.equal(at('h1', 'angelo', '2027-12-06', '18:00').ok, true); // senior: until the shift ends
+  assert.equal(at('h1', 'angelo', '2027-12-06', '09:00').ok, false); // before his shift
+  assert.equal(at('h9', 'ed', '2027-12-08', '10:00').ok, false); // Wednesday: day off
+  assert.equal(eligibleBarbers(info, info.services.slice(0, 1), '2027-12-08').length, 0);
+  assert.equal(hoursFor(info, '2027-12-24').close, '15:00'); assert.equal(hoursFor(info, '2027-12-25').closed, true);
+  assert.equal(at('h9', 'ed', '2027-12-25', '10:00').ok, false);
+  assert.deepEqual(shiftOf(info.barbers[0], '2027-12-06'), { start: '09:00', end: '18:00' });
+  assert.equal(shiftStartOf(info.barbers[1], {}, '2027-12-06'), '10:00'); // late from 10:01 on a 10–7 day
+});
+
+test('loyalty: visit 6 gets 20% off, visit 12 is a free Regular Haircut', async () => {
+  const { loyaltyPlan, loyaltyReward, loyaltyFor } = await import('../src/core.js');
+  const info = { shop: { loyaltyEvery: 12, loyaltyMidAt: 6, loyaltyMidPct: 20, loyaltyFreeService: 'h9' }, services: [{ id: 'h9', name: 'Regular Haircut' }] };
+  const L = loyaltyPlan(info.shop, info.services);
+  assert.equal(loyaltyReward(L, 5), null); assert.equal(loyaltyReward(L, 6).value, 20); assert.equal(loyaltyReward(L, 12).kind, 'free');
+  assert.equal(loyaltyReward(L, 18).kind, 'percent'); assert.equal(loyaltyReward(L, 24).label, 'free Regular Haircut');
+  assert.equal(loyaltyFor(info, 11).nextFree, true); assert.equal(loyaltyFor(info, 4).nextFree, false);
+  assert.equal(loyaltyPlan({ loyaltyEvery: 0 }), null);
 });

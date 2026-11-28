@@ -11,7 +11,9 @@ export const DEFAULT_POLICY = {
   lateMinutesDeposit: 20, // senior barbers (down payment): over this late = deposit kept and the full price is owed
   cancelHours: 48,       // cancel at least this long before to get the down payment back; later = kept, split barber/shop
   leadMinutes: 60,       // earliest booking is this far from now
-  bookAheadDays: 365,    // how far ahead customers can book
+  bookAheadDays: 60,     // how far ahead customers can book (owner, Nov 2026)
+  birthdayDays: 0,       // birthday promo: 0 = on the birthday itself only
+  juniorStopMins: 120,   // junior barbers take bookings until 2 hours before their shift ends
   step: 60,              // bookings start on the hour; also the slot grid in minutes
   maxReschedules: 2,
   onlineBooking: true,   // the shop can switch online booking off in Shop setup
@@ -43,7 +45,21 @@ export function isActiveSlot(slot, now) {
   if (!slot) return false;
   return slot.state === 'booked' || (slot.state === 'held' && (slot.holdUntil || 0) > now);
 }
-export function hoursFor(info, date) { return (info.hours || []).find(h => h.d === dowOf(date)); }
+// holiday dates (info.specialHours) override the weekday's hours
+export function hoursFor(info, date) {
+  const sp = (info.specialHours || []).find(x => x.date === date), h = (info.hours || []).find(x => x.d === dowOf(date));
+  return sp ? { ...(h || {}), ...sp, closed: !!sp.closed } : h;
+}
+// Staff shifts (same as public/assets/shared.js): staff.shifts = { 0: ['11:00', '20:00'], ... }, 0 = Sunday; no entry = day off.
+export function shiftOf(b, date, info = {}) {
+  const d = dowOf(date);
+  if (b.shifts && Object.keys(b.shifts).length) { const s = b.shifts[d]; return s && s[0] && s[1] ? { start: s[0], end: s[1] } : null; }
+  if (!(b.days || []).includes(d)) return null;
+  const h = hoursFor(info, date) || {}; return { start: b.shiftStart || h.open || '09:00', end: h.close || '20:00' };
+}
+export const isJunior = b => (b.role || 'barber') === 'barber' && (b.tiers || []).length > 0 && !(b.tiers || []).includes('deluxe');
+export function lastStartFor(b, shift, mins, pol) { const end = toMin(shift.end); return isJunior(b) ? Math.min(end - mins, end - (pol.juniorStopMins ?? 120)) : end - mins; }
+export function inShift(b, date, time, mins, info, pol) { const s = shiftOf(b, date, info); if (!s) return false; const m = toMin(time); return m >= toMin(s.start) && m <= lastStartFor(b, s, mins, pol); }
 export const servicesById = (info, ids) => (ids || []).map(id => (info.services || []).find(s => s.id === id));
 
 // Normalise a Philippine mobile number to 09XXXXXXXXX, or return '' if it isn't one.
@@ -66,10 +82,12 @@ export function comboError(info, services) {
   const dup = services.find(s => (bases[0].includes || []).includes(s.id));
   return dup ? `${dup.name} is already part of ${bases[0].name.split(' · ')[0]}.` : '';
 }
-export function eligibleBarbers(info, services, date, barberId) {
-  const d = dowOf(date);
+// who can take these services on that date; with `time` and `mins`, only those whose shift allows a booking then
+export function eligibleBarbers(info, services, date, barberId, time, mins) {
+  const pol = policyOf(info);
   return (info.barbers || [])
-    .filter(b => b.active !== false && (b.days || []).includes(d) && !(b.off || []).includes(date)) // off = leave days
+    .filter(b => b.active !== false && shiftOf(b, date, info) && !(b.off || []).includes(date)) // off = leave days
+    .filter(b => !time || inShift(b, date, time, mins, info, pol))
     .filter(b => canServe(b, services))
     .filter(b => !barberId || b.id === barberId)
     .sort((a, b) => (a.chair || 99) - (b.chair || 99))
@@ -110,10 +128,11 @@ export function validateRequest(info, data, now = Date.now()) {
   const at = startMs(date, time);
   if (at < now + pol.leadMinutes * 60e3) return { ok: false, error: `Book at least ${pol.leadMinutes} minutes ahead.` };
   const barberId = String(r.barberId || '');
-  const barbers = eligibleBarbers(info, services, date, barberId);
+  const barbers = eligibleBarbers(info, services, date, barberId, time, mins);
   if (!barbers.length) {
     const who = (info.barbers || []).find(b => b.id === barberId);
     if (who && !canServe(who, services)) return { ok: false, error: `${who.name || 'That barber'} doesn’t do that haircut. Pick another barber or haircut.` };
+    if (eligibleBarbers(info, services, date, barberId).length) return { ok: false, error: barberId ? `${(who && who.name) || 'That barber'} can’t take a booking at that time. Pick an earlier time.` : 'No one can take a booking at that time. Pick another time.' };
     return { ok: false, error: barberId ? 'That barber isn’t in on that day.' : 'No barber offers that on that day.' };
   }
   return { ok: true, name, phone, email, notes, date, time, mins, at, services, serviceIds: ids, barbers, times: blockTimes(time, mins, pol.step), policy: pol };
@@ -271,12 +290,27 @@ export const cleanCode = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g
 // Payment screenshots are stored as small JPEG data URLs (no Firebase Storage needed).
 export const validProofImage = s => typeof s === 'string' && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(s) && s.length < 900000;
 
+// ---------- loyalty card (same as public/assets/shared.js) ----------
+export function loyaltyPlan(shop = {}, services = []) {
+  const every = Math.max(0, parseInt(shop.loyaltyEvery, 10) || 0); if (!every) return null;
+  const at = Math.max(0, parseInt(shop.loyaltyMidAt, 10) || 0), pct = Math.max(0, Math.min(100, Number(shop.loyaltyMidPct) || 0)), sv = services.find(x => x.id === shop.loyaltyFreeService);
+  return { every, midAt: at > 0 && at < every && pct > 0 ? at : 0, midPct: pct, freeId: sv ? sv.id : '', freeName: sv ? sv.name : 'haircut' };
+}
+export function loyaltyReward(L, n) {
+  if (!L || !L.every || n < 1) return null;
+  const k = (n - 1) % L.every + 1;
+  if (k === L.every) return { kind: 'free', k, label: `free ${L.freeName || 'haircut'}` };
+  if (L.midAt && k === L.midAt) return { kind: 'percent', k, value: L.midPct, label: `${L.midPct}% off` };
+  return null;
+}
+export const loyaltyFor = (info, visits) => { const L = loyaltyPlan(info.shop || {}, info.services || []); return L ? { ...L, visits, nextFree: (loyaltyReward(L, visits + 1) || {}).kind === 'free' } : null; };
+
 // ---------- receipts ----------
 // What the client may see of a sale: no commission, cost or staff pay. `barberName` is passed in.
 // "Cash", or for a split bill "Cash ₱200 + GCash ₱150"
 export const payLabel = s => Array.isArray(s.split) && s.split.length ? s.split.map(x => `${x.m} ₱${(Math.round((Number(x.amt) || 0) * 100) / 100).toLocaleString('en-PH')}`).join(' + ') : (s.method || '');
 export function receiptView(id, s, info, barberName = '', visits = 0) {
-  const sh = info.shop || {}, every = Math.max(0, parseInt(sh.loyaltyEvery, 10) || 0);
+  const sh = info.shop || {};
   const lines = (s.lines || []).map(l => ({ name: String(l.name || 'Item'), qty: Number(l.qty) || 1, price: Number(l.price) || 0 }));
   const paidAtShop = Math.max(0, (Number(s.total) || 0) - (Number(s.depositCredit) || 0));
   return {
@@ -284,7 +318,7 @@ export function receiptView(id, s, info, barberName = '', visits = 0) {
     lines, discount: Number(s.discount) || 0, discountNote: s.discountNote || '', tip: Number(s.tip) || 0, total: Number(s.total) || 0,
     depositCredit: Number(s.depositCredit) || 0, paidAtShop, method: payLabel(s), cash: Number(s.cash) || 0,
     orNo: s.orNo || '', shop: { name: sh.name || '', wordmark: sh.wordmark || '', address: sh.address || '', phone: sh.phone || '', tagline: sh.tagline || '', tin: sh.tin || '', birPermit: sh.birPermit || '' },
-    loyalty: every && s.customerId ? { every, visits } : null
+    loyalty: s.customerId ? loyaltyFor(info, visits) : null
   };
 }
 const peso = n => `P${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString('en-PH')}`;
@@ -327,7 +361,7 @@ export function queueItems(appts, info, date) {
 export function accountView({ phone, customers = [], appts = [], sales = [], info, today }) {
   const svcName = id => ((info.services || []).find(s => s.id === id) || {}).name || 'Service';
   const bName = id => ((info.barbers || []).find(b => b.id === id) || {}).name || '';
-  const c = customers.find(x => x.name) || {}, every = Math.max(0, parseInt((info.shop || {}).loyaltyEvery, 10) || 0);
+  const c = customers.find(x => x.name) || {};
   const cIds = new Set(customers.map(x => x.id));
   const upcoming = appts.filter(a => ['booked', 'pending_payment', 'waiting', 'inchair'].includes(a.status) && a.date >= today)
     .sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time)).slice(0, 10)
@@ -341,7 +375,7 @@ export function accountView({ phone, customers = [], appts = [], sales = [], inf
     name: c.name || (appts[0] && appts[0].name) || '', phone, birthday: c.birthday || '',
     upcoming, visits, visitCount: paid.length,
     coupons: customers.flatMap(x => x.coupons || []).filter(cp => couponLive(cp, today)).map(cp => ({ id: cp.id, label: couponLabel(cp, info.services || [], (info.shop || {}).currency || '₱'), note: cp.note || '', expires: cp.expires || '' })),
-    loyalty: every ? { every, visits: paid.length, nextFree: (paid.length + 1) % every === 0 } : null,
+    loyalty: loyaltyFor(info, paid.length),
     again: last ? { svc: (last.lines || []).filter(l => l.kind === 'service').map(l => l.ref).filter(id => (info.services || []).some(s => s.id === id && s.active !== false)), barber: (info.barbers || []).some(b => b.id === last.barberId) ? last.barberId : '' } : null
   };
 }
@@ -381,7 +415,7 @@ export function lateFine(inHM, startHM, rate) {
   return { mins, blocks, fine: blocks * Math.max(0, Number(rate) || 0) };
 }
 export const lateRateOf = b => (b && b.lateFine != null && b.lateFine !== '') ? Math.max(0, Number(b.lateFine) || 0) : (b && (b.role || 'barber') === 'barber' ? ((b.tiers || []).includes('deluxe') ? 50 : 15) : 0);
-export const shiftStartOf = (b, pol) => (b && b.shiftStart) || (pol && pol.clockStart) || CLOCK_START;
+export const shiftStartOf = (b, pol, date) => (b && date && b.shifts && b.shifts[dowOf(date)] && b.shifts[dowOf(date)][0]) || (b && b.shiftStart) || (pol && pol.clockStart) || CLOCK_START;
 // Who can do what in the dashboard (admins/{uid}.role). A missing role means owner (accounts made before roles).
 export const ACCESS = { owner: 'Owner (everything)', desk: 'Receptionist (bookings, checkout, clients)', staff: 'Own schedule and pay only' };
 export const roleOf = a => (a && ACCESS[a.role]) ? a.role : 'owner';

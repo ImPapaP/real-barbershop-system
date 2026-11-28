@@ -1,7 +1,7 @@
 // Dashboard · Overview, Schedule (with the end-of-day check) and Checkout pages.
-import { DAYS, bdayDays, cleanBday, esc, fmtTime, lateLimit, priceLabel, sum } from '../shared.js';
+import { bdayDays, cleanBday, DAYS, esc, fmtTime, lateLimit, loyaltyReward, loyaltyState, priceLabel, sum } from '../shared.js';
 import { APPT, METHODS, S } from './state.js';
-import { $, activeServices, activeStaff, addDays, ago, apptRow, apptsOn, assignSelect, av, barChart, bdayPromoText, bdayWhen, buckets, chip, cur, custStats, delta, depositChip, field, fmtDate, hbars, icon, info, isLateNow, kpi, leaveOn, loyaltyN, mark, matchCustomer, methodName, money, needsBarber, netOf, normPhone, nowHM, num, opt, pageHead, paidIn, parseYmd, payIndex, payLabel, periodRange, pol, proofsPanel, refChip, round2, schedule, services, serviceStaff, shortDate, staffById, staffName, summary, svcNames, today, visible } from './core.js';
+import { $, activeServices, activeStaff, addDays, ago, apptRow, apptsOn, assignSelect, av, barChart, bdayPromoText, bdayWhen, buckets, chip, cur, custStats, delta, depositChip, field, fmtDate, hbars, icon, info, isLateNow, kpi, leaveOn, loyaltyN, loyaltyNow, mark, matchCustomer, methodName, money, needsBarber, netOf, normPhone, nowHM, num, opt, pageHead, paidIn, parseYmd, payIndex, payLabel, periodRange, pol, proofsPanel, refChip, round2, schedule, services, serviceStaff, shortDate, staffById, staffName, summary, svcNames, today, visible } from './core.js';
 import { isBoss } from './access.js';
 import { clockLine } from './staffapp.js';
 import { cpLabel, filterDD, liveCoupons } from './tables.js';
@@ -175,13 +175,15 @@ export function blankPos() { return { lines: [], name: '', phone: '', barberId: 
 export function posBday(p) {
   const appt = p.apptId ? S.appointments.find(a => a.id === p.apptId) : null, c = matchCustomer(p.name, p.phone);
   const n = bdayDays(cleanBday(appt && appt.birthday) || cleanBday(c && c.birthday), today());
-  return n !== null && Math.abs(n) <= 7 ? n : null;
+  return n !== null && Math.abs(n) <= 7 ? n : null; // shown a week around it; the promo itself is only within pol().birthdayDays (0 = the day)
 }
+export const bdayOk = p => { const n = posBday(p); return n !== null && Math.abs(n) <= (pol().birthdayDays ?? 0); };
 export function vCheckout() {
   if (!S.pos) S.pos = blankPos();
   const p = S.pos, T = posTotals(p), cust = matchCustomer(p.name, p.phone), st = cust ? custStats()[cust.id] : null, N = loyaltyN();
   const visitNo = (st ? st.visits : 0) + 1;
-  const loyal = cust && N ? (visitNo % N === 0 ? `<p class="hint"><b>Free cut due.</b> This is ${esc(cust.name)}’s visit #${visitNo}.</p>` : `<p class="hint">${esc(cust.name)} · visit #${visitNo} · ${N - (visitNo % N)} more to a free cut</p>`) : '';
+  const LP = loyaltyNow(), due = cust && LP ? loyaltyReward(LP, visitNo) : null;
+  const loyal = cust && LP ? (due ? `<p class="hint"><b>Loyalty reward due: ${esc(due.label)}.</b> This is ${esc(cust.name)}’s visit #${visitNo}. Tap “Loyalty ${esc(due.kind === 'free' ? 'free cut' : due.label)}” below.</p>` : `<p class="hint">${esc(cust.name)} · visit #${visitNo} · ${esc(loyaltyState(LP, visitNo).line.replace(/^Your next visit: /, 'next visit: '))}</p>`) : '';
   const prods = S.inventory.filter(i => i.cat === 'Retail');
   const appt = p.apptId ? S.appointments.find(a => a.id === p.apptId) : null;
   const recent = S.sales.filter(s => s.date === today()).sort((a, b) => (b.at || 0) - (a.at || 0));
@@ -207,7 +209,7 @@ export function vCheckout() {
         ${p.lateFee ? `<p class="hint"><b>Late fee.</b> More than ${lateLimit(appt || {}, pol())} minutes late for a senior barber: the down payment is kept (half goes to the barber) and the client pays the full price of the service for the barber’s time.</p>` : ''}
         ${appt && appt.refPhoto ? `<button type="button" class="btn btn-sm" data-act="viewRef" data-id="${esc(appt.id)}" style="justify-self:start">See the cut they want (photo)</button>` : ''}
         ${cust && liveCoupons(cust).length ? `<div class="hint cp-hint"><b>${esc(cust.name)} has ${liveCoupons(cust).length > 1 ? 'coupons' : 'a coupon'}:</b><div class="row">${liveCoupons(cust).map(cp => `<button type="button" class="btn btn-sm${p.couponId === cp.id ? ' btn-primary' : ''}" data-act="posCoupon" data-id="${esc(cp.id)}">${p.couponId === cp.id ? '✓ ' : 'Use '}${esc(cpLabel(cp))}</button>`).join('')}</div></div>` : ''}
-        ${loyal}${posBday(p) !== null ? `<p class="hint"><b>Birthday ${bdayWhen(posBday(p))}.</b> ${esc(bdayPromoText())} Tap “Birthday promo” below.</p>` : ''}
+        ${loyal}${posBday(p) !== null ? `<p class="hint"><b>Birthday ${bdayWhen(posBday(p))}.</b> ${bdayOk(p) ? `${esc(bdayPromoText())} Tap “Birthday promo” below.` : `The birthday promo is only ${(pol().birthdayDays ?? 0) ? `within ${pol().birthdayDays} days of` : 'on'} the birthday itself.`}</p>` : ''}
         ${field('Barber', `<select id="pos-barber" data-bind="pos.barberId" data-live>${opt('', 'Choose barber', !p.barberId)}${serviceStaff().map(b => opt(b.id, `${b.name} · ${b.rate || 0}%`, b.id === p.barberId)).join('')}</select>`, 'pos-barber')}
         <div class="lines">${p.lines.length ? p.lines.map((l, i) => `<div class="line"><span class="nm">${esc(l.name)}</span>${l.kind === 'service' ? '<span class="qty"></span>' : `<span class="qty"><button type="button" data-act="posQty" data-i="${i}" data-d="-1" aria-label="One less">−</button><span>${l.qty}</span><button type="button" data-act="posQty" data-i="${i}" data-d="1" aria-label="One more">+</button></span>`}<span class="num">${money(l.price * l.qty)}</span><button type="button" class="icon-btn" data-act="posDel" data-i="${i}" aria-label="Remove ${esc(l.name)}">✕</button></div>`).join('') : '<p class="muted small" style="padding:10px 0">No items yet. Tap a service or product.</p>'}</div>
         <p class="muted small">For “from” prices, change the amount with the price field after adding.</p>
@@ -216,7 +218,7 @@ export function vCheckout() {
           ${field('Discount (' + cur() + ')', `<input id="pos-disc" data-bind="pos.discount" data-live inputmode="decimal" value="${esc(p.discount)}" placeholder="0">`, 'pos-disc')}
           ${field('Tip for barber (' + cur() + ')', `<input id="pos-tip" data-bind="pos.tip" data-live inputmode="decimal" value="${esc(p.tip)}" placeholder="0">`, 'pos-tip')}
         </div>
-        <div class="row"><button type="button" class="btn btn-sm" data-act="posDisc" data-v="sc">Senior / PWD 20%</button><button type="button" class="btn btn-sm" data-act="posDisc" data-v="student">Student 10%</button><button type="button" class="btn btn-sm" data-act="posDisc" data-v="free">Loyalty free cut</button>${posBday(p) !== null ? `<button type="button" class="btn btn-sm" data-act="posDisc" data-v="bday">Birthday promo</button>` : ''}${p.discountNote ? `<span class="muted small">${esc(p.discountNote)}</span>` : ''}</div>
+        <div class="row"><button type="button" class="btn btn-sm" data-act="posDisc" data-v="sc">Senior / PWD 20%</button><button type="button" class="btn btn-sm" data-act="posDisc" data-v="student">Student 10%</button>${due ? `<button type="button" class="btn btn-sm btn-accent" data-act="posDisc" data-v="${due.kind === 'free' ? 'free' : 'loyal'}">Loyalty ${esc(due.kind === 'free' ? 'free cut' : due.label)}</button>` : ''}${bdayOk(p) ? `<button type="button" class="btn btn-sm" data-act="posDisc" data-v="bday">Birthday promo</button>` : ''}${p.discountNote ? `<span class="muted small">${esc(p.discountNote)}</span>` : ''}</div>
         <div class="totals">
           <div><span>Services</span><span>${money(T.svc, 1)}</span></div>
           ${T.prod ? `<div><span>Products</span><span>${money(T.prod, 1)}</span></div>` : ''}
